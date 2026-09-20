@@ -83,8 +83,6 @@ const publishingMethods: Record<string, string[]> = {
   "/v1/community/publishing/media/{itemId}/{variant}/{editKey}": ["get"],
   "/v1/community/publishing/submissions": ["post"],
   "/v1/community/publishing/submissions/{requestId}": ["get"],
-  "/v1/community/publishing/trash": ["get"],
-  "/v1/community/publishing/trash/{workId}/restore": ["post"],
 };
 
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
@@ -123,6 +121,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/community/content/like",
         "/v1/community/favorites/merge",
         "/v1/community/me/avatar",
+        "/v1/community/me/background",
         "/v1/community/me/blocks",
         "/v1/community/me/privacy",
         "/v1/community/me/profile",
@@ -181,6 +180,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/community/content/like": ["post"],
       "/v1/community/favorites/merge": ["post"],
       "/v1/community/me/avatar": ["post"],
+      "/v1/community/me/background": ["post"],
       "/v1/community/me/blocks": ["get"],
       "/v1/community/me/privacy": ["post"],
       "/v1/community/me/profile": ["post"],
@@ -545,6 +545,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "aliases",
         "summary",
         "periodLabel",
+        "province",
         "representativeMedia",
       ].sort(),
     );
@@ -553,7 +554,6 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         ...Object.keys(summaryProperties),
         "dynasty",
         "dateText",
-        "province",
         "prefecture",
         "county",
         "currentLocation",
@@ -858,7 +858,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     ).toEqual(["image/webp", "video/mp4"]);
 
     const trash = operationOf("/v1/community/works/{workId}", "delete");
-    expect(trash.operationId).toBe("moveOwnWorkToTrash");
+    expect(trash.operationId).toBe("deleteOwnWorkPermanently");
     expect(
       ((trash.parameters ?? []) as unknown[])
         .map(asObject)

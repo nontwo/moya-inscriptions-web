@@ -1,5 +1,11 @@
 export const iconNames = [
   "home",
+  "discussion",
+  "news",
+  "academic-cap",
+  "message",
+  "user",
+  "edit",
   "inscriptions",
   "calligraphy",
   "search",

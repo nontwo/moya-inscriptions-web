@@ -8,7 +8,6 @@ import type {
   PublishingDraftSummary,
   PublishingMediaItem,
   PublishingSnapshot,
-  TrashedWork,
   WorkDraftContent,
 } from "@moya/contracts";
 import type { ReactNode } from "react";
@@ -125,21 +124,6 @@ export const conflict = (
     updatedAt: minutesAgo(5),
   },
   createdAt: minutesAgo(3),
-  ...overrides,
-});
-
-export const trashed = (
-  n: number,
-  overrides: Partial<TrashedWork> = {},
-): TrashedWork => ({
-  workId: workId(n),
-  title: `作品${n}`,
-  excerpt: "",
-  coverSrc: null,
-  itemCount: 1,
-  trashedAt: minutesAgo(60),
-  purgeAfter: daysFromNow(29.9),
-  restorable: true,
   ...overrides,
 });
 

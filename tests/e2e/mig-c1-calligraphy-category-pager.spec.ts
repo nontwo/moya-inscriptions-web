@@ -2,25 +2,23 @@ import { devices, expect, test } from "@playwright/test";
 
 import type { CDPSession, Locator, Page } from "@playwright/test";
 
-type Category = "all" | "ink" | "rubbing";
+type HomeFeed = "discover" | "nearby" | "inscriptions" | "calligraphy";
 
 const productShell = (surface: Locator) =>
   surface.locator("[data-product-shell]");
 
+const homeSurface = (surface: Locator) =>
+  surface.locator('[data-primary-destination="home"] [data-home-surface]');
+
 const calligraphySurface = (surface: Locator) =>
-  surface.locator(
-    '[data-primary-destination="calligraphy"] [data-calligraphy-category-surface]',
-  );
+  homeSurface(surface).locator('[data-home-feed-panel="calligraphy"]');
 
 const activateCalligraphy = async (surface: Locator) => {
-  await surface
-    .getByRole("navigation", { name: "主要内容" })
-    .getByRole("button", { exact: true, name: "书帖" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
   await expect(productShell(surface)).toHaveAttribute(
     "data-active-destination",
-    "calligraphy",
+    "home",
   );
+  await settleFeed(homeSurface(surface), "calligraphy");
   await expect(calligraphySurface(surface)).toBeVisible();
 };
 
@@ -57,58 +55,37 @@ const openSurface = async (page: Page, qa = true) => {
   return { calligraphy: calligraphySurface(surface), surface };
 };
 
-const settleCategory = async (calligraphy: Locator, category: Category) => {
-  const pager = calligraphy.locator("[data-calligraphy-category-pager]");
-  const pc =
-    (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc";
-  if (pc) {
-    await pager.evaluate((node, targetCategory) => {
-      const frame = node as HTMLElement;
-      const panel = frame.querySelector<HTMLElement>(
-        `[data-calligraphy-category-panel="${targetCategory}"]`,
-      );
-      if (panel === null) throw new Error("Missing Calligraphy category panel");
-      frame.style.scrollSnapType = "none";
-      frame.scrollLeft = panel.offsetLeft;
-      frame.dispatchEvent(new Event("scroll"));
-      frame.dispatchEvent(new Event("scrollend"));
-      frame.style.scrollSnapType = "";
-    }, category);
-  } else {
-    await calligraphy
-      .locator(`[data-calligraphy-category-tab="${category}"]`)
-      .evaluate((button) => (button as HTMLButtonElement).click());
-  }
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    category,
-  );
-  if (!pc) {
-    await expect
-      .poll(() =>
-        pager.evaluate((node, targetCategory) => {
-          const panel = node.querySelector<HTMLElement>(
-            `[data-calligraphy-category-panel="${targetCategory}"]`,
-          );
-          if (panel === null)
-            throw new Error("Missing Calligraphy category panel");
-          return Math.abs(
-            panel.getBoundingClientRect().left -
-              node.getBoundingClientRect().left,
-          );
-        }, category),
-      )
-      .toBeLessThanOrEqual(2);
-  }
+const settleFeed = async (home: Locator, feed: HomeFeed) => {
+  const pager = home.locator("[data-home-feed-pager]");
+  // This setup selection must also work beneath visible QA overlay controls;
+  // the gesture tests below deliver trusted input to exposed product content.
+  await home
+    .locator(`[data-tab-key="${feed}"]`)
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
+  await expect(pager).toHaveAttribute("data-home-pager-scrolling", "false");
+  await expect
+    .poll(() =>
+      pager.evaluate((node, target) => {
+        const panel = node.querySelector<HTMLElement>(
+          `[data-home-feed-panel="${target}"]`,
+        )!;
+        return Math.abs(
+          panel.getBoundingClientRect().left -
+            node.getBoundingClientRect().left,
+        );
+      }, feed),
+    )
+    .toBeLessThanOrEqual(2);
 };
 
 const primaryScrollEvidence = async (surface: Locator) =>
   productShell(surface).evaluate((node) => {
     const shell = node as HTMLElement;
     const section = shell.querySelector<HTMLElement>(
-      '[data-primary-destination="calligraphy"]',
+      '[data-home-feed-panel="calligraphy"]',
     );
-    if (section === null) throw new Error("Missing Calligraphy destination");
+    if (section === null) throw new Error("Missing Home Calligraphy panel");
     const element =
       shell.dataset.platform === "pc"
         ? (document.scrollingElement as HTMLElement)
@@ -123,9 +100,9 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
   productShell(surface).evaluate((node, top) => {
     const shell = node as HTMLElement;
     const section = shell.querySelector<HTMLElement>(
-      '[data-primary-destination="calligraphy"]',
+      '[data-home-feed-panel="calligraphy"]',
     );
-    if (section === null) throw new Error("Missing Calligraphy destination");
+    if (section === null) throw new Error("Missing Home Calligraphy panel");
     const element =
       shell.dataset.platform === "pc"
         ? (document.scrollingElement as HTMLElement)
@@ -142,30 +119,23 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
     return element.scrollTop;
   }, desired);
 
-const waitForInitialCategoryScroll = async (
-  calligraphy: Locator,
-  category: Category = "ink",
+const waitForInitialFeedScroll = async (
+  home: Locator,
+  feed: HomeFeed = "calligraphy",
 ) => {
-  // A committed category attribute precedes its queued scroll restoration.
-  // Observe settled geometry and the initial offset, not a fixed time delay.
-  await calligraphy.evaluate(
-    (node, targetCategory) =>
+  // Wait for layout and restoration on the real reading owner.
+  await home.evaluate(
+    (node, target) =>
       new Promise<void>((resolve) => {
-        const root = node as HTMLElement;
-        const shell = root.closest<HTMLElement>("[data-product-shell]")!;
-        const section = root.closest<HTMLElement>(
-          "[data-primary-destination]",
+        const shell = node.closest<HTMLElement>("[data-product-shell]")!;
+        const pager = node.querySelector<HTMLElement>(
+          "[data-home-feed-pager]",
+        )!;
+        const panel = node.querySelector<HTMLElement>(
+          `[data-home-feed-panel="${target}"]`,
         )!;
         const scroller =
-          shell.dataset.platform === "pc"
-            ? document.scrollingElement!
-            : section;
-        const pager = root.querySelector<HTMLElement>(
-          "[data-calligraphy-category-pager]",
-        )!;
-        const panel = root.querySelector<HTMLElement>(
-          `[data-calligraphy-category-panel="${targetCategory}"]`,
-        )!;
+          shell.dataset.platform === "pc" ? document.scrollingElement! : panel;
         const masonry = panel.querySelector<HTMLElement>(
           "[data-home-masonry]",
         )!;
@@ -174,10 +144,17 @@ const waitForInitialCategoryScroll = async (
         const sample = () => {
           const ready =
             masonry.dataset.layoutReady === "true" &&
-            [...panel.querySelectorAll("img")].every(
-              (image) => image.complete,
-            ) &&
-            pager.dataset.calligraphyPagerScrolling === "false" &&
+            [...panel.querySelectorAll("img")].every((image) => {
+              // Offscreen lazy images need not load before reading can start.
+              const bounds = image.getBoundingClientRect();
+              const viewport = panel.getBoundingClientRect();
+              return (
+                image.complete ||
+                bounds.bottom < Math.max(0, viewport.top) ||
+                bounds.top > Math.min(innerHeight, viewport.bottom)
+              );
+            }) &&
+            pager.dataset.homePagerScrolling === "false" &&
             Math.abs(
               panel.getBoundingClientRect().left -
                 pager.getBoundingClientRect().left,
@@ -196,7 +173,7 @@ const waitForInitialCategoryScroll = async (
         };
         requestAnimationFrame(sample);
       }),
-    category,
+    feed,
   );
 };
 
@@ -205,10 +182,13 @@ const trustedHorizontalPointDrag = async (
   session: CDPSession,
   pager: Locator,
   point: { readonly x: number; readonly y: number },
+  direction: 1 | -1 = 1,
 ) => {
   const pagerWidth = await pager.evaluate((node) => node.clientWidth);
   const { x, y } = point;
-  const distance = Math.min(Math.max(64, pagerWidth * 0.58), x - 8);
+  const available =
+    direction === 1 ? x - 8 : (await page.evaluate(() => innerWidth)) - x - 8;
+  const distance = Math.min(Math.max(64, pagerWidth * 0.58), available);
 
   const initialPanelLeft = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
@@ -235,7 +215,7 @@ const trustedHorizontalPointDrag = async (
   });
   for (let step = 1; step <= 12; step += 1) {
     await session.send("Input.dispatchTouchEvent", {
-      touchPoints: [{ x: x - (distance * step) / 12, y }],
+      touchPoints: [{ x: x - (direction * distance * step) / 12, y }],
       type: "touchMove",
     });
     await page.waitForTimeout(12);
@@ -264,11 +244,14 @@ const trustedHorizontalCardDrag = async (
   session: CDPSession,
   pager: Locator,
   card: Locator,
+  direction: 1 | -1 = 1,
 ) => {
-  const startEvidence = await card.evaluate((node) => {
+  const startEvidence = await card.evaluate((node, dragDirection) => {
     const rect = node.getBoundingClientRect();
     const hits: string[] = [];
-    for (const xFactor of [0.9, 0.8, 0.7, 0.6]) {
+    for (const xFactor of dragDirection === 1
+      ? [0.9, 0.8, 0.7, 0.6]
+      : [0.1, 0.2, 0.3, 0.4]) {
       for (const yFactor of [0.4, 0.25, 0.6]) {
         const x = rect.left + rect.width * xFactor;
         const y = rect.top + Math.min(rect.height * yFactor, 120);
@@ -280,14 +263,14 @@ const trustedHorizontalCardDrag = async (
       }
     }
     return { hits, point: null };
-  });
+  }, direction);
   if (startEvidence.point === null) {
     throw new Error(
       `No hit-testable point inside swipe card: ${startEvidence.hits.join(" | ")}`,
     );
   }
   const { x, y } = startEvidence.point;
-  await trustedHorizontalPointDrag(page, session, pager, { x, y });
+  await trustedHorizontalPointDrag(page, session, pager, { x, y }, direction);
 };
 
 const trustedDragEvidence = (pager: Locator) =>
@@ -305,7 +288,7 @@ const shortFeedBlankEvidence = (pager: Locator) =>
   pager.evaluate((node) => {
     const frame = node as HTMLElement;
     const card = frame.querySelector<HTMLElement>(
-      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
+      '[data-home-feed-panel="calligraphy"] [data-catalog-card]',
     );
     if (card === null) throw new Error("Missing short Calligraphy feed card");
     const x = window.innerWidth / 2;
@@ -318,19 +301,13 @@ const shortFeedBlankEvidence = (pager: Locator) =>
     };
   });
 
-test("MIG-C1 keeps runtime classification truthful and QA metadata isolated", async ({
+test("MIG-C1 keeps runtime all-Calligraphy truthful and QA metadata isolated", async ({
   page,
 }) => {
   const runtime = await openSurface(page, false);
-  await expect(runtime.calligraphy).toHaveAttribute(
-    "data-calligraphy-classification-source",
-    "runtime-unclassified",
+  await expect(runtime.calligraphy.locator("[data-catalog-card]")).toHaveCount(
+    1,
   );
-  await expect(
-    runtime.calligraphy.locator(
-      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
-    ),
-  ).toHaveCount(1);
   await expect(runtime.calligraphy).toContainText("运行时书帖");
   await expect(runtime.calligraphy).not.toContainText("视觉 QA 合成");
   await expect(
@@ -338,45 +315,47 @@ test("MIG-C1 keeps runtime classification truthful and QA metadata isolated", as
       'input[type="search"], [data-calligraphy-filter]',
     ),
   ).toHaveCount(0);
-
-  await settleCategory(runtime.calligraphy, "ink");
-  await expect(runtime.calligraphy).toContainText("墨迹分类数据尚未接入");
-  await expect(runtime.calligraphy).toContainText(
-    "当前公开目录尚未提供规范分类",
-  );
-  await settleCategory(runtime.calligraphy, "rubbing");
-  await expect(runtime.calligraphy).toContainText("拓本分类数据尚未接入");
+  await expect(homeSurface(runtime.surface).getByRole("tab")).toHaveText([
+    "发现",
+    "附近",
+    "碑刻",
+    "书帖",
+  ]);
+  await expect(
+    runtime.surface.locator(
+      "[data-calligraphy-category-pager], [data-calligraphy-category-tab]",
+    ),
+  ).toHaveCount(0);
 
   const qa = await openSurface(page);
-  await expect(qa.calligraphy).toHaveAttribute(
-    "data-calligraphy-classification-source",
-    "qa-synthetic",
+  const cards = qa.calligraphy.locator("[data-catalog-card]");
+  await expect(cards).toHaveCount(12);
+  expect(
+    await cards.evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        id: node.getAttribute("data-catalog-id"),
+        kind: node.getAttribute("data-catalog-kind"),
+      })),
+    ),
+  ).toEqual(
+    Array.from({ length: 12 }, (_, index) => ({
+      id: `qa-visual-calligraphy-${String(index + 1).padStart(2, "0")}`,
+      kind: "calligraphy",
+    })),
   );
-  await expect(
-    qa.calligraphy.locator(
-      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
-    ),
-  ).toHaveCount(12);
-  await settleCategory(qa.calligraphy, "ink");
-  await expect(
-    qa.calligraphy.locator(
-      '[data-calligraphy-category-panel="ink"] [data-catalog-card]',
-    ),
-  ).toHaveCount(6);
-  await settleCategory(qa.calligraphy, "rubbing");
-  await expect(
-    qa.calligraphy.locator(
-      '[data-calligraphy-category-panel="rubbing"] [data-catalog-card]',
-    ),
-  ).toHaveCount(6);
+  await settleFeed(homeSurface(qa.surface), "inscriptions");
+  await settleFeed(homeSurface(qa.surface), "calligraphy");
+  await expect(cards).toHaveCount(12);
 
   const formalResponse = await gotoWithRetry(page, "/");
   expect(formalResponse?.status()).toBe(200);
   await expect(
-    page.locator('[data-calligraphy-classification-source="qa-synthetic"]'),
+    page.locator('[data-catalog-id^="qa-visual-calligraphy-"]'),
   ).toHaveCount(0);
   await expect(
-    page.locator('[data-catalog-id^="qa-visual-calligraphy-"]'),
+    page.locator(
+      "[data-calligraphy-category-pager], [data-calligraphy-category-tab]",
+    ),
   ).toHaveCount(0);
 });
 
@@ -425,12 +404,11 @@ test("MIG-C1 card actions preserve trusted touch paging with local horizontal co
   expect(homeEvidence.maximumHorizontalDisplacement).toBeGreaterThan(40);
 
   await activateCalligraphy(surface);
-  const calligraphy = calligraphySurface(surface);
-  const calligraphyPager = calligraphy.locator(
-    "[data-calligraphy-category-pager]",
+  const calligraphyPager = homeSurface(surface).locator(
+    "[data-home-feed-pager]",
   );
   const calligraphyCard = calligraphyPager
-    .locator('[data-calligraphy-category-panel="all"] [data-open-catalog]')
+    .locator('[data-home-feed-panel="calligraphy"] [data-open-catalog]')
     .nth(1);
   await expect(calligraphyCard).toBeVisible();
   await expect(calligraphyCard).toHaveCSS(
@@ -442,10 +420,11 @@ test("MIG-C1 card actions preserve trusted touch paging with local horizontal co
     session,
     calligraphyPager,
     calligraphyCard,
+    -1,
   );
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
+  await expect(homeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    "inscriptions",
   );
   const calligraphyEvidence = await trustedDragEvidence(calligraphyPager);
   expect(calligraphyEvidence.trustedTouchEvents).toBeGreaterThan(0);
@@ -466,12 +445,9 @@ test("MIG-C1 keeps blank space below a short Calligraphy feed inside the phone a
   const surface = page.locator("[data-clean-product-preview]");
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
   await activateCalligraphy(surface);
-  const calligraphy = calligraphySurface(surface);
-  const pager = calligraphy.locator("[data-calligraphy-category-pager]");
+  const pager = homeSurface(surface).locator("[data-home-feed-pager]");
   await expect(
-    pager.locator(
-      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
-    ),
+    pager.locator('[data-home-feed-panel="calligraphy"] [data-catalog-card]'),
   ).toHaveCount(1);
   await page.waitForTimeout(250);
 
@@ -500,12 +476,9 @@ test("MIG-C1 accepts a trusted horizontal drag from blank space below a short Ca
   const surface = page.locator("[data-clean-product-preview]");
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
   await activateCalligraphy(surface);
-  const calligraphy = calligraphySurface(surface);
-  const pager = calligraphy.locator("[data-calligraphy-category-pager]");
+  const pager = homeSurface(surface).locator("[data-home-feed-pager]");
   await expect(
-    pager.locator(
-      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
-    ),
+    pager.locator('[data-home-feed-panel="calligraphy"] [data-catalog-card]'),
   ).toHaveCount(1);
   await page.waitForTimeout(250);
 
@@ -513,10 +486,10 @@ test("MIG-C1 accepts a trusted horizontal drag from blank space below a short Ca
   expect(blank.belowCard).toBe(true);
   expect(blank.inPager).toBe(true);
 
-  await trustedHorizontalPointDrag(page, session, pager, blank.point);
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
+  await trustedHorizontalPointDrag(page, session, pager, blank.point, -1);
+  await expect(homeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    "inscriptions",
   );
   const evidence = await trustedDragEvidence(pager);
   expect(evidence.trustedTouchEvents).toBeGreaterThan(0);
@@ -528,18 +501,18 @@ test("MIG-C1 accepts a trusted horizontal drag from blank space below a short Ca
 test("MIG-C1 pager follows progress and commits only on release", async ({
   page,
 }, testInfo) => {
-  const { calligraphy } = await openSurface(page);
-  const pager = calligraphy.locator("[data-calligraphy-category-pager]");
-  const indicator = calligraphy.locator(
-    "[data-calligraphy-category-indicator]",
-  );
-  await expect(calligraphy.getByRole("tab")).toHaveText([
-    "全部",
-    "墨迹",
-    "拓本",
+  const { surface } = await openSurface(page);
+  const home = homeSurface(surface);
+  await settleFeed(home, "discover");
+  const pager = home.locator("[data-home-feed-pager]");
+  const indicator = home.locator("[data-top-tab-indicator]");
+  await expect(home.getByRole("tab")).toHaveText([
+    "发现",
+    "附近",
+    "碑刻",
+    "书帖",
   ]);
-  const pc =
-    (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc";
+  const pc = (await pager.getAttribute("data-home-pager-platform")) === "pc";
   await expect(pager).toHaveCSS(
     "scroll-snap-type",
     pc ? "x mandatory" : "none",
@@ -557,20 +530,14 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
       deltaY: 70,
     });
     await page.waitForTimeout(180);
-    await expect(calligraphy).toHaveAttribute(
-      "data-active-calligraphy-category",
-      "all",
-    );
+    await expect(home).toHaveAttribute("data-active-home-feed", "discover");
     await pager.dispatchEvent("wheel", {
       bubbles: true,
       cancelable: true,
       deltaX: 70,
       deltaY: 3,
     });
-    await expect(calligraphy).toHaveAttribute(
-      "data-active-calligraphy-category",
-      "ink",
-    );
+    await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
     return;
   }
 
@@ -599,15 +566,25 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
       frame.dispatchEvent(event);
     }
   });
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "all",
-  );
+  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
+  await expect(
+    home.getByRole("tablist", { name: "首页内容范围" }),
+  ).toHaveAttribute("data-progressing", "true");
   await expect
-    .poll(async () =>
-      Number(
-        await indicator.getAttribute("data-calligraphy-category-progress"),
-      ),
+    .poll(() =>
+      indicator.evaluate((node) => {
+        const track = node.parentElement!;
+        const first = track
+          .querySelector<HTMLElement>('[data-tab-key="discover"]')!
+          .getBoundingClientRect();
+        const second = track
+          .querySelector<HTMLElement>('[data-tab-key="nearby"]')!
+          .getBoundingClientRect();
+        return (
+          (node.getBoundingClientRect().left - first.left) /
+          (second.left - first.left)
+        );
+      }),
     )
     .toBeCloseTo(0.5, 1);
 
@@ -626,10 +603,7 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
     });
     frame.dispatchEvent(event);
   });
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "all",
-  );
+  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
   const release = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
     const point = {
@@ -644,37 +618,34 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
       changedTouches: { value: [point] },
     });
     frame.dispatchEvent(event);
-    const all = frame.querySelector<HTMLElement>(
-      '[data-calligraphy-category-panel="all"]',
+    const discover = frame.querySelector<HTMLElement>(
+      '[data-home-feed-panel="discover"]',
     )!;
-    const ink = frame.querySelector<HTMLElement>(
-      '[data-calligraphy-category-panel="ink"]',
+    const nearby = frame.querySelector<HTMLElement>(
+      '[data-home-feed-panel="nearby"]',
     )!;
     return {
-      active: frame.closest<HTMLElement>("[data-calligraphy-category-surface]")!
-        .dataset.activeCalligraphyCategory,
-      allInert: all.inert,
-      allHidden: all.getAttribute("aria-hidden"),
-      inkInert: ink.inert,
-      inkHidden: ink.getAttribute("aria-hidden"),
+      active: frame.closest<HTMLElement>("[data-home-surface]")!.dataset
+        .activeHomeFeed,
+      discoverInert: discover.inert,
+      discoverHidden: discover.getAttribute("aria-hidden"),
+      nearbyInert: nearby.inert,
+      nearbyHidden: nearby.getAttribute("aria-hidden"),
     };
   });
   expect(release).toEqual({
-    active: "ink",
-    allInert: true,
-    allHidden: "true",
-    inkInert: false,
-    inkHidden: "false",
+    active: "nearby",
+    discoverInert: true,
+    discoverHidden: "true",
+    nearbyInert: false,
+    nearbyHidden: "false",
   });
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
-  );
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
 
   const beforeCancelledDrag = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
     const panel = frame.querySelector<HTMLElement>(
-      '[data-calligraphy-category-panel="ink"]',
+      '[data-home-feed-panel="nearby"]',
     )!;
     const before =
       panel.getBoundingClientRect().left - frame.getBoundingClientRect().left;
@@ -703,7 +674,7 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
     .poll(() =>
       pager.evaluate((node) => {
         const panel = node.querySelector<HTMLElement>(
-          '[data-calligraphy-category-panel="ink"]',
+          '[data-home-feed-panel="nearby"]',
         )!;
         return (
           panel.getBoundingClientRect().left - node.getBoundingClientRect().left
@@ -711,10 +682,7 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
       }),
     )
     .toBeLessThan(beforeCancelledDrag - 40);
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
-  );
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
   await pager.evaluate((node) => {
     const point = {
       identifier: 1,
@@ -729,14 +697,11 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
     });
     node.dispatchEvent(event);
   });
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
-  );
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
   expect(
     await pager.evaluate((node) => {
       const panel = node.querySelector<HTMLElement>(
-        '[data-calligraphy-category-panel="ink"]',
+        '[data-home-feed-panel="nearby"]',
       )!;
       return Math.abs(
         panel.getBoundingClientRect().left - node.getBoundingClientRect().left,
@@ -745,19 +710,18 @@ test("MIG-C1 pager follows progress and commits only on release", async ({
   ).toBeLessThanOrEqual(2);
 });
 
-test("MIG-C1 restores category scroll and exact opener focus after Detail Back", async ({
+test("MIG-C1 restores all-Calligraphy scroll and exact opener focus after Detail Back", async ({
   page,
 }) => {
   const { calligraphy, surface } = await openSurface(page);
-  await settleCategory(calligraphy, "ink");
-  await waitForInitialCategoryScroll(calligraphy);
+  await waitForInitialFeedScroll(homeSurface(surface));
   await expect
     .poll(async () => (await primaryScrollEvidence(surface)).maximum)
     .toBeGreaterThan(0);
   const recordedScroll = await writePrimaryScroll(surface, 180);
   expect(recordedScroll).toBeGreaterThan(0);
   const opener = calligraphy.locator(
-    '[data-calligraphy-category-panel="ink"] [data-catalog-id="qa-visual-calligraphy-01"] [data-open-catalog]',
+    '[data-catalog-id="qa-visual-calligraphy-01"] [data-open-catalog]',
   );
   await opener.evaluate((button) => (button as HTMLButtonElement).click());
   const detail = productShell(surface).getByRole("dialog", {
@@ -770,14 +734,21 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
   );
   await detail.getByRole("button", { name: "返回" }).click();
   await expect(detail).toHaveCount(0);
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
+  await expect(homeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    "calligraphy",
   );
   await expect
     .poll(async () => (await primaryScrollEvidence(surface)).top)
     .toBe(recordedScroll);
   await expect(opener).toBeFocused();
+
+  await settleFeed(homeSurface(surface), "discover");
+  await settleFeed(homeSurface(surface), "calligraphy");
+  await expect
+    .poll(async () => (await primaryScrollEvidence(surface)).top)
+    .toBe(recordedScroll);
+  await expect(calligraphy.locator("[data-catalog-card]")).toHaveCount(12);
 
   const shell = productShell(surface);
   if ((await shell.getAttribute("data-platform")) === "pc") return;
@@ -787,28 +758,22 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
   await userPage.getByRole("button", { name: "打开设置" }).click();
   const settings = shell.getByRole("dialog", { name: "设置" });
   await expect(settings).toBeVisible();
-  await settings
-    .locator("[data-feed-layout-toggle]")
-    .evaluate((button) => (button as HTMLButtonElement).click());
+  await settings.locator("[data-feed-layout-toggle]").click();
   await expect(shell).toHaveAttribute("data-feed-layout", "single");
-  await settings
-    .getByRole("button", { name: "返回" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
+  await settings.getByRole("button", { name: "返回" }).click();
   await userPage.getByRole("button", { name: "关闭用户页" }).click();
   await expect(userPage).toHaveCount(0);
-  await expect(
-    calligraphy.locator(
-      '[data-calligraphy-category-panel="ink"] [data-home-masonry]',
-    ),
-  ).toHaveAttribute("data-masonry-columns", "1");
+  await expect(calligraphy.locator("[data-home-masonry]")).toHaveAttribute(
+    "data-masonry-columns",
+    "1",
+  );
 });
 
-test("MIG-C1 preserves active category and bounded scroll across resize and rotation", async ({
+test("MIG-C1 preserves active Home feed and bounded scroll across resize and rotation", async ({
   page,
 }) => {
-  const { calligraphy, surface } = await openSurface(page);
-  await settleCategory(calligraphy, "rubbing");
-  await waitForInitialCategoryScroll(calligraphy, "rubbing");
+  const { surface } = await openSurface(page);
+  await waitForInitialFeedScroll(homeSurface(surface));
   await expect
     .poll(async () => (await primaryScrollEvidence(surface)).maximum)
     .toBeGreaterThan(0);
@@ -827,15 +792,15 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
 
   expect((await primaryScrollEvidence(surface)).top).toBe(recordedScroll);
   await page.setViewportSize(resizedViewport);
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "rubbing",
+  await expect(homeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    "calligraphy",
   );
 
   await page.setViewportSize(viewport);
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "rubbing",
+  await expect(homeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    "calligraphy",
   );
   await expect
     .poll(async () => {
@@ -846,7 +811,7 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
 });
 
 for (const chrome of ["default", "hidden"] as const) {
-  test(`Controlled category touch preserves vertical intent, interruption and native pinch (${chrome})`, async ({
+  test(`Controlled Home and user touch preserves vertical intent, interruption and native pinch (${chrome})`, async ({
     browser,
   }, testInfo) => {
     test.skip(
@@ -877,47 +842,38 @@ for (const chrome of ["default", "hidden"] as const) {
       }
     };
     try {
-      for (const surface of ["home", "calligraphy", "user"] as const) {
+      for (const surface of [
+        "discover",
+        "inscriptions",
+        "calligraphy",
+        "user",
+      ] as const) {
         await page.goto(
           chrome === "hidden" ? "/dev/t02p/qa?qaChrome=hidden" : "/dev/t02p/qa",
         );
         await expect(page.locator("[data-product-boot]")).toHaveCount(0);
-        if (surface === "calligraphy")
-          await page
-            .getByRole("navigation", { name: "主要内容" })
-            .getByRole("button", { name: "书帖", exact: true })
-            .click();
+        const home = page.locator("[data-home-surface]");
         if (surface === "user")
           await page.locator("[data-user-trigger]").click();
+        else await settleFeed(home, surface);
         const frame = page.locator(
-          surface === "home"
-            ? "[data-home-feed-pager]"
-            : surface === "user"
-              ? "[data-user-pager]"
-              : "[data-calligraphy-category-pager]",
+          surface === "user" ? "[data-user-pager]" : "[data-home-feed-pager]",
         );
         const panelSelector =
-          surface === "home"
-            ? "[data-home-feed-panel]"
-            : surface === "user"
-              ? "[data-user-panel]"
-              : "[data-calligraphy-category-panel]";
+          surface === "user" ? "[data-user-panel]" : "[data-home-feed-panel]";
         const panels = frame.locator(panelSelector);
-        const scroller =
-          surface === "calligraphy"
-            ? page.locator('[data-primary-destination="calligraphy"]')
-            : panels.first();
+        const startIndex =
+          surface === "inscriptions" ? 2 : surface === "calligraphy" ? 3 : 0;
+        const direction = surface === "calligraphy" ? -1 : 1;
+        const targetIndex = startIndex + direction;
+        const scroller = panels.nth(startIndex);
         await expect(frame).toHaveCSS("touch-action", "pan-y pinch-zoom");
-        if (surface === "calligraphy")
-          await waitForInitialCategoryScroll(
-            page.locator("[data-calligraphy-category-surface]"),
-            "all",
-          );
+        if (surface !== "user") await waitForInitialFeedScroll(home, surface);
         const box = await frame.boundingBox();
         if (!box) throw new Error("Missing pager");
-        const point = await frame.evaluate((node) => {
+        const point = await frame.evaluate((node, dragDirection) => {
           const box = node.getBoundingClientRect();
-          const x = box.x + box.width * 0.8;
+          const x = box.x + box.width * (dragDirection === 1 ? 0.8 : 0.2);
           for (
             let y = Math.min(innerHeight - 120, box.bottom - 24);
             y > Math.max(box.top + 60, 240);
@@ -928,7 +884,7 @@ for (const chrome of ["default", "hidden"] as const) {
           throw new Error(
             "No exposed pager point beneath the existing QA controls",
           );
-        });
+        }, direction);
         await expect(frame).toHaveAttribute(
           "data-category-pager-engine",
           "embla",
@@ -940,78 +896,100 @@ for (const chrome of ["default", "hidden"] as const) {
               n.firstElementChild!.firstElementChild!.getBoundingClientRect()
                 .left,
           );
+        const initialOffset = await horizontalOffset();
         const beforeY = await scroller.evaluate((n) => n.scrollTop);
         await touch("touchStart", [{ id: 1, ...point }]);
         // A few initial diagonal pixels must not turn the following vertical
-        // input into category paging. Keep the original move cadence below.
+        // input into Home feed paging. Keep the original move cadence below.
         await touch("touchMove", [{ id: 1, x: point.x + 3, y: point.y + 2 }]);
         await move(point, -60, -180);
         await touch("touchEnd", []);
         await expect
           .poll(() => scroller.evaluate((n) => n.scrollTop))
           .toBeGreaterThan(beforeY + 20);
-        expect(await horizontalOffset()).toBeLessThanOrEqual(2);
-        await expect(panels.first()).toHaveAttribute("aria-hidden", "false");
+        expect(
+          Math.abs((await horizontalOffset()) - initialOffset),
+        ).toBeLessThanOrEqual(2);
+        await expect(panels.nth(startIndex)).toHaveAttribute(
+          "aria-hidden",
+          "false",
+        );
         // Observe actual release -> committed, interactive target. No scrollend synthesis.
-        await frame.evaluate((node, selector) => {
-          const f = node as HTMLElement;
-          const data = {
-            released: 0,
-            committed: 0,
-            trusted: 0,
-            maximum: 0,
-            commitCount: 0,
-            remainingAtCommit: 0,
-          };
-          Object.assign(f, { controlledEvidence: data });
-          f.addEventListener(
-            "pointermove",
-            (e) => {
-              if (e.isTrusted) data.trusted++;
-              data.maximum = Math.max(
-                data.maximum,
-                f.getBoundingClientRect().left -
-                  f.firstElementChild!.firstElementChild!.getBoundingClientRect()
-                    .left,
-              );
-            },
-            true,
-          );
-          f.addEventListener(
-            "pointerup",
-            () => {
-              data.released = performance.now();
-            },
-            true,
-          );
-          const observer = new MutationObserver(() => {
-            const target = f.querySelectorAll<HTMLElement>(selector)[1];
-            if (
-              target &&
-              !target.inert &&
-              target.getAttribute("aria-hidden") === "false"
-            ) {
-              data.committed = performance.now();
-              data.remainingAtCommit = Math.abs(
-                target.getBoundingClientRect().left -
-                  f.getBoundingClientRect().left,
-              );
-              data.commitCount++;
-              observer.disconnect();
-            }
-          });
-          observer.observe(f, {
-            subtree: true,
-            attributes: true,
-            attributeFilter: ["inert", "aria-hidden"],
-          });
-        }, panelSelector);
+        await frame.evaluate(
+          (node, input) => {
+            const f = node as HTMLElement;
+            const data = {
+              released: 0,
+              committed: 0,
+              trusted: 0,
+              maximum: 0,
+              commitCount: 0,
+              remainingAtCommit: 0,
+            };
+            Object.assign(f, { controlledEvidence: data });
+            f.addEventListener(
+              "pointermove",
+              (e) => {
+                if (e.isTrusted) data.trusted++;
+                data.maximum = Math.max(
+                  data.maximum,
+                  Math.abs(
+                    f.getBoundingClientRect().left -
+                      f.firstElementChild!.firstElementChild!.getBoundingClientRect()
+                        .left -
+                      input.initialOffset,
+                  ),
+                );
+              },
+              true,
+            );
+            f.addEventListener(
+              "pointerup",
+              () => {
+                data.released = performance.now();
+              },
+              true,
+            );
+            const observer = new MutationObserver(() => {
+              const target = f.querySelectorAll<HTMLElement>(input.selector)[
+                input.targetIndex
+              ];
+              if (
+                target &&
+                !target.inert &&
+                target.getAttribute("aria-hidden") === "false"
+              ) {
+                data.committed = performance.now();
+                data.remainingAtCommit = Math.abs(
+                  target.getBoundingClientRect().left -
+                    f.getBoundingClientRect().left,
+                );
+                data.commitCount++;
+                observer.disconnect();
+              }
+            });
+            observer.observe(f, {
+              subtree: true,
+              attributes: true,
+              attributeFilter: ["inert", "aria-hidden"],
+            });
+          },
+          { selector: panelSelector, targetIndex, initialOffset },
+        );
         await touch("touchStart", [{ id: 1, ...point }]);
-        await move(point, -240, 4);
-        expect(await horizontalOffset()).toBeGreaterThan(100);
-        await expect(panels.first()).toHaveAttribute("aria-hidden", "false");
+        await move(point, -direction * 240, 4);
+        expect(
+          Math.abs((await horizontalOffset()) - initialOffset),
+        ).toBeGreaterThan(100);
+        await expect(panels.nth(startIndex)).toHaveAttribute(
+          "aria-hidden",
+          "false",
+        );
         await touch("touchEnd", []);
-        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        await expect(panels.nth(targetIndex)).toHaveAttribute(
+          "aria-hidden",
+          "false",
+        );
         const timing = await frame.evaluate(
           (n) =>
             (
@@ -1031,19 +1009,25 @@ for (const chrome of ["default", "hidden"] as const) {
         expect(timing.maximum).toBeGreaterThan(100);
         expect(timing.commitCount).toBe(1);
         expect(timing.committed - timing.released).toBeGreaterThanOrEqual(0);
-        // Every category pager hands interaction over before its visual tail ends.
+        // The Home pager hands interaction over before its visual tail ends.
         expect(timing.remainingAtCommit).toBeGreaterThan(2);
         // A new opposite input during the next settle supersedes that animation.
-        const reverse = { x: box.x + box.width * 0.25, y: point.y };
+        const reverse = {
+          x: box.x + box.width * (direction === 1 ? 0.25 : 0.75),
+          y: point.y,
+        };
         await touch("touchStart", [{ id: 1, ...reverse }]);
-        await move(reverse, 220, 0);
+        await move(reverse, direction * 220, 0);
         await touch("touchEnd", []);
         await touch("touchStart", [{ id: 1, ...point }]);
-        await move(point, -240, 0);
+        await move(point, -direction * 240, 0);
         await touch("touchEnd", []);
-        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        await expect(panels.nth(targetIndex)).toHaveAttribute(
+          "aria-hidden",
+          "false",
+        );
         const committedLeft = await panels
-          .nth(1)
+          .nth(targetIndex)
           .evaluate((n) => (n as HTMLElement).offsetLeft);
         // Second finger joins an already controlled horizontal drag. Neither finger lifts before scale proof.
         await touch("touchStart", [{ id: 1, x: 150, y: point.y }]);
@@ -1054,9 +1038,7 @@ for (const chrome of ["default", "hidden"] as const) {
           { id: 2, x: 210, y: point.y },
         ]);
         await expect(frame).toHaveAttribute(
-          surface === "calligraphy"
-            ? "data-calligraphy-pager-scrolling"
-            : "data-horizontal-pager-scrolling",
+          "data-horizontal-pager-scrolling",
           "false",
         );
         for (let step = 1; step <= 12; step++) {
@@ -1071,7 +1053,10 @@ for (const chrome of ["default", "hidden"] as const) {
           .toBeGreaterThan(initialScale + 0.2);
         const afterScale = await page.evaluate(() => visualViewport!.scale);
         await touch("touchEnd", []);
-        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        await expect(panels.nth(targetIndex)).toHaveAttribute(
+          "aria-hidden",
+          "false",
+        );
         expect(
           Math.abs((await horizontalOffset()) - committedLeft),
         ).toBeLessThanOrEqual(2);

@@ -641,8 +641,8 @@ export class PostgresDiscussionStore implements DiscussionPort {
         const s = await this.subject(db, id);
         if (s.author_id !== actor) throw new CommunityNotFoundError();
         await db.query(
-          `UPDATE community.${s.id === s.root_id ? "catalog_comments" : "catalog_comment_replies"} SET body_deleted_at=COALESCE(body_deleted_at,CURRENT_TIMESTAMP) WHERE id=$1`,
-          [id],
+          `UPDATE community.${s.id === s.root_id ? "catalog_comments" : "catalog_comment_replies"} SET text=$2,body_deleted_at=COALESCE(body_deleted_at,CURRENT_TIMESTAMP) WHERE id=$1`,
+          [id, deletedText],
         );
         await this.authorAudit(db, actor, "comment_body_deleted", id);
       });
@@ -671,8 +671,8 @@ export class PostgresDiscussionStore implements DiscussionPort {
         async () => {
           const s = await this.subject(db, id);
           await db.query(
-            `UPDATE community.${s.id === s.root_id ? "catalog_comments" : "catalog_comment_replies"} SET body_deleted_at=COALESCE(body_deleted_at,CURRENT_TIMESTAMP) WHERE id=$1`,
-            [id],
+            `UPDATE community.${s.id === s.root_id ? "catalog_comments" : "catalog_comment_replies"} SET text=$2,body_deleted_at=COALESCE(body_deleted_at,CURRENT_TIMESTAMP) WHERE id=$1`,
+            [id, deletedText],
           );
           await this.operatorAudit(
             db,

@@ -2,22 +2,22 @@ import type { ReactNode } from "react";
 
 import type { PresentationPlatform } from "./device-platform";
 
-export type PrimaryDestination = "home" | "inscriptions" | "calligraphy";
+export type PrimaryDestination = "home" | "discussion" | "user";
 
 export interface PrimaryShellProps {
   readonly activeDestination: PrimaryDestination;
   readonly platform: PresentationPlatform;
   readonly home: ReactNode;
-  readonly inscriptions: ReactNode;
-  readonly calligraphy: ReactNode;
+  readonly discussion: ReactNode;
+  readonly user: ReactNode;
 }
 
 export const PrimaryShell = ({
   activeDestination,
   platform,
   home,
-  inscriptions,
-  calligraphy,
+  discussion,
+  user,
 }: PrimaryShellProps) => (
   <div
     data-primary-shell=""
@@ -32,18 +32,18 @@ export const PrimaryShell = ({
       {home}
     </section>
     <section
-      data-primary-destination="inscriptions"
-      data-active={activeDestination === "inscriptions" ? "true" : "false"}
-      hidden={activeDestination !== "inscriptions"}
+      data-primary-destination="discussion"
+      data-active={activeDestination === "discussion" ? "true" : "false"}
+      hidden={activeDestination !== "discussion"}
     >
-      {inscriptions}
+      {discussion}
     </section>
     <section
-      data-primary-destination="calligraphy"
-      data-active={activeDestination === "calligraphy" ? "true" : "false"}
-      hidden={activeDestination !== "calligraphy"}
+      data-primary-destination="user"
+      data-active={activeDestination === "user" ? "true" : "false"}
+      hidden={activeDestination !== "user"}
     >
-      {calligraphy}
+      {user}
     </section>
   </div>
 );

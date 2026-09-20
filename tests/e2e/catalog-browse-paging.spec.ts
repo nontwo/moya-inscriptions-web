@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
 import type { ChildProcess } from "node:child_process";
 import type { Locator, Page } from "@playwright/test";
 
-type Destination = "calligraphy" | "home" | "inscriptions";
+type HomeFeed = "calligraphy" | "discover" | "inscriptions";
 
 const e2eRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(e2eRoot, "../..");
@@ -191,14 +191,10 @@ const formalSurface = (page: Page) =>
 const productShell = (page: Page) =>
   formalSurface(page).locator("[data-product-shell]");
 
-const destinationSurface = (page: Page, destination: Destination) =>
-  productShell(page).locator(`[data-primary-destination="${destination}"]`);
+const feedSurface = (page: Page, feed: HomeFeed) =>
+  productShell(page).locator(`[data-home-feed-panel="${feed}"]`);
 
-const selectDestination = async (
-  page: Page,
-  name: "书帖" | "碑刻" | "首页",
-  destination: Destination,
-) => {
+const selectPrimary = async (page: Page, label: "首页" | "讨论") => {
   const navigation = formalSurface(page).getByRole("navigation", {
     name: "主要内容",
   });
@@ -209,15 +205,39 @@ const selectDestination = async (
     await expect(navigation).toHaveAttribute("data-minimized", "false");
   }
   await navigation
-    .getByRole("button", { exact: true, name })
+    .getByRole("button", { exact: true, name: label })
     .evaluate((button) => (button as HTMLButtonElement).click());
   await expect(productShell(page)).toHaveAttribute(
     "data-active-destination",
-    destination,
+    label === "首页" ? "home" : "discussion",
   );
 };
 
-const settleDestinationRestore = (page: Page) =>
+const selectHomeFeed = async (
+  page: Page,
+  name: "书帖" | "碑刻" | "发现",
+  feed: HomeFeed,
+) => {
+  if (
+    (await productShell(page).getAttribute("data-active-destination")) !==
+    "home"
+  ) {
+    await selectPrimary(page, "首页");
+  }
+  const home = productShell(page).locator("[data-home-surface]");
+  await home
+    .getByRole("tab", { exact: true, name })
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(productShell(page)).toHaveAttribute(
+    "data-active-destination",
+    "home",
+  );
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
+  await expect(feedSurface(page, feed)).toHaveAttribute("aria-hidden", "false");
+  await expect(feedSurface(page, feed)).not.toHaveAttribute("inert", "");
+};
+
+const settleFeedRestore = (page: Page) =>
   page.evaluate(
     () =>
       new Promise<void>((resolveFrames) => {
@@ -229,18 +249,18 @@ const settleDestinationRestore = (page: Page) =>
       }),
   );
 
-const writeDestinationScroll = async (
+const writeFeedScroll = async (
   page: Page,
-  destination: Destination,
+  feed: HomeFeed,
   requestedTop: number,
 ) =>
   productShell(page).evaluate(
     (node, input) => {
       const shell = node as HTMLElement;
       const section = shell.querySelector<HTMLElement>(
-        `[data-primary-destination="${input.destination}"]`,
+        `[data-home-feed-panel="${input.feed}"]`,
       );
-      if (section === null) throw new Error("Missing primary destination");
+      if (section === null) throw new Error("Missing Home feed");
       const target =
         shell.dataset.platform === "pc"
           ? (document.scrollingElement as HTMLElement)
@@ -255,20 +275,20 @@ const writeDestinationScroll = async (
       }
       return target.scrollTop;
     },
-    { destination, requestedTop },
+    { feed, requestedTop },
   );
 
-const readDestinationScroll = async (page: Page, destination: Destination) =>
-  productShell(page).evaluate((node, requestedDestination) => {
+const readFeedScroll = async (page: Page, feed: HomeFeed) =>
+  productShell(page).evaluate((node, requestedFeed) => {
     const shell = node as HTMLElement;
     const section = shell.querySelector<HTMLElement>(
-      `[data-primary-destination="${requestedDestination}"]`,
+      `[data-home-feed-panel="${requestedFeed}"]`,
     );
-    if (section === null) throw new Error("Missing primary destination");
+    if (section === null) throw new Error("Missing Home feed");
     return shell.dataset.platform === "pc"
       ? (document.scrollingElement?.scrollTop ?? 0)
       : section.scrollTop;
-  }, destination);
+  }, feed);
 
 const activateControlTwice = async (control: Locator) =>
   control.evaluate((button) => {
@@ -285,7 +305,7 @@ const openViewerAndReturn = async (
   // scrolling/layout may still move between separate Playwright round trips.
   const sourceTop = await opener.evaluate((button) => {
     const shell = button.closest<HTMLElement>("[data-product-shell]");
-    const section = button.closest<HTMLElement>("[data-primary-destination]");
+    const section = button.closest<HTMLElement>("[data-home-feed-panel]");
     if (shell === null || section === null) throw new Error("Missing source");
     const target =
       shell.dataset.platform === "pc"
@@ -321,7 +341,7 @@ test.afterAll(async () => {
   await stopPagingRuntime();
 });
 
-test("Formal Inscriptions and Calligraphy all progressively load and retain later pages", async ({
+test("Formal Home catalog feeds progressively load and retain later pages", async ({
   page,
 }) => {
   if (pagingRuntime === undefined) throw new Error("Missing paging runtime");
@@ -329,18 +349,18 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   expect(response?.status()).toBe(200);
   await expect(formalSurface(page)).toBeVisible();
   await expect(
-    destinationSurface(page, "home").locator("[data-catalog-paging-control]"),
+    feedSurface(page, "discover").locator("[data-catalog-paging-control]"),
   ).toHaveCount(0);
 
-  await selectDestination(page, "碑刻", "inscriptions");
-  const inscriptions = destinationSurface(page, "inscriptions");
+  await selectHomeFeed(page, "碑刻", "inscriptions");
+  const inscriptions = feedSurface(page, "inscriptions");
   const inscriptionCards = inscriptions.locator("[data-catalog-card]");
   const inscriptionControl = inscriptions.locator(
     "[data-catalog-paging-control]",
   );
   await expect(inscriptionCards).toHaveCount(24);
   await expect(inscriptionControl).toHaveText("继续加载");
-  await settleDestinationRestore(page);
+  await settleFeedRestore(page);
 
   let inscriptionPageTwoRequests = 0;
   await page.route("**/api/catalog?*", async (route) => {
@@ -354,7 +374,7 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   let inscriptionTop = 0;
   await expect
     .poll(async () => {
-      inscriptionTop = await writeDestinationScroll(page, "inscriptions", 220);
+      inscriptionTop = await writeFeedScroll(page, "inscriptions", 220);
       return inscriptionTop;
     })
     .toBeGreaterThan(0);
@@ -362,9 +382,7 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   await expect(inscriptionControl).toHaveText("正在加载…");
   await expect(inscriptionCards).toHaveCount(48);
   expect(inscriptionPageTwoRequests).toBe(1);
-  expect(await readDestinationScroll(page, "inscriptions")).toBe(
-    inscriptionTop,
-  );
+  expect(await readFeedScroll(page, "inscriptions")).toBe(inscriptionTop);
   await page.unroute("**/api/catalog?*");
 
   const inscriptionOpener = inscriptions.locator(
@@ -376,11 +394,9 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
     inscriptionOpener,
     "分页碑刻 22",
   );
-  expect(await readDestinationScroll(page, "inscriptions")).toBe(
-    inscriptionReturnTop,
-  );
-  await selectDestination(page, "首页", "home");
-  await selectDestination(page, "碑刻", "inscriptions");
+  expect(await readFeedScroll(page, "inscriptions")).toBe(inscriptionReturnTop);
+  await selectHomeFeed(page, "发现", "discover");
+  await selectHomeFeed(page, "碑刻", "inscriptions");
   await expect(inscriptionCards).toHaveCount(48);
 
   const inscriptionRequestedPages: string[] = [];
@@ -410,22 +426,15 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   expect(inscriptionRequestedPages).toEqual(["3", "3"]);
   await page.unroute("**/api/catalog?*");
 
-  await selectDestination(page, "书帖", "calligraphy");
-  const calligraphy = destinationSurface(page, "calligraphy").locator(
-    "[data-calligraphy-category-surface]",
-  );
-  const allPanel = calligraphy.locator(
-    '[data-calligraphy-category-panel="all"]',
-  );
+  await selectHomeFeed(page, "书帖", "calligraphy");
+  const calligraphy = feedSurface(page, "calligraphy");
+  const allPanel = calligraphy.locator("[data-calligraphy-all]");
   const allCards = allPanel.locator("[data-catalog-card]");
   const calligraphyControl = allPanel.locator("[data-catalog-paging-control]");
   await expect(allCards).toHaveCount(24);
-  await expect(
-    calligraphy.locator(
-      '[data-calligraphy-category-panel="ink"] [data-catalog-paging-control], [data-calligraphy-category-panel="rubbing"] [data-catalog-paging-control]',
-    ),
-  ).toHaveCount(0);
-  await settleDestinationRestore(page);
+  await expect(calligraphyControl).toHaveCount(1);
+  await expect(calligraphy.locator('[role="tablist"]')).toHaveCount(0);
+  await settleFeedRestore(page);
 
   let calligraphyPageTwoRequests = 0;
   await page.route("**/api/catalog?*", async (route) => {
@@ -439,7 +448,7 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   let calligraphyTop = 0;
   await expect
     .poll(async () => {
-      calligraphyTop = await writeDestinationScroll(page, "calligraphy", 220);
+      calligraphyTop = await writeFeedScroll(page, "calligraphy", 220);
       return calligraphyTop;
     })
     .toBeGreaterThan(0);
@@ -447,34 +456,18 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   await expect(calligraphyControl).toHaveText("正在加载…");
   await expect(allCards).toHaveCount(48);
   expect(calligraphyPageTwoRequests).toBe(1);
-  expect(await readDestinationScroll(page, "calligraphy")).toBe(calligraphyTop);
+  expect(await readFeedScroll(page, "calligraphy")).toBe(calligraphyTop);
   await page.unroute("**/api/catalog?*");
 
-  await calligraphy
-    .getByRole("tab", { exact: true, name: "墨迹" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "ink",
-  );
-  await expect(calligraphy).toContainText("墨迹分类数据尚未接入");
-  await calligraphy
-    .getByRole("tab", { exact: true, name: "拓本" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "rubbing",
-  );
-  await calligraphy
-    .getByRole("tab", { exact: true, name: "全部" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(calligraphy).toHaveAttribute(
-    "data-active-calligraphy-category",
-    "all",
-  );
+  // Catalogs now share Home's feed pager. Moving through another feed and
+  // primary destination must preserve fetched records and their reading offset.
+  await selectHomeFeed(page, "碑刻", "inscriptions");
+  await expect(inscriptionCards).toHaveCount(55);
+  await selectPrimary(page, "讨论");
+  await selectHomeFeed(page, "书帖", "calligraphy");
   await expect(allCards).toHaveCount(48);
   await expect
-    .poll(() => readDestinationScroll(page, "calligraphy"))
+    .poll(() => readFeedScroll(page, "calligraphy"))
     .toBe(calligraphyTop);
 
   const calligraphyOpener = allPanel.locator(
@@ -487,9 +480,9 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
     "分页书帖 24",
   );
   await expect
-    .poll(() => readDestinationScroll(page, "calligraphy"))
+    .poll(() => readFeedScroll(page, "calligraphy"))
     .toBe(calligraphyReturnTop);
-  await selectDestination(page, "碑刻", "inscriptions");
-  await selectDestination(page, "书帖", "calligraphy");
+  await selectHomeFeed(page, "碑刻", "inscriptions");
+  await selectHomeFeed(page, "书帖", "calligraphy");
   await expect(allCards).toHaveCount(48);
 });

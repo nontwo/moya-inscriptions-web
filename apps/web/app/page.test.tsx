@@ -90,8 +90,8 @@ describe("FormalPage", () => {
     });
   });
 
-  it.each(["discover", "nearby", "topics"] as const)(
-    "accepts the existing %s feed query",
+  it.each(["discover", "nearby", "inscriptions", "calligraphy"] as const)(
+    "accepts the Home %s feed query",
     async (feed) => {
       renderToStaticMarkup(
         await FormalPage({ searchParams: Promise.resolve({ feed }) }),
@@ -104,20 +104,23 @@ describe("FormalPage", () => {
     },
   );
 
-  it("falls back invalid feed input to Discover", async () => {
-    renderToStaticMarkup(
-      await FormalPage({
-        searchParams: Promise.resolve({ feed: ["topics"] }),
-      }),
-    );
+  it.each(["topics", ["topics"]])(
+    "falls back retired or invalid feed input %j to Discover",
+    async (feed) => {
+      renderToStaticMarkup(
+        await FormalPage({
+          searchParams: Promise.resolve({ feed }),
+        }),
+      );
 
-    expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
-      initialHomeFeed: "discover",
-      initialTopicId: null,
-    });
-  });
+      expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
+        initialHomeFeed: "discover",
+        initialTopicId: null,
+      });
+    },
+  );
 
-  it("accepts a bounded topic and forces the Topics feed", async () => {
+  it("hands a bounded topic to Discussion without changing the remembered Home feed", async () => {
     renderToStaticMarkup(
       await FormalPage({
         searchParams: Promise.resolve({ feed: "nearby", topic: "topic-one" }),
@@ -125,7 +128,7 @@ describe("FormalPage", () => {
     );
 
     expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
-      initialHomeFeed: "topics",
+      initialHomeFeed: "nearby",
       initialTopicId: "topic-one",
     });
   });

@@ -1,5 +1,6 @@
 import { registerPhase4DiscoveryTests } from "./phase4-discovery-cases.js";
 import { registerPhase4AuthorTests } from "./phase4-author-cases.js";
+import { registerProfileBackgroundTests } from "./profile-background-cases.js";
 import { registerWorkPublishingContentTests } from "./work-publishing-content-cases.js";
 import { registerWorkPublishingMediaTests } from "./work-publishing-media-cases.js";
 import { registerAgentAdministrationTests } from "./agent-administration-cases.js";
@@ -115,6 +116,24 @@ beforeAll(async () => {
     "DELETE FROM community.catalog_comment_replies; DELETE FROM community.catalog_comments; DELETE FROM community.sessions; DELETE FROM community.development_accounts; DELETE FROM community.public_users",
   );
   await pool.query(await readFile(seedFile, "utf8"));
+  // The Catalog discovery projection, created once for the whole file.
+  //
+  // It used to be incidental: `phase4-author-cases.ts` creates it in its own
+  // `beforeAll` and DROPS it again in `afterAll`, so every later suite in this
+  // file saw it only by accident of ordering. That was harmless while nothing
+  // else read it — main's `author-adapter.ts` does not.
+  //
+  // This branch's `relationCount` does (c56d7f4, "bound discovery"), and main
+  // then added `profile-background-cases.ts`, which calls `readProfile` after
+  // phase4-author has already dropped the table. Neither side is wrong on its
+  // own; the dependency is this branch's, so this branch declares it here
+  // instead of relying on which suite happens to run first. phase4-author's
+  // own probe finds the existing table, records `projectionKind=table` and
+  // leaves `createdProjection` false, so it no longer drops what it did not
+  // make.
+  await pool.query(
+    "CREATE TABLE IF NOT EXISTS public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb)",
+  );
 });
 
 afterEach(async () => {
@@ -1098,6 +1117,7 @@ describe("community PostgreSQL comments and moderation", () => {
 });
 
 registerPhase4AuthorTests(pool);
+registerProfileBackgroundTests(pool);
 
 registerPhase4DiscoveryTests(pool);
 

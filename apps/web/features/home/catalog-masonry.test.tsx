@@ -33,7 +33,10 @@ class TestResizeObserver implements ResizeObserver {
   }
 }
 
-const renderMasonry = (initialItems = ["a", "b", "c", "d"]) => {
+const renderMasonry = (
+  initialItems = ["a", "b", "c", "d"],
+  spanAtAlignedRows = false,
+) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -48,6 +51,7 @@ const renderMasonry = (initialItems = ["a", "b", "c", "d"]) => {
       root.render(
         <CatalogMasonry
           feedLayout="double"
+          spanAtAlignedRows={spanAtAlignedRows}
           getKey={(item) => item}
           items={items}
           platform="phone"
@@ -114,6 +118,31 @@ describe("CatalogMasonry measurement lifecycle", () => {
     vi.unstubAllGlobals();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+  });
+
+  it("preserves Home item order and existing feature positions when another page appends", () => {
+    heights = { a: 100, b: 80, c: 80, d: 90, e: 50 };
+    const { masonry, render } = renderMasonry(["a", "b", "c", "d"], true);
+    expect(
+      Array.from(masonry.children, (item) =>
+        item.getAttribute("data-home-masonry-span"),
+      ),
+    ).toEqual(["full", null, null, "full"]);
+    const existingPositions = Array.from(masonry.children, (item) =>
+      item.getAttribute("style"),
+    );
+    render(["a", "b", "c", "d", "e"]);
+    expect(
+      Array.from(
+        masonry.querySelectorAll("[data-test-card]"),
+        (item) => item.textContent,
+      ),
+    ).toEqual(["a", "b", "c", "d", "e"]);
+    expect(
+      Array.from(masonry.children)
+        .slice(0, 4)
+        .map((item) => item.getAttribute("style")),
+    ).toEqual(existingPositions);
   });
 
   it("does not replace a measured layout with zero-height items during a hidden rerender", () => {

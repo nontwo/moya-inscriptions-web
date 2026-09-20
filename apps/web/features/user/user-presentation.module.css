@@ -1,4 +1,7 @@
-.root {
+.root,
+.page,
+.overlay {
+  --profile-header-height: calc(52px + env(safe-area-inset-top));
   font-family: var(--yoyi-font-interface);
 }
 
@@ -38,28 +41,39 @@
   position: fixed;
   z-index: var(--yoyi-z-index-overlay);
   inset: 0;
-  display: grid;
   min-width: 0;
   min-height: 0;
   max-width: 100%;
-  overflow: hidden;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+}
+
+.page {
+  position: relative;
+  min-width: 0;
+  width: 100%;
   color: var(--yoyi-color-text-primary);
   background: var(--yoyi-color-background-page);
 }
 
 .header {
+  position: sticky;
+  z-index: 3;
+  top: 0;
   display: grid;
-  min-height: 68px;
+  box-sizing: border-box;
+  height: var(--profile-header-height);
+  min-height: var(--profile-header-height);
   grid-template-columns: 44px minmax(48px, 1fr) auto;
   align-items: center;
   min-width: 0;
-  padding: max(var(--yoyi-space-3), env(safe-area-inset-top))
-    max(var(--yoyi-space-4), env(safe-area-inset-right)) var(--yoyi-space-3)
+  padding: env(safe-area-inset-top)
+    max(var(--yoyi-space-4), env(safe-area-inset-right)) 0
     max(var(--yoyi-space-4), env(safe-area-inset-left));
   gap: var(--yoyi-space-3);
-  background: var(--yoyi-color-background-surface);
-  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  background: var(--yoyi-color-background-page);
 }
 
 .header > strong {
@@ -92,18 +106,96 @@
   height: 17px;
 }
 
+.profileActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--yoyi-space-2);
+}
+.profileActions > button:focus-visible,
+.backgroundEdit:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
 .profile {
-  display: grid;
+  position: relative;
   width: min(100%, 960px);
   box-sizing: border-box;
-  grid-template-columns: 80px minmax(0, 1fr);
-  align-items: center;
+  min-height: 55svh;
   margin: 0 auto;
-  padding: var(--yoyi-space-5)
-    max(var(--yoyi-space-4), env(safe-area-inset-right)) var(--yoyi-space-4)
-    max(var(--yoyi-space-4), env(safe-area-inset-left));
-  gap: var(--yoyi-space-4);
+  text-align: center;
 }
+.profileCover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--yoyi-color-background-page);
+}
+.profileCover:has(img)::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(
+    to bottom,
+    transparent 35%,
+    color-mix(in srgb, var(--yoyi-color-background-page) 78%, transparent) 52%,
+    var(--yoyi-color-background-page)
+  );
+}
+.profileCover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.backgroundEdit {
+  position: absolute;
+  z-index: 1;
+  top: var(--yoyi-space-3);
+  right: max(var(--yoyi-space-4), env(safe-area-inset-right));
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: var(--yoyi-space-3);
+  place-items: center;
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  cursor: pointer;
+}
+.backgroundEdit svg {
+  width: 20px;
+  height: 20px;
+}
+.profileIdentity {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: var(--yoyi-space-2);
+  padding: max(
+      var(--yoyi-space-7),
+      calc(50svh - var(--profile-header-height) - 40px)
+    )
+    max(var(--yoyi-space-4), env(safe-area-inset-right)) var(--yoyi-space-6)
+    max(var(--yoyi-space-4), env(safe-area-inset-left));
+}
+.profileIdentity > .avatar {
+  border: 3px solid var(--yoyi-color-background-page);
+  border-radius: var(--yoyi-radius-full);
+}
+.profile .identity {
+  width: min(100%, 600px);
+}
+.profile .identity > p {
+  overflow-wrap: anywhere;
+}
+.profile .identity > div {
+  justify-content: center;
+}
+.relationshipCount {
+  color: var(--yoyi-color-seal-red);
+}
+
 .avatar {
   display: grid;
   width: 80px;
@@ -152,12 +244,17 @@
 .userContent {
   display: grid;
   min-width: 0;
-  min-height: 0;
+  min-height: calc(100dvh - var(--profile-header-height));
   grid-template-rows: auto minmax(0, 1fr);
+  overflow-anchor: none;
 }
 
 .tabs {
-  position: relative;
+  position: sticky;
+  z-index: 2;
+  top: var(--profile-header-height);
+  align-self: start;
+  background: var(--yoyi-color-background-page);
   display: flex;
   width: min(calc(100% - 32px), 928px);
   margin-inline: auto;
@@ -201,6 +298,7 @@
   border-radius: var(--yoyi-radius-full);
 }
 .pager {
+  isolation: isolate;
   min-height: 0;
 }
 .panel {
@@ -209,6 +307,7 @@
 }
 .panelContent {
   box-sizing: border-box;
+  min-height: calc(100dvh - var(--profile-header-height) - 49px);
   width: min(100%, 960px);
   margin: 0 auto;
   padding: var(--yoyi-space-4)
@@ -376,44 +475,6 @@
   }
 }
 
-@media (max-height: 500px) {
-  .header {
-    min-height: 52px;
-    padding-block: var(--yoyi-space-1);
-  }
-  .profile {
-    grid-template-columns: 44px minmax(0, 1fr);
-    padding-block: var(--yoyi-space-2);
-  }
-  .avatar {
-    width: 44px;
-    height: 44px;
-  }
-  .avatar > span {
-    font-size: 1.5rem;
-  }
-  .identity {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--yoyi-space-2);
-  }
-  .identity h1 {
-    font-size: 1.25rem;
-  }
-  .identity p {
-    display: none;
-  }
-  .editProfile {
-    margin: 0 0 0 auto;
-  }
-  .tabs button {
-    min-height: 44px;
-  }
-  .panelContent {
-    padding-top: var(--yoyi-space-2);
-  }
-}
 @media (min-width: 56rem) {
   .trigger {
     top: var(--yoyi-space-5);

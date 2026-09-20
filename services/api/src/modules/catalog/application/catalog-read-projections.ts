@@ -32,6 +32,7 @@ export interface CatalogListItemProjection {
   readonly aliases: readonly string[];
   readonly summary?: string;
   readonly periodLabel?: string;
+  readonly province?: CatalogStatefulTextProjection;
   readonly representativeMedia?: CatalogMediaProjection;
 }
 

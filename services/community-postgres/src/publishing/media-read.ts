@@ -316,13 +316,13 @@ export const mediaReadTarget = (
 
 /**
  * SQL (placeholders $1 item, $2 variant, $3 edit key) selecting the committed
- * derivative blob of an item that is not purged, as `d` (derivative) and `i`
+ * derivative blob of an item that is not cancelled or purged, as `d` (derivative) and `i`
  * (item). Callers append their authorization predicate with AND.
  */
 export const derivativeReadSql = `SELECT b.storage_key,d.content_type,b.byte_size,b.sha256
   FROM community.media_derivatives d
   JOIN community.media_blobs b ON b.id=d.blob_id AND b.state='committed'
-  JOIN community.media_items i ON i.id=d.item_id AND i.state<>'purged'
+  JOIN community.media_items i ON i.id=d.item_id AND i.state NOT IN ('cancelled','purged')
   WHERE d.item_id=$1 AND d.variant=$2 AND d.edit_key=$3`;
 
 /** WorkPublishingPort.resolveMediaRead */

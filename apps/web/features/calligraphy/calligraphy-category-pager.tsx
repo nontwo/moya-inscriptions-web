@@ -157,7 +157,7 @@ export const CalligraphyCategoryPager = forwardRef<
   const scrollOwner = useCallback(
     () =>
       frameRef.current?.closest<HTMLElement>(
-        '[data-primary-destination="calligraphy"]',
+        '[data-primary-destination="home"]',
       ) ?? null,
     [],
   );

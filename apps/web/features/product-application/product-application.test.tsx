@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProductApplication } from "./product-application";
+import { DiscoveryFeed, FilteredInscriptions } from "../authors/discovery-feed";
+import { MessageTrigger } from "../authors/message-center";
 import { DiscussionSection } from "../authors/discussion-section";
 import { CreateWorkAction } from "../publishing/create-action";
 import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
@@ -108,6 +110,7 @@ describe("ProductApplication", () => {
       <ProductApplication
         comments={{ signInHref: "/dev/community" }}
         authorCommunity
+        messageUnreadCount={105}
         initialPlatform="phone"
         navigationAction={<CatalogSearchNavigationAction />}
         states={
@@ -128,10 +131,25 @@ describe("ProductApplication", () => {
     // Uploads and editor sessions live above the shell, not inside the overlay.
     expect(providersMock).toHaveBeenLastCalledWith(true);
     expect(element(props.headerStart).type).toBe(CatalogSearchHeaderAction);
-    for (const page of [props.discoveryHome, props.filteredInscriptions])
-      expect(element(element(page).props.headerStart).type).toBe(
-        CatalogSearchHeaderAction,
-      );
+    expect(element(props.headerEnd).type).toBe(MessageTrigger);
+    expect(
+      (props.headerEnd as ReactElement<{ unreadCount: number }>).props
+        .unreadCount,
+    ).toBe(105);
+    expect(props.userPage).toBeDefined();
+    for (const active of [true, false]) {
+      const discover = props.renderDiscover?.(active) as ReactElement<{
+        active: boolean;
+        kind: string;
+      }>;
+      const inscriptions = props.renderInscriptions?.(active) as ReactElement<{
+        active: boolean;
+      }>;
+      expect(discover.type).toBe(DiscoveryFeed);
+      expect(discover.props).toEqual({ kind: "all", active });
+      expect(inscriptions.type).toBe(FilteredInscriptions);
+      expect(inscriptions.props).toEqual({ active });
+    }
   });
 
   it("keeps the Search dock action and no editor outside the author composition", () => {

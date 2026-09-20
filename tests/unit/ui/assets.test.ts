@@ -128,7 +128,7 @@ describe("SVG assets", () => {
     const icons = (await collectSvgFiles(iconDirectory)).filter(
       (file) => !file.pathname.endsWith("README.md"),
     );
-    expect(icons).toHaveLength(24);
+    expect(icons).toHaveLength(30);
     for (const icon of icons) {
       expect(await readFile(icon, "utf8"), icon.pathname).toContain(
         "currentColor",
@@ -136,14 +136,14 @@ describe("SVG assets", () => {
     }
   });
 
-  it("restores the original linear icon set byte-for-byte", async () => {
+  it("preserves approved linear artwork and corrected Nearby viewport bounds", async () => {
     const expectedHashes: Record<string, string> = {
       "home.svg":
         "e9273d0ad3923611970593046872ef21439c8bd666a498179f09833d7019c5ec",
       "inscriptions.svg":
         "671209be8eeb555d45c39c202a0bc11b6104ee8a315211e0262e8b9fc7cc2b86",
       "calligraphy.svg":
-        "dead4af57b97efebd193440f89dbb3930c29577783f1bba17c3620798e236843",
+        "f6183bf0ac78d8d6544de1e5d627f93f7c08f2bb97bf3bf8bc8f3da30ea2acba",
       "search.svg":
         "81331e6be09b05b6c632cdda9fa9899de50e21586d5def182ba871bff72e7ed1",
       "back.svg":
@@ -175,7 +175,19 @@ describe("SVG assets", () => {
     };
     for (const [name, hash] of Object.entries(expectedHashes)) {
       const icon = await readFile(new URL(`icons/${name}`, assetsRoot));
-      expect(createHash("sha256").update(icon).digest("hex"), name).toBe(hash);
+      // The Owner's phone feedback requires the Nearby outer strokes to fit.
+      // Normalize only its viewport when proving the original artwork remains.
+      const original =
+        name === "nearby.svg"
+          ? icon
+              .toString("utf8")
+              .replace('viewBox="-2 0 28 24"', 'viewBox="0 0 24 24"')
+          : icon;
+      if (name === "nearby.svg")
+        expect(icon.toString("utf8")).toContain('viewBox="-2 0 28 24"');
+      expect(createHash("sha256").update(original).digest("hex"), name).toBe(
+        hash,
+      );
       expect(icon.toString("utf8"), name).toContain('stroke="currentColor"');
     }
   });

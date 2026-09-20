@@ -49,6 +49,9 @@ export const registerPhase4DiscoveryTests = (
     beforeAll(async () => {
       await pool.query(`CREATE SCHEMA ${schema}`);
       await pool.query(
+        `CREATE TABLE ${schema}.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text)`,
+      );
+      await pool.query(
         `CREATE TABLE ${schema}.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb);CREATE TABLE ${schema}.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)`,
       );
     });
@@ -83,6 +86,10 @@ export const registerPhase4DiscoveryTests = (
             script: { state: "VALUE", values: ["合成楷书"] },
           }),
         ],
+      );
+      await reads.query(
+        "INSERT INTO catalog_entries VALUES($1,'陕西','VALUE')",
+        [catalog],
       );
     });
     afterEach(async () => {
@@ -155,6 +162,82 @@ export const registerPhase4DiscoveryTests = (
       await reads.query("DELETE FROM catalog_discovery WHERE catalog_id=$1", [
         catalog,
       ]);
+      await reads.query("DELETE FROM catalog_entries WHERE catalog_id=$1", [
+        catalog,
+      ]);
+    });
+    it("reads actual aggregate reactions for guests and viewers without counting duplicate toggles", async () => {
+      const target = { type: "catalog", id: catalog } as const;
+      expect(await discovery.state(target, null)).toEqual({
+        favorite: false,
+        liked: false,
+        favoriteCount: 0,
+        likeCount: 0,
+      });
+      const requestId = randomUUID();
+      await authors.changeRelation(author, "favorite", {
+        target,
+        enabled: true,
+        requestId,
+      });
+      await authors.changeRelation(author, "favorite", {
+        target,
+        enabled: true,
+        requestId,
+      });
+      await authors.changeRelation(visitor, "favorite", {
+        target,
+        enabled: true,
+        requestId: randomUUID(),
+      });
+      await authors.changeRelation(visitor, "like", {
+        target,
+        enabled: true,
+        requestId: randomUUID(),
+      });
+      expect(await discovery.state(target, null)).toEqual({
+        favorite: false,
+        liked: false,
+        favoriteCount: 2,
+        likeCount: 1,
+      });
+      expect(await discovery.state(target, visitor)).toEqual({
+        favorite: true,
+        liked: true,
+        favoriteCount: 2,
+        likeCount: 1,
+      });
+      await authors.changeRelation(visitor, "like", {
+        target,
+        enabled: false,
+        requestId: randomUUID(),
+      });
+      expect(await discovery.state(target, visitor)).toEqual({
+        favorite: true,
+        liked: false,
+        favoriteCount: 2,
+        likeCount: 0,
+      });
+      await pool.query(
+        "UPDATE community.public_users SET status='suspended' WHERE id=$1",
+        [author],
+      );
+      expect((await discovery.state(target, null)).favoriteCount).toBe(1);
+    });
+    it("projects an authoritative province only for official Catalog cards", async () => {
+      expect(
+        await discovery.card({ type: "catalog", id: catalog }, null),
+      ).toMatchObject({ province: "陕西" });
+      expect(
+        await discovery.card({ type: "work", id: work }, author),
+      ).not.toHaveProperty("province");
+      await reads.query(
+        "UPDATE catalog_entries SET province=NULL,province_state='UNKNOWN' WHERE catalog_id=$1",
+        [catalog],
+      );
+      expect(
+        await discovery.card({ type: "catalog", id: catalog }, null),
+      ).not.toHaveProperty("province");
     });
     it("keeps all four nonempty lists independently private with exact owner totals and no visitor items", async () => {
       const service = new AuthorCommunityService(

@@ -395,31 +395,6 @@ export const handleWorkPublishingRequest = async (
       }
     }
 
-    if (resource === "trash") {
-      if (segments.length === 1 && method === "GET") {
-        const actor = requireActor();
-        reply(await service.listTrash(actor, command("pageQuery", query())));
-        return;
-      }
-      if (
-        id !== undefined &&
-        segments.length === 3 &&
-        leaf === "restore" &&
-        method === "POST"
-      ) {
-        const actor = requireActor();
-        const workId = segment("workId", id);
-        reply(
-          await service.restoreWork(
-            actor,
-            workId,
-            command("requestIdentity", await body()),
-          ),
-        );
-        return;
-      }
-    }
-
     sendApiError(response, "ITEM_NOT_FOUND", "Not found");
   } catch (error) {
     sendWorkPublishingError(response, error);

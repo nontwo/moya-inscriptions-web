@@ -16,7 +16,12 @@ const { people, command, mutate, notify, cycleTheme, cycleFeedLayout } =
   }));
 vi.mock("./author-data", () => ({ authorClient: { people, command } }));
 vi.mock("./author-context", () => ({
-  useAuthors: () => ({ signInHref: "/dev/community", mutate, notify }),
+  useAuthors: () => ({
+    signInHref: "/dev/community",
+    viewer: { id: "user-00000000000000000000000000000001" },
+    mutate,
+    notify,
+  }),
 }));
 vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => ({
@@ -88,12 +93,18 @@ const render = async (owner: AuthorProfile | null) => {
   root = createRoot(node);
   const onClose = vi.fn();
   const onSaved = vi.fn();
+  const onEdit = vi.fn();
   await act(async () =>
     root!.render(
-      <ProfileSettings profile={owner} onClose={onClose} onSaved={onSaved} />,
+      <ProfileSettings
+        profile={owner}
+        onClose={onClose}
+        onSaved={onSaved}
+        onEdit={onEdit}
+      />,
     ),
   );
-  return { node, onClose, onSaved };
+  return { node, onClose, onSaved, onEdit };
 };
 const button = (node: HTMLElement, label: string) => {
   const control = Array.from(node.querySelectorAll("button")).find(
@@ -161,6 +172,14 @@ describe("My settings", () => {
       .mockImplementation(() => {});
     const { node, onClose } = await render(profile);
     expect(people).not.toHaveBeenCalled();
+    expect(button(node, "编辑信息")).toBeDefined();
+    for (const label of ["编辑资料", "我的评论", "回收站"]) {
+      expect(
+        Array.from(node.querySelectorAll("button")).some(
+          (item) => item.textContent === label,
+        ),
+      ).toBe(false);
+    }
     await click(node, "账户设置");
     expect(people).toHaveBeenCalledWith(profile.id, "blocks", 1);
     await editFavorites(node);
@@ -192,6 +211,32 @@ describe("My settings", () => {
       );
     });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("guards pending privacy edits and completes Settings Back before opening Edit Info", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const { node, onEdit, onClose } = await render(profile);
+    await click(node, "账户设置");
+    await editFavorites(node);
+    await click(node, "编辑信息");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(back).not.toHaveBeenCalled();
+    expect(onEdit).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await click(node, "编辑信息");
+    expect(back).toHaveBeenCalledOnce();
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      window.history.replaceState(sourceHistory, "", "/#profile");
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: sourceHistory }),
+      );
+    });
+    expect(onEdit).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
   });
 
   it("saves the chosen account privacy and clears the dirty guard while display preferences stay local", async () => {

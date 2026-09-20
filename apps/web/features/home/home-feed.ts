@@ -1,7 +1,12 @@
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
 import type { Topic } from "../topics/topic";
 
-export const homeFeeds = ["discover", "nearby", "topics"] as const;
+export const homeFeeds = [
+  "discover",
+  "nearby",
+  "inscriptions",
+  "calligraphy",
+] as const;
 
 export type HomeFeed = (typeof homeFeeds)[number];
 

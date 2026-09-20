@@ -133,6 +133,9 @@ export const T02pQaHarness = ({
   };
   const commentStore = useQaCommentStore(commentScenario);
   const home = homeScenarios[homeScenario];
+  const [activeHomeFeed, setActiveHomeFeed] = useState<HomeFeed>(
+    initialHomeFeed ?? home.initialFeed,
+  );
   const catalog = catalogScenarios[catalogScenario];
   const search = qaSearchScenarios[searchScenario];
   const visualCatalogItems = [
@@ -301,16 +304,18 @@ export const T02pQaHarness = ({
         <T02pProductPreview
           quickActions={quickActions}
           catalogDetailLoader={loadQaDetail}
-          key={`${homeScenario}:${catalogScenario}`}
+          key={homeScenario}
           developmentPlatformOverride={
             platformMode === "auto" ? null : platformMode
           }
           initialHomeFeed={initialHomeFeed ?? home.initialFeed}
+          onHomeFeedChange={setActiveHomeFeed}
           initialPlatform={initialPlatform}
           initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
           navigationAction={<QaNavigationSearchAction />}
           productUtility={
             <QaProductUtilities
+              activeHomeFeed={activeHomeFeed}
               catalogItems={visualCatalogItems}
               initialKeyword={search.initialKeyword}
               key={`${searchScenario}:${userScenario}`}

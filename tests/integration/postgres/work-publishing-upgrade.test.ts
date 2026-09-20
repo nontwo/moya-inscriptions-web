@@ -48,7 +48,8 @@ const workPublishingMigrations = [
   "20260914094000",
   "20260915010000",
   // data-admin-hardening-v1 forward files (indexes, receipt timestamps,
-  // agent administration, agent connections).
+  // agent administration, agent connections), plus main's profile
+  // background migration, which claimed 20260920020000 first.
   "20260916010000",
   "20260916011000",
   "20260917010000",
@@ -60,8 +61,9 @@ const workPublishingMigrations = [
   "20260918050000",
   "20260920010000",
   "20260920020000",
-  "20260920030000",
-  "20260920040000",
+  "20260920050000",
+  "20260920060000",
+  "20260920070000",
 ];
 const backfillMigration = "20260914092000";
 const bridgeMigration = "20260914093000";
@@ -818,7 +820,19 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
     });
 
     it("leaves the deleted work, relations, comments, drafts and user media untouched", async () => {
-      expect(await snapshotPhase4Rows()).toEqual(before);
+      expect(await snapshotPhase4Rows()).toEqual({
+        ...before,
+        users: before.users!.map((user) => ({
+          ...user,
+          background_media_id: null,
+        })),
+      });
+      expect(
+        await rows(
+          pool,
+          "SELECT id FROM community.user_media WHERE deleted_at IS NOT NULL",
+        ),
+      ).toEqual([]);
       expect(
         await rows(
           pool,
@@ -1491,8 +1505,9 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
         "20260918050000",
         "20260920010000",
         "20260920020000",
-        "20260920030000",
-        "20260920040000",
+        "20260920050000",
+        "20260920060000",
+        "20260920070000",
       ]);
 
       // Declared submissions: stored hashes unchanged and still exactly what

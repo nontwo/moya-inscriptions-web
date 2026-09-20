@@ -2,12 +2,11 @@
 
 import { LiveCommentSection } from "../comments/live-comment-section";
 import { AuthorProvider, useAuthors } from "../authors/author-context";
-import { AuthorProfileOverlay } from "../authors/author-profile";
 import {
-  AuthorTrigger,
-  DiscoveryHome,
-  FilteredInscriptions,
-} from "../authors/discovery-feed";
+  AuthorProfileOverlay,
+  AuthorProfilePage,
+} from "../authors/author-profile";
+import { DiscoveryFeed, FilteredInscriptions } from "../authors/discovery-feed";
 import { DiscussionSection } from "../authors/discussion-section";
 import { DetailActions, loadWorkDetail } from "../authors/work-detail";
 import { LiveCatalogCards } from "../authors/live-catalog-cards";
@@ -18,6 +17,8 @@ import { PublishingEntryProvider } from "../publishing/publishing-entry";
 import { PublishingProvider } from "../publishing/publishing-provider";
 import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
 import { EditorSessionProvider } from "../publishing/ui/editor/editor-session-provider";
+import { MessageTrigger } from "../authors/message-center";
+import { useProductShell } from "../product-shell/product-shell";
 import { CatalogSearchHeaderAction } from "../search/catalog-search";
 
 import type { CommunityCommentSurface } from "./community-comment-surface";
@@ -44,6 +45,8 @@ export interface ProductApplicationProps extends Pick<
    * `CatalogSearchProvider`.
    */
   readonly authorCommunity?: boolean;
+  /** Presentation input until the notification service is connected; never synthesized. */
+  readonly messageUnreadCount?: number;
 }
 
 /**
@@ -55,6 +58,7 @@ export interface ProductApplicationProps extends Pick<
 export const ProductApplication = ({
   comments,
   authorCommunity = false,
+  messageUnreadCount = 0,
   ...preview
 }: ProductApplicationProps) =>
   comments === null || !authorCommunity ? (
@@ -74,14 +78,19 @@ export const ProductApplication = ({
     />
   ) : (
     <AuthorProvider signInHref={comments.signInHref}>
-      <AuthorProduct preview={preview} />
+      <AuthorProduct preview={preview} unreadCount={messageUnreadCount} />
     </AuthorProvider>
   );
 
 const AuthorProduct = ({
   preview,
+  unreadCount,
 }: {
-  preview: Omit<ProductApplicationProps, "comments" | "authorCommunity">;
+  preview: Omit<
+    ProductApplicationProps,
+    "comments" | "authorCommunity" | "messageUnreadCount"
+  >;
+  unreadCount: number;
 }) => {
   const author = useAuthors();
   return (
@@ -110,24 +119,24 @@ const AuthorProduct = ({
               renderDetailActions={(detail) => (
                 <DetailActions detail={detail} />
               )}
-              discoveryHome={
-                <DiscoveryHome
-                  data={preview.states.home}
-                  headerStart={<CatalogSearchHeaderAction />}
-                  initialFeed={preview.initialHomeFeed ?? "discover"}
-                />
-              }
-              filteredInscriptions={
-                <FilteredInscriptions
-                  headerStart={<CatalogSearchHeaderAction />}
-                />
-              }
+              renderDiscover={(active) => (
+                <DiscoveryFeed kind="all" active={active} />
+              )}
+              renderInscriptions={(active) => (
+                <FilteredInscriptions active={active} />
+              )}
+              userPage={<UserPage />}
               headerStart={<CatalogSearchHeaderAction />}
-              headerEnd={<AuthorTrigger />}
+              headerEnd={<MessageTrigger unreadCount={unreadCount} />}
             />
           </PublishingEntryProvider>
         </LiveCatalogCards>
       </EditorSessionProvider>
     </PublishingProvider>
   );
+};
+
+const UserPage = () => {
+  const shell = useProductShell();
+  return <AuthorProfilePage onBack={() => shell.navigatePrimary("home")} />;
 };

@@ -1,7 +1,6 @@
 import type {
   PublishingDeviceClass,
   PublishingDraftSummary,
-  TrashedWork,
   WorkAuthorship,
   WorkDraftContent,
   WorkSnapshotKind,
@@ -132,50 +131,6 @@ export const authorshipDetails = (
     { label: "来源", value: authorship.sourceNote?.trim() ?? "" },
   ].filter((detail) => detail.value !== "");
 };
-
-/**
- * Whole days left before a trashed work is permanently deleted, computed from
- * the Backend's purge time. Rounded up so a work trashed a moment ago under a
- * 30-day retention shows 30; zero once the purge time has passed.
- */
-export const remainingTrashDays = (purgeAfter: string, now: Date): number => {
-  const at = Date.parse(purgeAfter);
-  if (Number.isNaN(at)) return 0;
-  return Math.max(0, Math.ceil((at - now.getTime()) / DAY));
-};
-
-export type TrashRowState =
-  | { readonly kind: "restorable"; readonly days: number }
-  | { readonly kind: "removed" }
-  | { readonly kind: "unavailable" }
-  | { readonly kind: "expiring" };
-
-/**
- * Why a trashed work can or cannot come back. `restorable` is the Backend's
- * own rule: never an Admin-removed work, never once the purge time has
- * passed on the Backend's clock. A work that is not restorable with more than
- * a day of retention left was removed; within the last day this browser's
- * clock cannot tell a removal from a purge that is already due, so the row
- * only says it cannot be restored.
- */
-export const trashRowState = (
-  work: Pick<TrashedWork, "restorable" | "purgeAfter">,
-  now: Date,
-): TrashRowState => {
-  const days = remainingTrashDays(work.purgeAfter, now);
-  if (days === 0) return { kind: "expiring" };
-  if (work.restorable) return { kind: "restorable", days };
-  return days > 1 ? { kind: "removed" } : { kind: "unavailable" };
-};
-
-export const trashRowNotes = {
-  removed: "已被移除，无法恢复",
-  unavailable: "无法恢复",
-  expiring: "保留期已满，正在永久删除",
-} as const satisfies Record<
-  Exclude<TrashRowState["kind"], "restorable">,
-  string
->;
 
 /**
  * The account's drafts, newest edited first (D03). The Backend already

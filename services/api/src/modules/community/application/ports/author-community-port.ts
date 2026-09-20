@@ -3,6 +3,7 @@ import type {
   AuthorMedia,
   AuthorProfile,
   AvatarUpdate,
+  BackgroundUpdate,
   ContentIdentity,
   ContentRelationUpdate,
   GuestFavoriteMerge,
@@ -42,6 +43,7 @@ export interface OwnedMediaRead {
 export interface AuthorCommunityPort {
   readProfile(id: string, viewerId: string | null): Promise<AuthorProfile>;
   updateProfile(actorId: string, input: ProfileUpdate): Promise<void>;
+  updateBackground(actorId: string, input: BackgroundUpdate): Promise<void>;
   updatePrivacy(actorId: string, input: PrivacyUpdate): Promise<void>;
   updateAvatar(
     actorId: string,

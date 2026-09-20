@@ -3,7 +3,9 @@
 -- The caller creates a non-owner NOSUPERUSER NOBYPASSRLS role first.
 -- psql variable app_role is an identifier, not credential material.
 -- Only runtime statements and invoker-trigger columns are granted. No DDL,
--- TRUNCATE, ownership, default privileges or ledger/audit UPDATE/DELETE.
+-- TRUNCATE, ownership, default privileges or ledger/identity rewrites.
+-- Only receipt results and content-bearing event detail may be erased by
+-- permanent deletion; event identity, action, actor and time stay immutable.
 -- The Backend, authenticated operator bridge and worker share this SQL role;
 -- public-user and Payload/operator authentication remain separate boundaries.
 
@@ -56,6 +58,7 @@ FROM :"app_role";
 
 -- Discovery and the featured operator read published Catalog projections only.
 GRANT SELECT ON TABLE public.catalog_discovery, public.catalog_media TO :"app_role";
+GRANT SELECT (catalog_id, province, province_state) ON TABLE public.catalog_entries TO :"app_role";
 
 -- Startup readiness verifies the community ledger read-only.
 GRANT SELECT ON TABLE community.schema_migrations TO :"app_role";
@@ -65,7 +68,7 @@ GRANT SELECT ON TABLE community.public_users, community.development_accounts TO 
 GRANT UPDATE (
   display_name, bio, status, updated_at,
   following_privacy, followers_privacy, favorites_privacy, likes_privacy,
-  avatar_media_id, avatar_changed_on
+  avatar_media_id, avatar_changed_on, background_media_id
 ) ON TABLE community.public_users TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.sessions TO :"app_role";
 GRANT UPDATE (revoked_at) ON TABLE community.sessions TO :"app_role";
@@ -75,11 +78,11 @@ GRANT SELECT, INSERT ON TABLE
   community.catalog_comments, community.catalog_comment_replies
 TO :"app_role";
 GRANT UPDATE (
-  moderation, moderated_by, moderated_at, body_deleted_at, thread_removed_at
+  text, moderation, moderated_by, moderated_at, body_deleted_at, thread_removed_at
 ) ON TABLE community.catalog_comments TO :"app_role";
 -- was_public is written by the remember_thread_publication trigger (invoker).
 GRANT UPDATE (
-  moderation, moderated_by, moderated_at, body_deleted_at, was_public
+  text, moderation, moderated_by, moderated_at, body_deleted_at, was_public
 ) ON TABLE community.catalog_comment_replies TO :"app_role";
 GRANT SELECT, INSERT, DELETE ON TABLE community.comment_likes TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.discussion_command_receipts TO :"app_role";
@@ -92,6 +95,8 @@ GRANT SELECT, INSERT, DELETE ON TABLE
   community.follows, community.blocks, community.content_relations
 TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.user_media, community.author_command_receipts TO :"app_role";
+GRANT UPDATE (bytes, deleted_at) ON TABLE community.user_media TO :"app_role";
+GRANT UPDATE (result) ON TABLE community.author_command_receipts TO :"app_role";
 GRANT INSERT (id, actor_id, action, subject_id, occurred_at) ON TABLE community.author_events TO :"app_role";
 
 -- Featured content and discovery sequences.
@@ -108,15 +113,20 @@ GRANT SELECT, INSERT ON TABLE community.discovery_sequence_items TO :"app_role";
 GRANT INSERT (id, operator_label, action, content_type, content_id, occurred_at, detail)
 ON TABLE community.content_operator_events TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.content_operator_receipts TO :"app_role";
+GRANT UPDATE (result) ON TABLE community.content_operator_receipts TO :"app_role";
+GRANT SELECT (content_type, content_id, detail), UPDATE (detail)
+ON TABLE community.content_operator_events TO :"app_role";
 
--- Works and revisions (publishing submissions, visibility, trash, moderation).
+-- Works and revisions (publishing submissions, visibility, permanent deletion, moderation).
 GRANT SELECT, INSERT ON TABLE community.works TO :"app_role";
 GRANT UPDATE (
-  title, text, version, updated_at, deleted_at, operator_state,
+  title, text, media_ids, version, updated_at, deleted_at, operator_state,
   public_revision_id, author_revision_id, visibility, first_published_at,
   edited_at, trashed_at, trash_purge_after
 ) ON TABLE community.works TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.work_revisions, community.work_revision_items TO :"app_role";
+GRANT DELETE ON TABLE community.work_revisions, community.work_revision_items TO :"app_role";
+GRANT SELECT, DELETE ON TABLE community.work_edit_drafts TO :"app_role";
 GRANT UPDATE (disposition, decided_at, decided_by, version) ON TABLE community.work_revisions TO :"app_role";
 
 -- Publishing drafts, snapshots and sessions (drafts/snapshots are deleted by cleanup).

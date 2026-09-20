@@ -1542,6 +1542,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       aliases: ["First alias", "Second alias"],
       summary: "First summary",
       periodLabel: "Legacy period",
+      province: "陕西",
     });
     for (const property of [
       "contributors",

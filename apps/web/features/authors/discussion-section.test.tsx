@@ -5,11 +5,12 @@ import type { Root } from "react-dom/client";
 import type { DiscussionComment, DiscussionReply } from "@moya/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { profile, discussion, replies, context, openProfile } = vi.hoisted(
+const { profile, discussion, replies, send, context, openProfile } = vi.hoisted(
   () => ({
     profile: vi.fn(),
     discussion: vi.fn(),
     replies: vi.fn(),
+    send: vi.fn(),
     openProfile: vi.fn(),
     context: {
       viewer: { id: "owner", displayName: "自己" } as {
@@ -26,7 +27,7 @@ const { profile, discussion, replies, context, openProfile } = vi.hoisted(
   }),
 );
 vi.mock("./author-data", () => ({
-  authorClient: { profile, discussion, replies },
+  authorClient: { profile, discussion, replies, send },
   AuthorRequestError: class extends Error {},
 }));
 vi.mock("./author-context", () => ({
@@ -433,5 +434,38 @@ describe("Discussion composer on the author's own work", () => {
     });
     await render();
     expect(composer()).not.toBeNull();
+  });
+});
+
+describe("Discussion total after posting", () => {
+  it("keeps zero hidden and only refreshes the total after an actual successful post", async () => {
+    discussion.mockResolvedValue(listing([]));
+    await render();
+    expect(node.querySelector("h2")!.textContent).toBe("评论");
+    await render();
+    expect(node.querySelector("h2")!.textContent).toBe("评论");
+    const textarea = node.querySelector("textarea")!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(textarea, "真的发一条评论");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    send.mockRejectedValueOnce(new Error("发送失败"));
+    await click('button[type="submit"]');
+    expect(node.querySelector("h2")!.textContent).toBe("评论");
+    expect(discussion).toHaveBeenCalledTimes(1);
+    send.mockResolvedValueOnce({});
+    discussion.mockResolvedValue(listing([comment("posted", "owner")]));
+    await click('button[type="submit"]');
+    expect(send).toHaveBeenCalledWith(
+      target,
+      "真的发一条评论",
+      undefined,
+      undefined,
+    );
+    expect(node.querySelector("h2")!.textContent).toBe("评论 1");
+    expect(discussion).toHaveBeenCalledTimes(2);
   });
 });

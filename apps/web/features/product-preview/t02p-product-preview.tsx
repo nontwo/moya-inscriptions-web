@@ -1,8 +1,9 @@
 "use client";
 
 import { CatalogBrowseScreen } from "../home/catalog-screen";
-import { CalligraphyCategoryScreen } from "../calligraphy/calligraphy-category-screen";
+import { AllCalligraphyFeed } from "../calligraphy/calligraphy-category-screen";
 import { HomeScreen } from "../home/home-screen";
+import { DiscussionScreen } from "../home/discussion-screen";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
 import { ProductShell, useProductShell } from "../product-shell/product-shell";
@@ -25,26 +26,6 @@ import type { ReactNode, RefObject } from "react";
 import type { HomeCatalogState } from "../home/catalog-state";
 import type { HomeFeed, HomeSurfaceData } from "../home/home-feed";
 import type { PresentationPlatform } from "../shell/device-platform";
-
-const PreviewHome = ({
-  data,
-  initialFeed,
-  initialTopicId,
-}: {
-  readonly data: HomeSurfaceData;
-  readonly initialFeed: HomeFeed;
-  readonly initialTopicId: string | null;
-}) => {
-  return (
-    <div data-product-panel="home">
-      <HomeScreen
-        data={data}
-        initialFeed={initialFeed}
-        initialTopicId={initialTopicId}
-      />
-    </div>
-  );
-};
 
 const PreviewBrowse = ({ state }: { readonly state: HomeCatalogState }) => {
   const { feedLayout, openCatalog } = useProductShell();
@@ -77,12 +58,14 @@ export interface T02pProductPreviewProps {
     detail: CatalogDetailPresentation,
     refresh: () => void,
   ) => ReactNode;
-  readonly discoveryHome?: ReactNode;
-  readonly filteredInscriptions?: ReactNode;
+  readonly renderDiscover?: (active: boolean) => ReactNode;
+  readonly renderInscriptions?: (active: boolean) => ReactNode;
+  readonly userPage?: ReactNode;
   readonly catalogDetailLoader?: CatalogDetailPresentationLoader;
   readonly developmentPlatformOverride?: PresentationPlatform | null;
   readonly initialPlatform: PresentationPlatform;
   readonly initialHomeFeed?: HomeFeed;
+  readonly onHomeFeedChange?: (feed: HomeFeed) => void;
   readonly initialTopicId?: string | null;
   readonly productUtility?: ReactNode;
   readonly navigationAction?: ReactNode;
@@ -102,11 +85,13 @@ export const T02pProductPreview = ({
   workDetailLoader,
   renderDiscussion,
   renderDetailActions,
-  discoveryHome,
-  filteredInscriptions,
+  renderDiscover,
+  renderInscriptions,
+  userPage,
   developmentPlatformOverride = null,
   initialPlatform,
   initialHomeFeed = "discover",
+  onHomeFeedChange,
   initialTopicId = null,
   productUtility,
   navigationAction,
@@ -117,35 +102,49 @@ export const T02pProductPreview = ({
 }: T02pProductPreviewProps) => (
   <div data-clean-product-preview="">
     <ProductShell
-      calligraphy={
-        <div data-product-panel="calligraphy">
+      discussion={
+        <div data-product-panel="discussion">
           <ContentQuickActionsProvider environment={quickActions}>
-            <CalligraphyCategoryScreen
-              data={states.calligraphy}
+            <DiscussionScreen
+              data={states.home.topics}
               headerStart={headerStart}
               headerEnd={headerEnd}
+              initialTopicId={initialTopicId}
             />
           </ContentQuickActionsProvider>
         </div>
       }
+      user={
+        userPage ?? (
+          <section className="phase4-page">
+            <h1>用户</h1>
+            <p>登录后查看个人主页。</p>
+          </section>
+        )
+      }
       developmentPlatformOverride={developmentPlatformOverride}
       home={
-        <ContentQuickActionsProvider environment={quickActions}>
-          {discoveryHome ?? (
-            <PreviewHome
+        <div data-product-panel="home">
+          <ContentQuickActionsProvider environment={quickActions}>
+            <HomeScreen
               data={states.home}
               initialFeed={initialHomeFeed}
-              initialTopicId={initialTopicId}
+              {...(onHomeFeedChange ? { onFeedChange: onHomeFeedChange } : {})}
+              headerStart={headerStart}
+              headerEnd={headerEnd}
+              {...(renderDiscover ? { renderDiscover } : {})}
+              renderInscriptions={
+                renderInscriptions ??
+                (() => <PreviewBrowse state={states.inscriptions} />)
+              }
+              calligraphy={<AllCalligraphyFeed data={states.calligraphy} />}
             />
-          )}
-        </ContentQuickActionsProvider>
+          </ContentQuickActionsProvider>
+        </div>
       }
       initialPlatform={initialPlatform}
       primaryUtility={productUtility}
       navigationAction={navigationAction}
-      inscriptions={
-        filteredInscriptions ?? <PreviewBrowse state={states.inscriptions} />
-      }
       {...(renderProfileOverlay ? { renderProfileOverlay } : {})}
       {...(renderEditorOverlay ? { renderEditorOverlay } : {})}
       showDevelopmentPagerControls={showDevelopmentPagerControls}

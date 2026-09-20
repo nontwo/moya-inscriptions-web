@@ -176,6 +176,38 @@
               }
             ]
           },
+          "background": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "height": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 8192,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "pattern": "^user-media-[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  "src": {
+                    "pattern": "^\\/api\\/community\\/media\\/.*",
+                    "type": "string"
+                  },
+                  "width": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 8192,
+                    "type": "integer"
+                  }
+                },
+                "required": ["id", "src", "width", "height"],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "bio": {
             "maxLength": 500,
             "type": "string"
@@ -341,6 +373,30 @@
           }
         },
         "required": ["nextChangeAt"],
+        "type": "object"
+      },
+      "BackgroundUpdate": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "mediaId": {
+            "anyOf": [
+              {
+                "pattern": "^user-media-[0-9a-f]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": ["requestId", "mediaId"],
         "type": "object"
       },
       "CatalogCitationScope": {
@@ -1239,6 +1295,11 @@
                   "minLength": 1,
                   "type": "string"
                 },
+                "province": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "representativeMedia": {
                   "additionalProperties": false,
                   "properties": {
@@ -1361,6 +1422,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "province": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
           "representativeMedia": {
             "additionalProperties": false,
             "properties": {
@@ -1473,6 +1539,11 @@
                   "minLength": 1,
                   "type": "string"
                 },
+                "province": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "representativeMedia": {
                   "additionalProperties": false,
                   "properties": {
@@ -1581,6 +1652,11 @@
           },
           "periodLabel": {
             "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "province": {
+            "maxLength": 500,
             "minLength": 1,
             "type": "string"
           },
@@ -1760,6 +1836,11 @@
               }
             ]
           },
+          "province": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
           "target": {
             "oneOf": [
               {
@@ -1898,6 +1979,11 @@
                       "type": "null"
                     }
                   ]
+                },
+                "province": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
                 },
                 "target": {
                   "oneOf": [
@@ -2069,11 +2155,21 @@
           "favorite": {
             "type": "boolean"
           },
+          "favoriteCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "likeCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "liked": {
             "type": "boolean"
           }
         },
-        "required": ["favorite", "liked"],
+        "required": ["favorite", "liked", "favoriteCount", "likeCount"],
         "type": "object"
       },
       "CreateCatalogCommentReplyRequest": {
@@ -2496,6 +2592,11 @@
                       "type": "null"
                     }
                   ]
+                },
+                "province": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
                 },
                 "target": {
                   "oneOf": [
@@ -11614,119 +11715,6 @@
         "required": ["baseRevision", "content", "deviceClass"],
         "type": "object"
       },
-      "TrashedWorkPage": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "coverSrc": {
-                  "anyOf": [
-                    {
-                      "anyOf": [
-                        {
-                          "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
-                          "type": "string"
-                        },
-                        {
-                          "pattern": "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "excerpt": {
-                  "maxLength": 320,
-                  "type": "string"
-                },
-                "itemCount": {
-                  "maximum": 500,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "purgeAfter": {
-                  "format": "date-time",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
-                  "type": "string"
-                },
-                "restorable": {
-                  "type": "boolean"
-                },
-                "title": {
-                  "maxLength": 400,
-                  "type": "string"
-                },
-                "trashedAt": {
-                  "format": "date-time",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
-                  "type": "string"
-                },
-                "workId": {
-                  "pattern": "^work-[0-9a-f]{32}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "workId",
-                "title",
-                "excerpt",
-                "coverSrc",
-                "itemCount",
-                "trashedAt",
-                "purgeAfter",
-                "restorable"
-              ],
-              "type": "object"
-            },
-            "maxItems": 50,
-            "type": "array"
-          },
-          "page": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
-          },
-          "pageSize": {
-            "maximum": 50,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "total": {
-            "maximum": 2147483647,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "totalPages": {
-            "maximum": 2147483647,
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": ["items", "total", "page", "pageSize", "totalPages"],
-        "type": "object"
-      },
-      "TrashRestoreResult": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "visibility": {
-            "const": "self",
-            "type": "string"
-          },
-          "workId": {
-            "pattern": "^work-[0-9a-f]{32}$",
-            "type": "string"
-          }
-        },
-        "required": ["workId", "visibility"],
-        "type": "object"
-      },
       "UserWork": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -14504,6 +14492,7 @@
           }
         },
         "security": [
+          {},
           {
             "session": []
           }
@@ -15845,6 +15834,100 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AvatarUpdateResult"
+                }
+              }
+            },
+            "description": "Committed result; private responses are never cached."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "A valid session is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unavailable or private subject"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Version, request identity or New York avatar-date conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Strict input validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service unavailable; no success is claimed"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/v1/community/me/background": {
+      "post": {
+        "description": "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Removing an own work moves it to the recycle bin.",
+        "operationId": "changeOwnBackground",
+        "parameters": [
+          {
+            "description": "Optional assertion of the authenticated account; mismatch rejects. Does not authorize a request.",
+            "in": "header",
+            "name": "x-author-account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackgroundUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedResult"
                 }
               }
             },
@@ -18631,205 +18714,6 @@
         ]
       }
     },
-    "/v1/community/publishing/trash": {
-      "get": {
-        "description": "Work publishing, Development only; absent in Production. Requires the session credential; responses are private, no-store with Vary: Authorization. Commands require x-author-account equal to the session account and accept no query; list reads accept only page and pageSize, and other reads accept no query. A rule rejection answers INVALID_INPUT whose message is the rule code; a stale state answers CONFLICT; a conflicting draft save answers 200 with status conflict and keeps both versions. RequestIdentity commands are replay-safe for their actor. A readiness check names the holder's current content: the Backend starts any missing edit derivative at once and answers which item keys still wait or failed, plus the thumb edit key of ready edited items; it has no other effect and is not receipted.",
-        "operationId": "listTrashedWorks",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "page",
-            "schema": {
-              "default": 1,
-              "maximum": 10000,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "pageSize",
-            "schema": {
-              "default": 20,
-              "maximum": 50,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrashedWorkPage"
-                }
-              }
-            },
-            "description": "Committed result; private responses are never cached."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "A valid session is required"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Unavailable, private, deleted or not owned subject; includes a late write to a deleted draft"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Stale state (for example a draft already submitted or an ended session), or a request identity reused with different content"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Strict input validation failed or a publishing rule rejected the command; the message carries the rule code"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Service or media unavailable; no success is claimed"
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/v1/community/publishing/trash/{workId}/restore": {
-      "post": {
-        "description": "Work publishing, Development only; absent in Production. Requires the session credential; responses are private, no-store with Vary: Authorization. Commands require x-author-account equal to the session account and accept no query; list reads accept only page and pageSize, and other reads accept no query. A rule rejection answers INVALID_INPUT whose message is the rule code; a stale state answers CONFLICT; a conflicting draft save answers 200 with status conflict and keeps both versions. RequestIdentity commands are replay-safe for their actor. A readiness check names the holder's current content: the Backend starts any missing edit derivative at once and answers which item keys still wait or failed, plus the thumb edit key of ready edited items; it has no other effect and is not receipted.",
-        "operationId": "restoreTrashedWork",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "workId",
-            "required": true,
-            "schema": {
-              "pattern": "^work-[0-9a-f]{32}$",
-              "type": "string"
-            }
-          },
-          {
-            "description": "The authenticated account; a missing or different account rejects. Does not authorize a request.",
-            "in": "header",
-            "name": "x-author-account",
-            "required": true,
-            "schema": {
-              "pattern": "^user-[0-9a-f]{32}$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RequestIdentity"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrashRestoreResult"
-                }
-              }
-            },
-            "description": "Committed result; private responses are never cached."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "A valid session is required"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Unavailable, private, deleted or not owned subject; includes a late write to a deleted draft"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Stale state (for example a draft already submitted or an ended session), or a request identity reused with different content"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Strict input validation failed or a publishing rule rejected the command; the message carries the rule code"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Service or media unavailable; no success is claimed"
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ]
-      }
-    },
     "/v1/community/publishing/uploads/{componentId}": {
       "post": {
         "description": "Work publishing, Development only. One registered media component as a raw byte stream behind an attempt fence: content-length is required and must equal the declared component bytes, and the server checksum is authoritative. No automatic retry: a new attempt follows an explicit component reset. A cancelled or superseded attempt answers CONFLICT and stores nothing. A refusal (including an invalid session or account assertion) may be answered while bytes are still arriving: the answer does not announce a connection close; the server reads on and discards bytes until the body ends or a few seconds passed, and only then closes the connection, so a client that keeps sending longer sees the connection close after the answer. A transfer that delivers no bytes for two minutes is closed without an answer. Private, no-store.",
@@ -19448,7 +19332,7 @@
     "/v1/community/works/{workId}": {
       "delete": {
         "description": "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Removing an own work moves it to the recycle bin.",
-        "operationId": "moveOwnWorkToTrash",
+        "operationId": "deleteOwnWorkPermanently",
         "parameters": [
           {
             "in": "path",

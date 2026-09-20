@@ -105,6 +105,30 @@
   height: 32px;
 }
 
+.yoyi-icon[data-icon="news"] {
+  --yoyi-icon-mask: url("./assets/icons/news.svg");
+}
+
+.yoyi-icon[data-icon="academic-cap"] {
+  --yoyi-icon-mask: url("./assets/icons/academic-cap.svg");
+}
+
+.yoyi-icon[data-icon="discussion"] {
+  --yoyi-icon-mask: url("./assets/icons/discussion.svg");
+}
+
+.yoyi-icon[data-icon="user"] {
+  --yoyi-icon-mask: url("./assets/icons/user.svg");
+}
+
+.yoyi-icon[data-icon="message"] {
+  --yoyi-icon-mask: url("./assets/icons/message.svg");
+}
+
+.yoyi-icon[data-icon="edit"] {
+  --yoyi-icon-mask: url("./assets/icons/edit.svg");
+}
+
 .yoyi-icon[data-icon="home"] {
   --yoyi-icon-mask: url("./assets/icons/home.svg");
 }

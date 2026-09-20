@@ -691,7 +691,7 @@ export const CommentSection = ({
         <header className={styles.header}>
           <h2 id={`comment-title-${catalogId}`}>
             评论
-            {loading || status !== null ? null : (
+            {loading || status !== null || count === 0 ? null : (
               <span aria-label={`${count} 条`}>
                 {" "}
                 {formatCommentCount(count)}

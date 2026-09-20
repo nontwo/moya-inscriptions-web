@@ -10,11 +10,8 @@ import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors } from "./author-context";
 import { ContentCard } from "./content-card";
 import { useProductShell } from "../product-shell/product-shell";
-import { HomeScreen } from "../home/home-screen";
-import type { HomeSurfaceData, HomeFeed } from "../home/home-feed";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import homeStyles from "../home/home-screen.module.css";
-import type { ReactNode } from "react";
 const emptyFilters: InscriptionFilters = {
   dynasty: [],
   textAuthor: [],
@@ -28,64 +25,11 @@ interface Snapshot {
   filters: InscriptionFilters;
   search: string;
 }
-export const AuthorTrigger = () => {
-  const author = useAuthors(),
-    shell = useProductShell();
-  return (
-    <button
-      type="button"
-      className="phase4-avatar"
-      aria-label="打开个人主页"
-      disabled={author.checking}
-      onClick={(e) => shell.openProfile(null, e.currentTarget)}
-    >
-      {author.avatarSrc ? (
-        <img src={author.avatarSrc} alt="" />
-      ) : (
-        (author.viewer?.displayName.slice(0, 1) ?? "访")
-      )}
-    </button>
-  );
-};
-export const DiscoveryHome = ({
-  data,
-  initialFeed,
-  headerStart = <span aria-hidden="true" />,
-}: {
-  data: HomeSurfaceData;
-  initialFeed: HomeFeed;
-  headerStart?: ReactNode;
-}) => (
-  <HomeScreen
-    data={data}
-    initialFeed={initialFeed}
-    headerStart={headerStart}
-    headerEnd={<AuthorTrigger />}
-    renderDiscover={(active) => <DiscoveryFeed kind="all" active={active} />}
-  />
+export const FilteredInscriptions = ({ active }: { active: boolean }) => (
+  <div data-phase4-inscriptions="">
+    <DiscoveryFeed kind="inscription" active={active} />
+  </div>
 );
-export const FilteredInscriptions = ({
-  headerStart = <span aria-hidden="true" />,
-}: {
-  headerStart?: ReactNode;
-}) => {
-  const shell = useProductShell();
-  return (
-    <div className="phase4-inscriptions" data-phase4-inscriptions="">
-      <header className={homeStyles.homeHeader} data-author-bar="">
-        {headerStart}
-        <strong>碑刻</strong>
-        <AuthorTrigger />
-      </header>
-      <div className="phase4-page">
-        <DiscoveryFeed
-          kind="inscription"
-          active={shell.activeDestination === "inscriptions"}
-        />
-      </div>
-    </div>
-  );
-};
 const ScopedDiscoveryFeed = ({
   kind,
   active,
@@ -406,7 +350,7 @@ const ScopedDiscoveryFeed = ({
         <CatalogMasonry
           items={snapshot.items}
           getKey={(i) => `${i.target.type}:${i.target.id}`}
-          isFullSpan={(i) => !!i.media && i.media.width / i.media.height >= 2.4}
+          spanAtAlignedRows
           feedLayout={shell.feedLayout}
           platform={shell.platform}
           renderItem={(item, onMediaSettled) => (

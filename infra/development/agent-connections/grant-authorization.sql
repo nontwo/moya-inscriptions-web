@@ -230,7 +230,7 @@ BEGIN
   -- HELD BUT FROZEN, which is a different and weaker statement: the UPDATE
   -- list above includes human_account_id, oauth_client_id, client_family and
   -- environment, because `compareAndSet` round-trips the whole consented
-  -- shape. Migration 20260920030000 freezes all four in the table's own
+  -- shape. Migration 20260920060000 freezes all four in the table's own
   -- trigger, so holding the privilege is not the same as being able to use
   -- it. Without that migration this grant would let the control plane move a
   -- live connection out of its owner's disconnect scope.

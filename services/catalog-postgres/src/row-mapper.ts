@@ -251,6 +251,12 @@ export const mapCatalogEntryRow = (
       ? {}
       : { summary: requiredString(row.summary, "summary") }),
     ...(periodLabel === undefined ? {} : { periodLabel }),
+    province: readStatefulTextProjection(
+      row,
+      "province",
+      "province_state",
+      "province",
+    ),
     ...(representativeMedia === undefined
       ? {}
       : { representativeMedia: { ...representativeMedia } }),

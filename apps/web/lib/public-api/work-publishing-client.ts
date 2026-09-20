@@ -31,8 +31,6 @@ import {
   resolvePublishingConflictCommandSchema,
   restorePublishingSnapshotCommandSchema,
   savePublishingDraftCommandSchema,
-  trashRestoreResultSchema,
-  trashedWorkPageSchema,
   workDraftIdSchema,
   workPublishingFailureCodeSchema,
   workSubmissionCommandSchema,
@@ -65,8 +63,6 @@ import type {
   ResolvePublishingConflictCommand,
   RestorePublishingSnapshotCommand,
   SavePublishingDraftCommand,
-  TrashRestoreResult,
-  TrashedWorkPage,
   WorkPublishingFailureCode,
   WorkSubmissionCommand,
   WorkSubmissionReceipt,
@@ -794,8 +790,8 @@ export const publishingClient = {
       { signal, missingAsNull: true },
     ),
 
-  /** Moves a submitted work to the recycle bin (the existing work deletion route). */
-  trashWork: async (
+  /** Permanently deletes a submitted work (the existing work deletion route). */
+  deleteWork: async (
     workId: string,
     cmd: PublishingRequestIdentity,
     signal?: AbortSignal,
@@ -805,24 +801,4 @@ export const publishingClient = {
       body: command(requestIdentitySchema, cmd),
       signal,
     }),
-
-  listTrash: async (
-    query: PublishingPageQueryInput = {},
-    signal?: AbortSignal,
-  ): Promise<TrashedWorkPage> =>
-    request(`publishing/trash?${pageQuery(query)}`, trashedWorkPageSchema, {
-      signal,
-    }),
-
-  restoreWork: async (
-    workId: string,
-    cmd: PublishingRequestIdentity,
-    signal?: AbortSignal,
-  ): Promise<TrashRestoreResult> =>
-    post(
-      `publishing/trash/${workSegment(workId)}/restore`,
-      trashRestoreResultSchema,
-      command(requestIdentitySchema, cmd),
-      signal,
-    ),
 };

@@ -1719,7 +1719,6 @@ describe("work publishing author HTTP surface", () => {
     const page = { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
     const fake = fakePort({
       listDrafts: () => page,
-      listTrash: () => page,
       readSettings: () => settings,
       saveDraft: () => {
         throw new CommunityInputError("draft_limit");
@@ -1729,9 +1728,6 @@ describe("work publishing author HTTP surface", () => {
         draft: { ...draft, conflict: conflictCopy },
         conflict: conflictCopy,
       }),
-      restoreWork: () => {
-        throw new CommunityConflictError("The work moved on");
-      },
       readSubmissionReceipt: () => null,
       readEditableWork: () => {
         throw new CommunityNotFoundError();
@@ -1755,19 +1751,14 @@ describe("work publishing author HTTP surface", () => {
       actor,
       { page: 2, pageSize: 10 },
     ]);
-    // Restorability is decided by the service clock, as restore is.
-    expect(
-      (
-        await fetch(`${base}/v1/community/publishing/trash?page=3&pageSize=5`, {
-          headers: auth,
-        })
-      ).status,
-    ).toBe(200);
-    expect(fake.named("listTrash")[0]?.args).toEqual([
-      actor,
-      { page: 3, pageSize: 5 },
-      now,
-    ]);
+    // Removed recycle-bin routes cannot expose or restore historical rows.
+    await expectApiError(
+      await fetch(`${base}/v1/community/publishing/trash?page=3&pageSize=5`, {
+        headers: auth,
+      }),
+      404,
+      "ITEM_NOT_FOUND",
+    );
     for (const query of [
       "?page=1&page=2",
       "?extra=1",
@@ -1886,9 +1877,8 @@ describe("work publishing author HTTP surface", () => {
         `${base}/v1/community/publishing/trash/${workId}/restore`,
         json(token, { requestId: randomUUID() }),
       ),
-      409,
-      "CONFLICT",
-      "The work moved on",
+      404,
+      "ITEM_NOT_FOUND",
     );
     await expectApiError(
       await fetch(
@@ -1926,7 +1916,7 @@ describe("work publishing author HTTP surface", () => {
     );
   });
 
-  it("submits first, ensures edit derivatives only when not ready and trashes works on DELETE", async () => {
+  it("submits first, ensures edit derivatives only when not ready and permanently deletes works on DELETE", async () => {
     const receipt = {
       state: "confirmed",
       requestId: randomUUID(),
@@ -1938,7 +1928,7 @@ describe("work publishing author HTTP surface", () => {
     const fake = fakePort({
       ensureEditDerivatives: () => ({ ready: true, items: [] }),
       submit: () => receipt,
-      trashWork: () => ({ deleted: true }),
+      deleteWork: () => ({ deleted: true }),
       deleteDraft: () => ({
         result: {
           deleted: true,
@@ -1979,14 +1969,14 @@ describe("work publishing author HTTP surface", () => {
       401,
       "UNAUTHENTICATED",
     );
-    expect(fake.named("trashWork")).toHaveLength(0);
+    expect(fake.named("deleteWork")).toHaveLength(0);
     const trashed = await fetch(
       `${base}/v1/community/works/${workId}`,
       json(token, { requestId: randomUUID() }, "DELETE"),
     );
     expect(trashed.status).toBe(200);
     expect(await trashed.json()).toEqual({ deleted: true });
-    expect(fake.named("trashWork")[0]?.args.slice(0, 2)).toEqual([
+    expect(fake.named("deleteWork")[0]?.args.slice(0, 2)).toEqual([
       actor,
       workId,
     ]);

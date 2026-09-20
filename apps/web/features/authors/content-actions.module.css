@@ -1,0 +1,34 @@
+.actions {
+  flex-wrap: wrap;
+  gap: var(--yoyi-space-4);
+  padding: var(--yoyi-space-2) var(--yoyi-space-3);
+  overflow: visible;
+}
+
+.actions .action {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yoyi-space-1);
+  width: auto;
+  min-width: 48px;
+  min-height: 44px;
+  height: auto;
+  padding: var(--yoyi-space-2);
+  overflow: visible;
+}
+
+.action svg {
+  display: block;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+}
+
+.count {
+  font-size: var(--yoyi-type-metadata-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

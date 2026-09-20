@@ -32,13 +32,17 @@ describe("T02pQaHarness QA chrome", () => {
     };
   });
 
-  it("enables only Home and Calligraphy cards with either chrome setting", () => {
+  it("enables Discover, Calligraphy and Discussion Topic cards with either chrome setting", () => {
     for (const chrome of ["visible", "hidden"] as const) {
       const container = renderHarness(chrome);
-      for (const destination of ["home", "calligraphy"]) {
+      for (const selector of [
+        '[data-home-feed-panel="discover"]',
+        '[data-home-feed-panel="calligraphy"]',
+        '[data-product-panel="discussion"]',
+      ]) {
         expect(
           container.querySelectorAll(
-            `[data-product-panel="${destination}"] [data-quick-actions="enabled"]`,
+            `${selector} [data-quick-actions="enabled"]`,
           ).length,
         ).toBeGreaterThan(0);
       }

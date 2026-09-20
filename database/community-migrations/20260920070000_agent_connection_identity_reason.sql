@@ -7,7 +7,7 @@
 --    agent_connections: a connection's oauth_client_id and human_account_id
 --    remain writable by design, while everything here is frozen at consent."
 --
--- 20260920030000 froze both of those columns, so the justification now
+-- 20260920060000 froze both of those columns, so the justification now
 -- contradicts the schema it ships beside. An independent review caught it and
 -- was right to hold delivery for it: the RULE is load-bearing and must stay,
 -- and the reason is the half a reader checks. Somebody who finds the columns
@@ -25,7 +25,7 @@
 COMMENT ON TABLE community.agent_connection_grants IS
   'Immutable consent snapshot, one row per provider grant. AUTHORIZATION MUST '
   'READ IDENTITY FROM THIS ROW, NEVER FROM agent_connections. The reason is '
-  'not that the connection is mutable -- since 20260920030000 its identity '
+  'not that the connection is mutable -- since 20260920060000 its identity '
   'columns are frozen too -- but that a connection is a LIVING row spanning '
   'generations while each grant is frozen at its own consent. A reconnect '
   'mints a new grant and keeps the connection, so the two legitimately '

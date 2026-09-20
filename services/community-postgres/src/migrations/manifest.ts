@@ -153,20 +153,26 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
     }),
     Object.freeze({
       migrationId: "20260920020000",
-      filename: "20260920020000_agent_connection_consent.sql",
+      filename: "20260920020000_profile_background_and_permanent_media.sql",
+      checksum:
+        "231cfa57b254a7d8ad07246957d4a533018ab671fc1b0291c56b6d0115030d5a",
+    }),
+    Object.freeze({
+      migrationId: "20260920050000",
+      filename: "20260920050000_agent_connection_consent.sql",
       checksum:
         "275c00b664f741e509271a3c0eddefb4005b1287906fba121c4383ab56cdab8e",
     }),
     Object.freeze({
-      migrationId: "20260920030000",
-      filename: "20260920030000_agent_connection_identity_frozen.sql",
+      migrationId: "20260920060000",
+      filename: "20260920060000_agent_connection_identity_frozen.sql",
       checksum:
         "935dd22ad52adbfd41472a278156cb2c5ea14c778847fafcf2235d9ab9f175d5",
     }),
     Object.freeze({
-      migrationId: "20260920040000",
-      filename: "20260920040000_agent_connection_identity_reason.sql",
+      migrationId: "20260920070000",
+      filename: "20260920070000_agent_connection_identity_reason.sql",
       checksum:
-        "97495a44ecbbbd21650c37ed5ef900b015b8c122e8824ac6a4fe13f29e9ad02b",
+        "cf8c097f58714c7b89973a5963e159bae2e980db39c1b759fee614054f4187f4",
     }),
   ]);

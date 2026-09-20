@@ -109,9 +109,6 @@ export {
   savePublishingDraftCommandSchema,
   standardComponentOutcomeSchema,
   storedPublishingTextSchema,
-  trashRestoreResultSchema,
-  trashedWorkPageSchema,
-  trashedWorkSchema,
   workAuthorshipKindSchema,
   workAuthorshipSchema,
   workCoverSrcSchema,
@@ -187,9 +184,6 @@ export type {
   RestorePublishingSnapshotCommand,
   SavePublishingDraftCommand,
   StandardComponentOutcome,
-  TrashRestoreResult,
-  TrashedWork,
-  TrashedWorkPage,
   WorkAuthorship,
   WorkAuthorshipKind,
   WorkDraftContent,
@@ -282,6 +276,8 @@ export const catalogSummarySchema = z.strictObject({
   aliases: z.array(aliasSchema),
   summary: summarySchema.optional(),
   periodLabel: exactTextSchema(200).optional(),
+  /** Authoritative Catalog province; omitted when no value was supplied. */
+  province: exactTextSchema(500).optional(),
   representativeMedia: publicMediaSchema.optional(),
 });
 
@@ -680,6 +676,7 @@ export const authorProfileSchema = z.strictObject({
   displayName: authorText(40),
   bio: authorText(500),
   avatar: authorMediaSchema.nullable(),
+  background: authorMediaSchema.nullable().optional(),
   isOwner: z.boolean(),
   following: z.boolean(),
   privacy: authorPrivacySchema,
@@ -776,6 +773,10 @@ export const privacyUpdateSchema = z.strictObject({
   privacy: authorPrivacySchema,
 });
 export const avatarUpdateSchema = z.strictObject({ requestId, mediaId });
+export const backgroundUpdateSchema = z.strictObject({
+  requestId,
+  mediaId: mediaId.nullable(),
+});
 export const relationshipUpdateSchema = z.strictObject({
   requestId,
   targetId: userId,
@@ -813,6 +814,7 @@ export type AuthorListQuery = z.infer<typeof authorListQuerySchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 export type PrivacyUpdate = z.infer<typeof privacyUpdateSchema>;
 export type AvatarUpdate = z.infer<typeof avatarUpdateSchema>;
+export type BackgroundUpdate = z.infer<typeof backgroundUpdateSchema>;
 export type RelationshipUpdate = z.infer<typeof relationshipUpdateSchema>;
 export type ContentRelationUpdate = z.infer<typeof contentRelationUpdateSchema>;
 export type GuestFavoriteMerge = z.infer<typeof guestFavoriteMergeSchema>;
@@ -894,6 +896,8 @@ export type OwnComment = z.infer<typeof ownCommentSchema>;
 
 export const contentCardSchema = z.strictObject({
   aliases: catalogSummarySchema.shape.aliases,
+  /** Present only for official Catalog content with a known province. */
+  province: catalogSummarySchema.shape.province,
   target: contentIdentitySchema,
   /** Empty for an untitled work; the UI never invents a title. */
   title: authorText(500),
@@ -978,7 +982,10 @@ export const contentStateQuerySchema = z.strictObject({
 export const contentStateSchema = z.strictObject({
   favorite: z.boolean(),
   liked: z.boolean(),
+  favoriteCount: z.number().int().nonnegative(),
+  likeCount: z.number().int().nonnegative(),
 });
+export type ContentState = z.infer<typeof contentStateSchema>;
 export type ContentCard = z.infer<typeof contentCardSchema>;
 export type DiscoveryQuery = z.infer<typeof discoveryQuerySchema>;
 export type DiscoveryPage = z.infer<typeof discoveryPageSchema>;

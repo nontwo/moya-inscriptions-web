@@ -858,7 +858,25 @@ export const registerPhase4AuthorTests = (
           "其他作者保留的回复",
           root.id,
         );
-      await discussion.deleteDiscussionBody(a, root.id, randomUUID());
+      const deletionRequest = randomUUID();
+      await discussion.deleteDiscussionBody(a, root.id, deletionRequest);
+      await discussion.deleteDiscussionBody(a, root.id, deletionRequest);
+      expect(
+        (
+          await pool.query(
+            "SELECT text,body_deleted_at IS NOT NULL AS deleted FROM community.catalog_comments WHERE id=$1",
+            [root.id],
+          )
+        ).rows,
+      ).toEqual([{ text: "This comment has been deleted", deleted: true }]);
+      expect(
+        (
+          await pool.query(
+            "SELECT text,body_deleted_at FROM community.catalog_comment_replies WHERE id=$1",
+            [reply.id],
+          )
+        ).rows,
+      ).toEqual([{ text: "其他作者保留的回复", body_deleted_at: null }]);
       const page = await discussion.readDiscussion(target, b, query);
       expect(page.items[0]?.text).toBe("This comment has been deleted");
       expect(page.items[0]?.replies[0]?.id).toBe(reply.id);
@@ -1087,7 +1105,7 @@ export const registerPhase4AuthorTests = (
         title: "更新",
         available: false,
       });
-      await publishing.trashWork(
+      await publishing.deleteWork(
         a,
         work,
         { requestId: randomUUID() },
