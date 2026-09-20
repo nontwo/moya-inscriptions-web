@@ -293,6 +293,26 @@ describe("task routing follows the complete changed-path set", () => {
     ],
     [["services/api/package.json"], { web: true, cms: true, scope: "smoke" }],
     [
+      ["services/agent-authorization/src/provider.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["services/agent-authorization/package.json"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["services/agent-authorization/tsconfig.json"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      [
+        "apps/admin/src/agent-connections/consent.ts",
+        "services/agent-authorization/src/server.ts",
+      ],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [["services/agent-authorization/README.md"], {}],
+    [
       ["services/catalog-postgres/src/adapter.ts"],
       { web: true, cms: true, scope: "smoke" },
     ],
@@ -361,6 +381,34 @@ describe("task routing follows the complete changed-path set", () => {
       assert.throws(() => classifyTask([`scripts/${name}-extra.mjs`]));
       assert.throws(() => classifyTask([`scripts/nested/${name}.mjs`]));
     }
+  });
+
+  it("routes the authorization runtime to Web and its Admin integration checks", () => {
+    // The exact set the classifier refused at 589ac38.
+    const paths = [
+      "services/agent-authorization/package.json",
+      "services/agent-authorization/src/config.ts",
+      "services/agent-authorization/src/index.ts",
+      "services/agent-authorization/src/main.ts",
+      "services/agent-authorization/src/provider.ts",
+      "services/agent-authorization/src/server.ts",
+      "services/agent-authorization/src/wrap.ts",
+      "services/agent-authorization/tsconfig.json",
+    ];
+    for (const event of ["pull_request", "push", "local"])
+      assert.deepEqual(
+        flags(classifyTask(paths, event)),
+        expectedFlags({ web: true, cms: true, scope: "smoke" }),
+      );
+    // One directory is registered, not a services/ wildcard: a sibling whose
+    // name merely starts with the same characters is still unmapped.
+    for (const file of [
+      "services/agent-authorization.ts",
+      "services/agent-authorization-extra/src/index.ts",
+      "services/agent-relay/src/index.ts",
+      "services/agent-authorization2/package.json",
+    ])
+      assert.throws(() => classifyTask([file]));
   });
 
   it("does not truncate long diffs or let metadata change the selected checks", () => {

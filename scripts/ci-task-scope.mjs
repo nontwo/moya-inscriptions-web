@@ -31,6 +31,7 @@ const webRoots = [
   "packages/image/",
   "packages/search/",
   "packages/ui/",
+  "services/agent-authorization/",
   "services/api/",
   "services/backend-production/",
   "services/backend-runtime/",
@@ -182,6 +183,12 @@ export function classifyTask(paths, event = "pull_request") {
       plan.web = true;
       if (
         file.startsWith("apps/admin/") ||
+        // The authorization runtime carries no checks of its own. The Web jobs
+        // lint, type-check and build it through the root turbo tasks, and its
+        // Admin consent and MCP integration is exercised by the cms job's
+        // Payload and Owner-browser stages, so a change isolated to this
+        // service keeps the integration coverage it needs.
+        file.startsWith("services/agent-authorization/") ||
         file.startsWith("tests/cms/") ||
         file.startsWith("scripts/editorial/") ||
         cmsTestTarget.has(file) ||
