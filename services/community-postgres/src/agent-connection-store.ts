@@ -175,12 +175,18 @@ const DESTROY_STATUSES = new Set([
 ]);
 
 /**
+ * The row primitives below are `export`ed so the sibling consent store parses
+ * its rows with the SAME rules rather than a second, subtly different copy.
+ * They are NOT part of the package surface: `src/index.ts` does not re-export
+ * them, so widening them is a deliberate act in one place.
+ */
+/**
  * `BIGINT` arrives from node-postgres as a STRING, and the consented shape
  * wants a `number` — zod rejects `"3"` outright. Converting is not enough:
  * a value past `Number.MAX_SAFE_INTEGER` would convert silently and compare
  * wrongly forever after, so it is refused instead.
  */
-const bigintToNumber = (value: unknown, column: string): number => {
+export const bigintToNumber = (value: unknown, column: string): number => {
   if (typeof value === "number" && Number.isSafeInteger(value)) return value;
   if (typeof value !== "string")
     throw new AgentConnectionRowError("NOT_A_BIGINT", column);
@@ -193,7 +199,10 @@ const bigintToNumber = (value: unknown, column: string): number => {
 };
 
 /** `TIMESTAMPTZ` arrives as a `Date`; the consented shape wants an offset ISO string. */
-const instantOrNull = (value: unknown, column: string): string | null => {
+export const instantOrNull = (
+  value: unknown,
+  column: string,
+): string | null => {
   if (value === null || value === undefined) return null;
   if (!(value instanceof Date))
     throw new AgentConnectionRowError("NOT_A_TIMESTAMP", column);
@@ -203,14 +212,14 @@ const instantOrNull = (value: unknown, column: string): string | null => {
   return value.toISOString();
 };
 
-const instant = (value: unknown, column: string): string => {
+export const instant = (value: unknown, column: string): string => {
   const parsed = instantOrNull(value, column);
   if (parsed === null)
     throw new AgentConnectionRowError("TIMESTAMP_REQUIRED", column);
   return parsed;
 };
 
-const text = (value: unknown, column: string): string => {
+export const text = (value: unknown, column: string): string => {
   if (typeof value !== "string" || value.length === 0)
     throw new AgentConnectionRowError("NOT_TEXT", column);
   return value;
@@ -235,7 +244,11 @@ const shaped = (value: unknown, pattern: RegExp, column: string): string => {
   return parsed;
 };
 
-const boundedBytes = (value: unknown, max: number, column: string): string => {
+export const boundedBytes = (
+  value: unknown,
+  max: number,
+  column: string,
+): string => {
   const parsed = text(value, column);
   if (new TextEncoder().encode(parsed).length > max)
     throw new AgentConnectionRowError("TOO_MANY_BYTES", column);
@@ -249,7 +262,7 @@ const boundedBytes = (value: unknown, max: number, column: string): string => {
   return parsed;
 };
 
-const member = <T extends string>(
+export const member = <T extends string>(
   value: unknown,
   allowed: ReadonlySet<string>,
   column: string,
@@ -260,7 +273,10 @@ const member = <T extends string>(
   return parsed as T;
 };
 
-const textArray = (value: unknown, column: string): readonly string[] => {
+export const textArray = (
+  value: unknown,
+  column: string,
+): readonly string[] => {
   if (!Array.isArray(value))
     throw new AgentConnectionRowError("NOT_AN_ARRAY", column);
   return value.map((entry, index) => text(entry, `${column}[${index}]`));
@@ -381,7 +397,7 @@ export interface AgentConnectionStoreOptions {
   readonly pool: Queryable;
 }
 
-const SQLSTATE_INVARIANT = new Set([
+export const SQLSTATE_INVARIANT = new Set([
   // BEFORE UPDATE triggers: the freezes, the monotonic guard, consume-once.
   "23001",
   // CHECK constraints: the id and label shapes, the enums, the CASE couplings.
@@ -394,7 +410,7 @@ const SQLSTATE_INVARIANT = new Set([
   "23503",
 ]);
 
-const asInvariant = (error: unknown): never => {
+export const asInvariant = (error: unknown): never => {
   const sqlState =
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code?: unknown }).code)

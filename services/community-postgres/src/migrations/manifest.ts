@@ -151,4 +151,10 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "65584b1a8000ad2879e98daade02e43d0c706ec479036bbb0d5f7378ade84a37",
     }),
+    Object.freeze({
+      migrationId: "20260920020000",
+      filename: "20260920020000_agent_connection_consent.sql",
+      checksum:
+        "146ef62d2569fd7a8ae54ded6e09c9846a18ef14f5f1d51d1f97f3259c96c395",
+    }),
   ]);

@@ -111,6 +111,9 @@ export const registerAgentConnectionTests = (
       // Own tables only, in foreign-key order. `current_grant_id` is now a
       // real foreign key, so the pointer is released before the grants it
       // points at are removed.
+      // A consent references its connection, so this leaf goes before the
+      // connection does, exactly like the wrappers below it.
+      await pool.query("DELETE FROM community.agent_connection_consents");
       await pool.query("DELETE FROM community.agent_connection_wrappers");
       await pool.query(
         "UPDATE community.agent_connections SET current_grant_id=NULL",

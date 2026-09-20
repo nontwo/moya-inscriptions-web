@@ -40,6 +40,18 @@ export {
   parseConnectionRow,
   parseGrantRow,
 } from "./agent-connection-store.js";
+export {
+  createConsentStore,
+  parseConsentRow,
+} from "./agent-connection-consents.js";
+export type {
+  ConsentDecision,
+  ConsentOpening,
+  ConsentPreset,
+  ConsentStore,
+  ConsentStoreOptions,
+  StoredConsent,
+} from "./agent-connection-consents.js";
 export { createGrantDestroyer } from "./agent-connection-grant-destruction.js";
 export type {
   GrantDestroyer,

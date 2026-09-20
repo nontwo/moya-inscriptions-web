@@ -310,6 +310,9 @@ export const registerAgentConnectionTenStepTests = (
       await pool.query(
         "DELETE FROM community.agent_connection_provider_artifacts",
       );
+      // A consent references its connection, so this leaf goes before the
+      // connection does, exactly like the wrappers below it.
+      await pool.query("DELETE FROM community.agent_connection_consents");
       await pool.query("DELETE FROM community.agent_connection_wrappers");
       await pool.query(
         "UPDATE community.agent_connections SET current_grant_id=NULL",
