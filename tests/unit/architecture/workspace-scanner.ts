@@ -896,9 +896,14 @@ export const isAuthorizedCmsServerFile = (
     // restricted principal and answer the Payload MCP plugin — and they are
     // named one by one rather than by directory, so a browser module added
     // under the same folder later does not inherit the allowance.
-    /^src\/agent-connections\/(?:admission|authority|authorization|composition|contracts|index|lifecycle)\.ts$/.test(
+    /^src\/agent-connections\/(?:admission|authority|authorization|composition|consent|contracts|endpoints|index|lifecycle|runtime)\.ts$/.test(
       relative,
     ) ||
+    // The Owner-only consent and connection views. Server components: they
+    // authenticate the Payload session, arm an interaction and render from
+    // the row the provider wrote. The browser halves are separate files with
+    // their own "use client" directive and no server import.
+    relative === "src/agent-connections/View.tsx" ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
@@ -938,7 +943,13 @@ const isOwnerWorkflowTypes = (
         "src/media/CatalogOwnershipField.tsx",
         "src/media/OriginalMediaMetadataField.tsx",
       ].includes(relative) &&
-        reference.specifier === "payload"))
+        reference.specifier === "payload") ||
+      // The consent form renders what the server decided the human should
+      // see, as a type only. Every value reaches it as props from the server
+      // component, and its one write crosses the same-origin Payload
+      // endpoint; it imports no consent RULE and can enforce none.
+      (relative === "src/agent-connections/consent-client.tsx" &&
+        reference.specifier === "./consent"))
   );
 };
 

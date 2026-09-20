@@ -14,6 +14,7 @@ import {
   EditorialReceipts,
   editorialEndpoints,
 } from "./src/editorial";
+import { agentConnectionEndpoints } from "./src/agent-connections/endpoints";
 import { communityEndpoints } from "./src/community/endpoints";
 import { editorialMcp } from "./src/mcp";
 import { createMediaCollection } from "./src/media/collection";
@@ -76,6 +77,21 @@ export default buildConfig({
         communityWorkSubmissions: {
           Component: "/src/community/View#WorkSubmissionsView",
           path: "/community-moderation/work-submissions",
+          exact: true,
+        },
+        // Agent Connections (Development): the Owner's own list of AI
+        // connections, and the review page the consent landing continues to.
+        // The LANDING itself is deliberately not here -- it lives outside
+        // /admin because it must render for a browser that withheld the
+        // SameSite=Strict session on the provider's cross-site redirect.
+        agentConnections: {
+          Component: "/src/agent-connections/View#AgentConnectionsView",
+          path: "/agent-connections",
+          exact: true,
+        },
+        agentConnectionsConsent: {
+          Component: "/src/agent-connections/View#AgentConsentView",
+          path: "/agent-connections/consent",
           exact: true,
         },
         communityAccountCapacity: {
@@ -182,6 +198,9 @@ export default buildConfig({
   endpoints: [
     ...editorialEndpoints,
     ...communityEndpoints,
+    // Empty unless the connection surface is composed at all; the gate is the
+    // array, not a branch inside a handler.
+    ...agentConnectionEndpoints(),
     editorialPreviewEndpoint,
   ],
   plugins: [createEditorialStoragePlugin(), editorialMcp()],

@@ -221,7 +221,11 @@ export const parseConsentRow = (
     humanAccountId:
       row.human_account_id === null || row.human_account_id === undefined
         ? null
-        : boundedBytes(row.human_account_id, ACCOUNT_MAX_BYTES, "human_account_id"),
+        : boundedBytes(
+            row.human_account_id,
+            ACCOUNT_MAX_BYTES,
+            "human_account_id",
+          ),
     oauthClientId: boundedBytes(
       row.oauth_client_id,
       CLIENT_ID_MAX_BYTES,

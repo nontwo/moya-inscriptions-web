@@ -60,6 +60,17 @@ export interface StoredConnection {
   readonly consentedAt: string | null;
 }
 
+/**
+ * A connection as the Admin page lists it: the stored state, plus the two
+ * columns the page shows and nothing else. `lastVerifiedAt` is an observation
+ * of the last authenticated request, never a claim that anything is connected
+ * right now.
+ */
+export interface ListedConnection extends VersionedStoredConnection {
+  readonly lastVerifiedAt: string | null;
+  readonly currentGrantId: string | null;
+}
+
 /** A connection with the version its state was read at. */
 export interface VersionedStoredConnection {
   readonly connection: StoredConnection;
@@ -548,6 +559,74 @@ export const createAgentConnectionStore = (
         return asInvariant(error);
       }
       const row = result.rows[0] as Record<string, unknown> | undefined;
+      return row === undefined ? null : parseConnectionRow(row);
+    },
+
+    /**
+     * The connections one human holds, newest first. What the `AI 连接` page
+     * lists, and nothing more: `last_verified_at` is the last time a request
+     * actually authenticated against this connection, which is an OBSERVATION
+     * and not a liveness claim — a page that turned it into "online" would be
+     * inventing a fact the database never recorded.
+     *
+     * Scoped by human on purpose. The Admin's Owner check already gates the
+     * endpoint; this makes a widened caller still unable to read somebody
+     * else's connections by accident.
+     */
+    async listForHuman(
+      humanAccountId: string,
+    ): Promise<readonly ListedConnection[]> {
+      const { rows } = await pool.query(
+        `SELECT ${CONNECTION_SELECT}, last_verified_at, current_grant_id
+           FROM community.agent_connections
+          WHERE human_account_id=$1
+          ORDER BY created_at DESC, id DESC
+          LIMIT 200`,
+        [humanAccountId],
+      );
+      return rows.map((entry) => {
+        const row = entry as Record<string, unknown>;
+        return {
+          ...parseConnectionRow(row),
+          lastVerifiedAt: instantOrNull(
+            row.last_verified_at,
+            "last_verified_at",
+          ),
+          currentGrantId:
+            row.current_grant_id === null || row.current_grant_id === undefined
+              ? null
+              : boundedBytes(row.current_grant_id, 256, "current_grant_id"),
+        };
+      });
+    },
+
+    /**
+     * The one connection a human holds for an exact registered client.
+     *
+     * Exact, never by family: two clients of one family are two
+     * authorizations, and matching loosely here would let a second client
+     * inherit the first one's consent. The database has no unique constraint
+     * on the pair, so more than one row is a refusal rather than a pick —
+     * silently choosing the newest is how a revoked connection gets bypassed
+     * by a duplicate nobody noticed.
+     */
+    async findForClient(
+      humanAccountId: string,
+      oauthClientId: string,
+    ): Promise<VersionedStoredConnection | null> {
+      const { rows } = await pool.query(
+        `SELECT ${CONNECTION_SELECT}
+           FROM community.agent_connections
+          WHERE human_account_id=$1 AND oauth_client_id=$2
+          LIMIT 2`,
+        [humanAccountId, oauthClientId],
+      );
+      if (rows.length > 1)
+        throw new AgentConnectionRowError(
+          "AMBIGUOUS_CLIENT_CONNECTION",
+          "oauth_client_id",
+        );
+      const row = rows[0] as Record<string, unknown> | undefined;
       return row === undefined ? null : parseConnectionRow(row);
     },
 

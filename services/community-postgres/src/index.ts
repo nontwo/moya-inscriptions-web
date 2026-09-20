@@ -79,6 +79,7 @@ export type {
   AgentConnectionStore,
   AgentConnectionStoreOptions,
   ConnectionForAuthorization,
+  ListedConnection,
   StoredConnection,
   StoredConnectionClient,
   StoredConnectionPreset,

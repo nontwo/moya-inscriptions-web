@@ -65,3 +65,33 @@ export type {
   ProviderCleanup,
   VersionedConnection,
 } from "./authority";
+export {
+  ConsentError,
+  admitReadOnlyCapabilities,
+  consentDecisionSchema,
+  consentReviewPath,
+  consentTicketsEqual,
+  describeConsent,
+  digestConsentTicket,
+  interactionUidSchema,
+  mintConsentTicket,
+  parseRegisteredClients,
+  providerResumeUrl,
+} from "./consent";
+export type {
+  ConsentDecisionRequest,
+  ConsentDisplay,
+  RegisteredClient,
+} from "./consent";
+export { agentConnectionEndpoints, resolveConnection } from "./endpoints";
+export {
+  AUTHORIZATION_CLIENTS_SETTING,
+  AUTHORIZATION_ISSUER_SETTING,
+  AUTHORIZATION_RESOURCE_SETTING,
+  CONSENT_DATABASE_SETTING,
+  ConsentRuntimeError,
+  consentRuntime,
+  createConsentRuntime,
+  resetConsentRuntime,
+} from "./runtime";
+export type { ConsentRuntime } from "./runtime";

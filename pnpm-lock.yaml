@@ -57,6 +57,9 @@ importers:
       '@moya/catalog-postgres':
         specifier: workspace:*
         version: link:../../services/catalog-postgres
+      '@moya/community-postgres':
+        specifier: workspace:*
+        version: link:../../services/community-postgres
       '@moya/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

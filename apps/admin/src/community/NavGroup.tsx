@@ -43,6 +43,10 @@ const groups = [
     label: "自动化工具",
     links: [{ href: "/admin/editorial-workflow", label: "编辑批处理工作流" }],
   },
+  {
+    label: "AI 连接",
+    links: [{ href: "/admin/agent-connections", label: "AI 连接" }],
+  },
 ] as const;
 
 /** Development-only surfaces, hidden from the sidebar everywhere else. */
@@ -52,6 +56,7 @@ const developmentLinks: ReadonlySet<string> = new Set([
   "/admin/community-moderation/account-capacity",
   "/admin/community-moderation/publishing-jobs",
   "/admin/community-moderation/agent-operations",
+  "/admin/agent-connections",
 ]);
 
 export const CommunityNavGroups = ({
