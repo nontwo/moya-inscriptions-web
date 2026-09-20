@@ -7,6 +7,7 @@ import {
   PRESET_TOOLS,
   canonicalScopes,
 } from "admin/agent-connections";
+import { createResourceRuntime } from "admin/agent-connections-resource";
 import { agentAdminTools } from "admin/agent-admin-mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -77,9 +78,65 @@ describe("F1: what the repository configuration actually says", () => {
 });
 
 describe("F1: the NEW connection surface fails closed", () => {
-  it("is composed with the closed door in the shipped plugin configuration", () => {
+  it("keeps the closed door in the shipped plugin configuration, now behind the gate", () => {
+    // Until r15 this asserted the literal `connectionOverrideAuth(null)`,
+    // which was true because NOTHING was wired. The boundary is wired now, so
+    // the assertion moves to the property that mattered all along: the
+    // argument is the gated factory, and that factory answers `null` — the
+    // closed door — whenever the surface is not composed.
     const mcp = read("apps/admin/src/mcp.ts");
-    expect(mcp).toContain("connectionOverrideAuth(null)");
+    expect(mcp).toContain(
+      "overrideAuth: connectionOverrideAuth(connectionAuthDependencies())",
+    );
+    for (const environment of [
+      {},
+      { NODE_ENV: "development" },
+      { AGENT_CONNECTIONS_ENABLED: "true" },
+      { NODE_ENV: "production", AGENT_CONNECTIONS_ENABLED: "true" },
+      { NODE_ENV: "test", AGENT_CONNECTIONS_ENABLED: "true" },
+    ])
+      expect(
+        createResourceRuntime(environment as NodeJS.ProcessEnv),
+      ).toBeNull();
+  });
+
+  it("refuses to compose a resource boundary it cannot configure exactly", () => {
+    // With the gate OPEN, every missing or unsafe setting is a refusal at
+    // composition rather than a runtime branch inside a handler: the surface
+    // is absent rather than present-and-hoping.
+    const base = {
+      NODE_ENV: "development",
+      AGENT_CONNECTIONS_ENABLED: "true",
+      AGENT_AUTHORIZATION_ISSUER: "http://auth.localhost:34620",
+      AGENT_AUTHORIZATION_RESOURCE: "http://admin.localhost:3442/api/mcp",
+      AGENT_RESOURCE_DATABASE_URL: "postgresql://x@127.0.0.1:5432/synthetic",
+      AGENT_CONNECTION_WRAPPER_INDEX_KEY: "A".repeat(43) + "=",
+      AGENT_CONNECTION_WRAPPER_SEAL_KEY: "B".repeat(43) + "=",
+    };
+    for (const override of [
+      { AGENT_RESOURCE_DATABASE_URL: undefined },
+      // A resource server reaching a database somewhere else is the first
+      // step of exactly the exposure this milestone is fenced against.
+      {
+        AGENT_RESOURCE_DATABASE_URL:
+          "postgresql://x@db.example.invalid:5432/synthetic",
+      },
+      { AGENT_AUTHORIZATION_ISSUER: undefined },
+      // An issuer with a path is a DIFFERENT issuer from the one a token
+      // claims, and the mismatch surfaces only as a refused valid token.
+      { AGENT_AUTHORIZATION_ISSUER: "http://auth.localhost:34620/oauth" },
+      { AGENT_AUTHORIZATION_RESOURCE: undefined },
+      { AGENT_AUTHORIZATION_RESOURCE: "http://admin.localhost/api/mcp?a=1" },
+      // A silently generated key would make every sealed wrapper unreadable,
+      // which looks exactly like every connection being revoked at once.
+      { AGENT_CONNECTION_WRAPPER_SEAL_KEY: undefined },
+    ])
+      expect(() =>
+        createResourceRuntime({
+          ...base,
+          ...override,
+        } as unknown as NodeJS.ProcessEnv),
+      ).toThrow();
   });
 
   it("keeps the admission rule free of the web framework, which is the whole point of the split", () => {

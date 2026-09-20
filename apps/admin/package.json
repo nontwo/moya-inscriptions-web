@@ -64,6 +64,7 @@
     "./agent-connections": "./src/agent-connections/index.ts",
     "./agent-connections-admission": "./src/agent-connections/admission.ts",
     "./agent-connections-consent": "./src/agent-connections/consent.ts",
-    "./agent-connections-decide": "./src/agent-connections/decide.ts"
+    "./agent-connections-decide": "./src/agent-connections/decide.ts",
+    "./agent-connections-resource": "./src/agent-connections/resource.ts"
   }
 }

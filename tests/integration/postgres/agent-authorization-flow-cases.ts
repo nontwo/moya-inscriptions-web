@@ -7,6 +7,8 @@ import {
   ConsentError,
 } from "admin/agent-connections-consent";
 import { decideConsent } from "admin/agent-connections-decide";
+import { createResourceRuntime } from "admin/agent-connections-resource";
+import { connectionOverrideAuth } from "admin/agent-connections";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { createPostgresPool } from "@moya/catalog-postgres";
@@ -82,6 +84,24 @@ export const registerAgentAuthorizationFlowTests = (
 
     const consents = createConsentStore({ pool });
 
+    /**
+     * The RESOURCE server's boundary, composed exactly as `mcp.ts` composes
+     * it. This is `overrideAuth` — the function the Payload MCP plugin calls
+     * on EVERY protected request, not only on initialize.
+     */
+    let resource: ReturnType<typeof createResourceRuntime>;
+    const refusals: string[] = [];
+
+    /** One MCP request, as the plugin would make it. */
+    const mcpRequest = (token: string) =>
+      ({
+        headers: new Headers({ Authorization: `Bearer ${token}` }),
+      }) as never;
+
+    const legacyResolver = async () => {
+      throw new Error("the legacy API-key resolver must not be reached");
+    };
+
     let server: { close: () => Promise<void> };
     let runtime: Awaited<
       ReturnType<typeof import("admin/agent-connections").createConsentRuntime>
@@ -107,11 +127,17 @@ export const registerAgentAuthorizationFlowTests = (
         AGENT_AUTHORIZATION_CLIENTS: clients,
       } as unknown as NodeJS.ProcessEnv);
       expect(runtime).not.toBeNull();
+      resource = createResourceRuntime({
+        ...environment,
+        AGENT_RESOURCE_DATABASE_URL: process.env.TEST_DATABASE_URL,
+      } as unknown as NodeJS.ProcessEnv);
+      expect(resource).not.toBeNull();
     }, 30000);
 
     afterAll(async () => {
       await server?.close();
       await runtime?.close();
+      await resource?.close();
       await pool.query(
         "DELETE FROM community.agent_connection_provider_artifacts",
       );
@@ -313,6 +339,189 @@ export const registerAgentAuthorizationFlowTests = (
       // Spent. A replayed resume cannot produce a second grant.
       const replay = await resume(newJar(), outcome.resume);
       expect(replay?.searchParams.get("code") ?? null).toBeNull();
+    });
+
+    it("authenticates a real MCP request, and a disconnect denies the token it already holds", async () => {
+      const account = owner("mcp");
+      const { jar, uid, verifier } = await startAuthorization(
+        "artvenn:read offline_access",
+      );
+      const { outcome, connection } = await approve(uid, account);
+      const back = await resume(jar, outcome.resume);
+      const tokens = await exchange(
+        back?.searchParams.get("code") ?? "",
+        verifier,
+      );
+      const token = tokens.access_token ?? "";
+      expect(token).toMatch(/^artvenn_ct_/u);
+
+      // The boundary the plugin actually calls. `legacyResolver` throws, so a
+      // token that fell through to the API-key path would fail loudly rather
+      // than quietly becoming something else.
+      const overrideAuth = connectionOverrideAuth({
+        ...resource!,
+        recordRefusal: (code) => refusals.push(code),
+      });
+      const settings = await overrideAuth(mcpRequest(token), legacyResolver);
+
+      // A connection is never a human Owner, whatever the human who consented
+      // to it can do in the Admin.
+      expect(settings.user).toMatchObject({ role: "agent-connection" });
+      expect(settings.collections).toEqual({
+        create: false,
+        delete: false,
+        find: false,
+        update: false,
+      });
+      expect(settings.globals).toEqual({ find: false, update: false });
+      expect(settings.auth).toMatchObject({ login: false });
+
+      // Exactly the four read tools, and nothing management, editorial,
+      // Owner or key-related.
+      const granted = Object.entries(
+        settings["payload-mcp-tool"] as Record<string, boolean>,
+      )
+        .filter(([, allowed]) => allowed)
+        .map(([tool]) => tool)
+        .sort();
+      expect(granted).toEqual([
+        "artvennCommentsQuery",
+        "artvennCommentsRead",
+        "artvennContentSearch",
+        "artvennUsersFind",
+      ]);
+      // Nothing management, editorial, Owner or key-related is granted, and
+      // the camel-cased keys are what the plugin actually looks up — a map
+      // keyed by the raw snake_case name disables every tool silently.
+      for (const denied of [
+        "artvennCommentsModerate",
+        "artvennFeaturedSet",
+        "artvennOperationsPrepare",
+        "artvennOperationsExecute",
+        "artvennOperationsUndo",
+        "editorialQuery",
+        "editorialApprove",
+      ])
+        expect(
+          (settings["payload-mcp-tool"] as Record<string, boolean>)[denied] ??
+            false,
+        ).toBe(false);
+
+      // Disconnect. The canonical deny lands first and is what this boundary
+      // reads, so the token the client is ALREADY holding stops working on
+      // its next request — no clock, no token lookup, no waiting for expiry.
+      await runtime!.authority.revoke(connection.id, new Date().toISOString());
+      refusals.length = 0;
+      await expect(
+        overrideAuth(mcpRequest(token), legacyResolver),
+      ).rejects.toThrow();
+      // One shape on the wire, the real reason server-side.
+      expect(refusals).toEqual(["CONNECTION_REVOKED"]);
+    });
+
+    it("reconnects with a fresh grant, and the old access stays denied", async () => {
+      const account = owner("reconnect");
+      const overrideAuth = connectionOverrideAuth({
+        ...resource!,
+        recordRefusal: (code) => refusals.push(code),
+      });
+
+      /** One complete trip: authorize, consent, resume, exchange. */
+      const connect = async () => {
+        const started = await startAuthorization("artvenn:read offline_access");
+        const { outcome, connection } = await approve(started.uid, account);
+        const back = await resume(started.jar, outcome.resume);
+        const tokens = await exchange(
+          back?.searchParams.get("code") ?? "",
+          started.verifier,
+        );
+        expect(tokens.access_token).toMatch(/^artvenn_ct_/u);
+        return { token: tokens.access_token ?? "", connection };
+      };
+
+      const first = await connect();
+      await expect(
+        overrideAuth(mcpRequest(first.token), legacyResolver),
+      ).resolves.toBeTruthy();
+
+      await runtime!.authority.revoke(
+        first.connection.id,
+        new Date().toISOString(),
+      );
+
+      // A reconnect is a FRESH consent, not a restoration.
+      const second = await connect();
+      expect(second.connection.id).toBe(first.connection.id);
+      expect(second.token).not.toBe(first.token);
+      await expect(
+        overrideAuth(mcpRequest(second.token), legacyResolver),
+      ).resolves.toBeTruthy();
+
+      // And the old one stays dead. This is the property the whole generation
+      // design exists for: nothing was deleted, no clock was consulted, and
+      // the token from before the disconnect is simply not admitted.
+      refusals.length = 0;
+      await expect(
+        overrideAuth(mcpRequest(first.token), legacyResolver),
+      ).rejects.toThrow();
+      expect(refusals).toEqual(["CONNECTION_GENERATION_STALE"]);
+
+      // Two grants, two frozen generations, and the old one still says what
+      // it always said.
+      const { rows } = await pool.query(
+        `SELECT generation_at_consent FROM community.agent_connection_grants
+          WHERE connection_id=$1 ORDER BY generation_at_consent`,
+        [first.connection.id],
+      );
+      expect(
+        rows.map((row) =>
+          Number(
+            (row as { generation_at_consent: string }).generation_at_consent,
+          ),
+        ),
+      ).toEqual([1, 3]);
+    });
+
+    it("builds no grant at all for a consent whose connection re-consented meanwhile", async () => {
+      // The connection is still AUTHORIZED here — it simply moved on. That is
+      // the case the status and revokedAt checks cannot see, and it is the
+      // one the generation pin exists for. Without the pin the grant row is
+      // written first and only the later `setCurrentGrant` refuses, which
+      // leaves an orphan snapshot behind for a consent nobody can use.
+      const account = owner("re-consent");
+      const started = await startAuthorization("artvenn:read offline_access");
+      const stale = {
+        ...started,
+        ...(await approve(started.uid, account)),
+      };
+      expect(stale.connection.generation).toBe(0);
+      const connection = stale.connection;
+
+      // A second consent completes first, taking the connection to the next
+      // generation while the first browser is still away.
+      const fresh = await startAuthorization("artvenn:read offline_access");
+      const second = await approve(fresh.uid, account);
+      await resume(fresh.jar, second.outcome.resume);
+
+      const before = await pool.query(
+        "SELECT grant_id FROM community.agent_connection_grants WHERE connection_id=$1",
+        [connection.id],
+      );
+      const back = await resume(stale.jar, stale.outcome.resume);
+      expect(back?.searchParams.get("error")).toBe("access_denied");
+
+      const after = await pool.query(
+        "SELECT grant_id FROM community.agent_connection_grants WHERE connection_id=$1",
+        [connection.id],
+      );
+      // Not one more row. Refusing before writing is the whole difference
+      // between a check and a cleanup.
+      expect(after.rows.length).toBe(before.rows.length);
+
+      const stored = await runtime!.connections.readForAuthorization(
+        connection.id,
+      );
+      expect(stored?.grant?.generationAtConsent).toBe(2);
     });
 
     it("refuses a management request instead of narrowing it to read-only", async () => {

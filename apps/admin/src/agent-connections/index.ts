@@ -98,3 +98,12 @@ export {
   resetConsentRuntime,
 } from "./runtime";
 export type { ConsentRuntime } from "./runtime";
+export {
+  RESOURCE_DATABASE_SETTING,
+  ResourceRuntimeError,
+  connectionAuthDependencies,
+  createResourceRuntime,
+  resetResourceRuntime,
+  resourceRuntime,
+} from "./resource";
+export type { ResourceRuntime } from "./resource";
