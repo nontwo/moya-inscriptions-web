@@ -194,11 +194,26 @@ async function main() {
 
   const target = new URL(parent.href);
   target.pathname = `/${owned}`;
-  const session = await createVerificationSession(
-    target.href,
-    "moya-agent-connections-",
-    budget.sessionBudgetMs,
-  );
+  // Between `CREATE DATABASE` and the try/finally below there used to be an
+  // unguarded await, so a throw there leaked the database and never closed
+  // the control pool. An independent review pointed out that roles were safe
+  // (they are created inside the inner try) and the database was not.
+  let session;
+  try {
+    session = await createVerificationSession(
+      target.href,
+      "moya-agent-connections-",
+      budget.sessionBudgetMs,
+    );
+  } catch (error) {
+    try {
+      await control.query(`DROP DATABASE IF EXISTS "${owned}" WITH (FORCE)`);
+    } catch {
+      // The original error is the one worth reporting.
+    }
+    await closePostgresPool(control);
+    throw error;
+  }
   console.log(
     `Agent connections profile ${budget.profile}: ceiling ${budget.ceilingMs}ms (${budget.ceilingSource}); session ${budget.sessionBudgetMs}ms`,
   );
@@ -280,8 +295,13 @@ async function main() {
           ),
         );
         for (const [key, name] of Object.entries(roleNames))
+          // Both halves escaped. The generator is hex, so the literal was
+          // safe -- but an asymmetry where the identifier is escaped and the
+          // value beside it is not is exactly what somebody copies later.
           await client.query(
-            `ALTER ROLE "${name.replaceAll('"', '""')}" PASSWORD '${rolePasswords[key]}'`,
+            `ALTER ROLE "${name.replaceAll('"', '""')}" PASSWORD '${rolePasswords[
+              key
+            ].replaceAll("'", "''")}'`,
           );
       } finally {
         client.release();
@@ -519,20 +539,23 @@ async function main() {
       // with the grant file's synthetic passwords, against the developer's
       // own cluster. Owned objects go first, because a role that still owns
       // something cannot be dropped.
-      for (const name of Object.values(roleNames)) {
-        const quoted = `"${name.replaceAll('"', '""')}"`;
-        try {
-          const scoped = createPostgresPool(
-            parsePostgresConfig({ DATABASE_URL: target.href }),
-          );
+      // `DROP OWNED BY` succeeds for a role that owns nothing, so a bare
+      // catch here would only ever hide a real failure -- which is what an
+      // earlier version did, with a comment claiming the opposite. A failure
+      // is recorded; the later `DROP ROLE` is what would then fail loudly.
+      const scoped = createPostgresPool(
+        parsePostgresConfig({ DATABASE_URL: target.href }),
+      );
+      try {
+        for (const name of Object.values(roleNames)) {
           try {
-            await scoped.query(`DROP OWNED BY ${quoted}`);
-          } finally {
-            await closePostgresPool(scoped);
+            await scoped.query(`DROP OWNED BY "${name.replaceAll('"', '""')}"`);
+          } catch {
+            operationError ??= new Error("HARNESS_ROLE_CLEANUP_FAILED");
           }
-        } catch {
-          // A role that never got as far as owning anything is already fine.
         }
+      } finally {
+        await closePostgresPool(scoped);
       }
       try {
         await control.query(`DROP DATABASE IF EXISTS "${owned}" WITH (FORCE)`);

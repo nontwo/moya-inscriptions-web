@@ -267,11 +267,15 @@ export const registerAgentConnectionStoreTests = (
             principalLabel: "agent-privileged",
           }),
         ).rejects.toMatchObject({ sqlState: "23001" });
-        // Everything else about the row still moves; only the identity is held.
+        // Everything the LIFECYCLE moves still moves; only identity is held.
+        // `environment` used to be the control here and became frozen in r15,
+        // so the control is now a column a real transition actually writes.
         expect(
           await store.compareAndSet(fields.id, 1, {
             ...fields,
-            environment: "qa",
+            status: "revoked",
+            revokedAt: new Date().toISOString(),
+            generation: 2,
           }),
         ).not.toBeNull();
       });
@@ -310,36 +314,46 @@ export const registerAgentConnectionStoreTests = (
         });
       });
 
-      it("keeps the frozen identity after the connection's own identity is rewritten", async () => {
+      it("reads identity from the grant even when the connection says something else", async () => {
+        // The property is unchanged since r14: authorization takes identity
+        // from the FROZEN grant, never from the connection row. The mechanism
+        // had to change, and the reason is worth recording.
+        //
+        // This used to prove it by REWRITING the connection's identity
+        // columns, which r13's own COMMENT ON TABLE described as writable by
+        // design. r15 froze them — closing the provider's forged-consent path
+        // meant granting the control plane a column list wide enough for
+        // `compareAndSet`, and `human_account_id` is the only key the Owner's
+        // disconnect is scoped by. So the rewrite is no longer possible, which
+        // is strictly safer and makes this test's old mechanism unavailable.
+        //
+        // The disagreement is therefore built rather than created: the
+        // connection carries one identity from the moment it is opened, the
+        // grant carries another, and the read must return the grant's.
         const fields = connectionFields({
           status: "authorized",
           generation: 1,
           consentedAt: new Date().toISOString(),
         });
         await store.create(fields);
-        await addGrant("g-auth-2", fields.id, 1);
+        await addGrant("g-auth-2", fields.id, 1, {
+          clientId: "artvenn-frozen-client",
+          subject: "user-who-consented",
+        });
         await pool.query(
           "UPDATE community.agent_connections SET current_grant_id=$2 WHERE id=$1",
           [fields.id, "g-auth-2"],
         );
 
-        // The hole this read exists to close. `agent_connections.oauth_client_id`
-        // and `human_account_id` are writable by design and no trigger freezes
-        // them, which is why the r13 migration's own COMMENT ON TABLE says
-        // authorization must take identity from the grant row.
-        await pool.query(
-          `UPDATE community.agent_connections
-              SET oauth_client_id='attacker-client', human_account_id='user-other'
-            WHERE id=$1`,
-          [fields.id],
-        );
-
         const read = await store.readForAuthorization(fields.id);
-        expect(read?.connection.oauthClientId).toBe("attacker-client");
-        expect(read?.connection.humanAccountId).toBe("user-other");
-        // Unmoved, because the grant is frozen.
-        expect(read?.grant?.oauthClientId).toBe("artvenn-claude-01");
-        expect(read?.grant?.humanSubject).toBe("user-owner");
+        // The connection says one thing...
+        expect(read?.connection.oauthClientId).toBe("artvenn-claude-01");
+        expect(read?.connection.humanAccountId).toBe("user-owner");
+        // ...and the frozen grant, which is what authorization reads, says
+        // the other. r14's column-collision defect made these agree by
+        // silently overwriting the connection's values with the grant's.
+        expect(read?.grant?.oauthClientId).toBe("artvenn-frozen-client");
+        expect(read?.grant?.humanSubject).toBe("user-who-consented");
       });
 
       it("reports a connection with no current grant as present-but-ungranted", async () => {

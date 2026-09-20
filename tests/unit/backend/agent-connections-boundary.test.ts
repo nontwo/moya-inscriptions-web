@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -184,12 +184,21 @@ describe("F1: the NEW connection surface fails closed", () => {
           path.posix.dirname(relative),
           reference.specifier,
         );
+        // `${base}` is tested AFTER the index forms on purpose: a relative
+        // import of a directory would otherwise resolve to the directory
+        // itself and `read()` would throw EISDIR. No such import exists
+        // today, which is exactly why the order is easy to get wrong.
         const next = [
           `${base}.ts`,
           `${base}.tsx`,
-          base,
           `${base}/index.ts`,
-        ].find((candidate) => existsSync(path.join(root, candidate)));
+          `${base}/index.tsx`,
+          base,
+        ].find(
+          (candidate) =>
+            existsSync(path.join(root, candidate)) &&
+            !statSync(path.join(root, candidate)).isDirectory(),
+        );
         if (next !== undefined) pending.push(next);
       }
     }

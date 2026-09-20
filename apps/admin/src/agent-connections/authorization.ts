@@ -75,6 +75,17 @@ export interface ConnectionAuthDependencies {
   readonly environment: string;
   /** Server-side refusal diagnostics. Receives a bare code, never a token. */
   readonly recordRefusal?: (code: string) => void;
+  /**
+   * Records that a request ACTUALLY authenticated, after admission and never
+   * before it. The `AI 连接` page shows this as an observation, so stamping a
+   * request that was then refused would make the page say something untrue.
+   *
+   * Fire-and-forget by contract: a failure to record must not refuse a valid
+   * request. Until r15 nothing supplied this and nothing wrote the column, so
+   * the page's "last observed" row was permanently empty — an independent
+   * review found the grant for it was dead too.
+   */
+  readonly recordVerified?: (connectionId: string) => void;
 }
 
 const BEARER = /^bearer[ \t]+/iu;
@@ -146,6 +157,13 @@ export const connectionAuth =
           environment: dependencies.environment,
         },
       );
+      // Admission succeeded, so this request really did authenticate. After
+      // the decision, never before it.
+      try {
+        dependencies.recordVerified?.(connection.id);
+      } catch {
+        // An observation that throws must not refuse an admitted request.
+      }
       return {
         user: connectionUser(connection),
         // Nothing but the agent tools. Collections, globals, config, jobs and

@@ -528,6 +528,50 @@ export const registerAgentConnectionConsentTests = (
         ).toEqual({ ok: true });
       });
 
+      it("cannot move a connection out of its owner's reach, even holding the column", async () => {
+        // A consequence of the F1 fix that an independent review caught: the
+        // consent role's UPDATE list had to grow to thirteen columns because
+        // `compareAndSet` round-trips the whole consented shape, and four of
+        // the new ones had no backstop.
+        //
+        // `human_account_id` is the worst of them. It is the ONLY key the
+        // Owner's disconnect is scoped by, and authentication reads identity
+        // from the FROZEN grant — so moving it would not break a single
+        // request. It would produce a live, authenticating connection that had
+        // vanished from its owner's page and from their disconnect scope: a
+        // token the human who consented can no longer revoke.
+        const connection = await openConnection();
+        for (const [column, value] of [
+          ["human_account_id", "'user-somebody-else'"],
+          ["oauth_client_id", "'a-different-client'"],
+          ["client_family", "'codex'"],
+          ["environment", "'production'"],
+        ])
+          expect(
+            await asRole(
+              consentRole,
+              `UPDATE community.agent_connections SET ${column}=${value}
+                WHERE id=$1`,
+              [connection.id],
+            ),
+          ).toEqual({ ok: false, sqlState: "23001" });
+
+        // 23001, not 42501: the role DOES hold these columns, and the trigger
+        // is what refuses. That distinction is the finding — a test asserting
+        // a bare refusal would have passed before the freeze existed.
+        // Meanwhile a real transition still works.
+        expect(
+          await asRole(
+            consentRole,
+            `UPDATE community.agent_connections
+                SET status='authorized', generation=generation+1,
+                    consented_at=CURRENT_TIMESTAMP, version=version+1
+              WHERE id=$1`,
+            [connection.id],
+          ),
+        ).toEqual({ ok: true });
+      });
+
       it("grants each role exactly the half it needs, so neither is merely locked out", async () => {
         // The negative controls above are only meaningful if the positives
         // work: a role denied everything would pass all of them.

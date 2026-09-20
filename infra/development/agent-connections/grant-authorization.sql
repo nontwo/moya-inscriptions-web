@@ -8,9 +8,9 @@
 --    this shared App role ... That role does not exist yet because the service
 --    does not, and the day it lands this file stops being the whole grant plan."
 --
--- The service landed. This is the rest of the plan, and it splits into TWO
--- roles rather than one, because the authorization path has two halves that
--- must not be able to do each other's job:
+-- The service landed. This is the rest of the plan, and it splits into THREE
+-- roles rather than one, because the path has three parts that must not be
+-- able to do each other's job:
 --
 --   provider role  -- the OAuth provider. Owns the protocol's own storage and
 --                     mints tokens. Never sees an Owner session, and cannot
@@ -21,13 +21,15 @@
 --                     its grant and a wrapper, and stamp when a request last
 --                     authenticated. Cannot consent, mint or revoke.
 --
--- Neither is a superuser and neither is the migration account.
+-- None is a superuser and none is the migration account.
 --
--- Run as the database owner, after the community migrations, having named the
--- two roles first:
+-- Run as the database owner, after the community migrations, having named all
+-- THREE roles first. `current_setting` has no default here on purpose: a
+-- missing name raises 42704 rather than silently granting nothing.
 --
 --   SELECT set_config('agent_connections.provider_role', 'yoyi_dev_auth', false);
 --   SELECT set_config('agent_connections.consent_role',  'yoyi_dev_consent', false);
+--   SELECT set_config('agent_connections.resource_role', 'yoyi_dev_resource', false);
 --
 -- The whole file is ONE plain DO block on purpose. A psql-only spelling with
 -- \gexec or :'variables' could not be executed by a driver, which would mean
@@ -169,7 +171,7 @@ BEGIN
   EXECUTE format(
     'GRANT INSERT (id, human_account_id, client_family, oauth_client_id,
                    environment, principal_label, preset, status, generation,
-                   version, created_at, consented_at, revoked_at)
+                   consented_at, revoked_at)
        ON TABLE community.agent_connections TO %I', consent_role);
   -- The column list matches what `compareAndSet` actually writes: the store
   -- round-trips the whole consented shape under one conditional UPDATE, so a
@@ -222,6 +224,16 @@ BEGIN
   --   * current_grant_id -- the provider's column. The control plane must not
   --                         be able to re-point a connection at a grant it did
   --                         not create.
+  --   * last_verified_at -- the resource server's column, and an observation
+  --                         rather than a decision.
+  --
+  -- HELD BUT FROZEN, which is a different and weaker statement: the UPDATE
+  -- list above includes human_account_id, oauth_client_id, client_family and
+  -- environment, because `compareAndSet` round-trips the whole consented
+  -- shape. Migration 20260920030000 freezes all four in the table's own
+  -- trigger, so holding the privilege is not the same as being able to use
+  -- it. Without that migration this grant would let the control plane move a
+  -- live connection out of its owner's disconnect scope.
   --   * INSERT/UPDATE on agent_connection_grants -- it cannot forge a consent
   --                         snapshot.
   --   * agent_connection_wrappers and _provider_artifacts -- no grant at all.

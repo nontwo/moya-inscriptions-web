@@ -510,11 +510,15 @@ export const registerAgentConnectionTests = (
         });
       });
 
-      it("refuses an unknown preset, status or client family", async () => {
+      it("refuses an unknown preset or status", async () => {
+        // `client_family` left this list in r15 for the same reason
+        // `principal_label` left it in r14: the column is frozen now, so an
+        // UPDATE meets the trigger FIRST and never reaches the CHECK. The
+        // INSERT case below keeps the CHECK witnessed on the only path that
+        // can still set it.
         for (const [column, value] of [
           ["preset", "superuser"],
           ["status", "half-authorized"],
-          ["client_family", "some-other-vendor"],
         ] as const)
           await expect(
             pool.query(
@@ -523,6 +527,43 @@ export const registerAgentConnectionTests = (
             ),
             `${column} accepted ${value}`,
           ).rejects.toMatchObject({ code: "23514" });
+      });
+
+      it("freezes the four identity columns, and still refuses an unknown family on INSERT", async () => {
+        // r15: closing the provider's forged-consent path meant giving the
+        // control plane a column grant wide enough for `compareAndSet`, which
+        // round-trips the whole consented shape. These four are held and
+        // frozen rather than withheld, so the refusal is 23001 and not 42501.
+        //
+        // `human_account_id` is the one that matters most: authentication
+        // reads identity from the FROZEN grant, so moving it would break no
+        // request at all — it would simply take a live, authenticating
+        // connection out of its owner's disconnect scope.
+        for (const [column, value] of [
+          ["human_account_id", "user-somebody-else"],
+          ["oauth_client_id", "a-different-client"],
+          ["client_family", "codex"],
+          ["environment", "production"],
+        ] as const)
+          await expect(
+            pool.query(
+              `UPDATE community.agent_connections SET ${column}=$2 WHERE id=$1`,
+              [connection, value],
+            ),
+            `${column} accepted ${value}`,
+          ).rejects.toMatchObject({ code: "23001" });
+
+        // The CHECK still guards the path that can set the column.
+        await expect(
+          pool.query(
+            `INSERT INTO community.agent_connections
+               (id, human_account_id, client_family, oauth_client_id,
+                environment, principal_label, preset, status)
+             VALUES ($1,'user-owner','some-other-vendor','c1','development',
+                     'agent-family','read-only','awaiting-consent')`,
+            [`conn-${"b".repeat(32)}`],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
       });
 
       it("refuses a bad principal shape on INSERT, and any principal change at all on UPDATE", async () => {

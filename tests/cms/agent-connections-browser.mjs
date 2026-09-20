@@ -323,6 +323,23 @@ try {
   stage = "revoked-token-denied";
   await page.goto(`${origin}/admin/agent-connections`);
   await page.locator("[data-agent-connections]").waitFor({ state: "visible" });
+  // The page's "last observed authenticated request" must now say something,
+  // because requests have authenticated. Until r15 nothing wrote that column
+  // and this cell was permanently 尚未观察到 — a grant nobody exercised and a
+  // row that could never be true.
+  await page
+    .locator("[data-agent-connection-last-verified]")
+    .first()
+    .waitFor({ state: "visible" });
+  assert.notEqual(
+    (
+      await page
+        .locator("[data-agent-connection-last-verified]")
+        .first()
+        .innerText()
+    ).trim(),
+    "尚未观察到",
+  );
   const disconnect = page.locator("[data-agent-connection-disconnect]").first();
   await disconnect.waitFor({ state: "visible" });
   await disconnect.click();

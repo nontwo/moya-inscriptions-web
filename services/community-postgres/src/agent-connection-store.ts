@@ -643,6 +643,26 @@ export const createAgentConnectionStore = (
     },
 
     /**
+     * Stamps when a request last actually authenticated against a connection.
+     * The RESOURCE role's only write, and the only column it holds.
+     *
+     * An observation, not a decision: nothing reads it back to admit
+     * anything, and the page renders it as "last observed" rather than as a
+     * liveness claim. Deliberately unconditional on status — recording that a
+     * request authenticated is a fact about the past, and filtering it would
+     * make a revoked connection's last sighting disappear.
+     */
+    async markVerified(connectionId: string): Promise<boolean> {
+      const { rowCount } = await pool.query(
+        `UPDATE community.agent_connections
+            SET last_verified_at=CURRENT_TIMESTAMP
+          WHERE id=$1`,
+        [connectionId],
+      );
+      return rowCount === 1;
+    },
+
+    /**
      * The connections one human holds, newest first. What the `AI 连接` page
      * lists, and nothing more: `last_verified_at` is the last time a request
      * actually authenticated against this connection, which is an OBSERVATION

@@ -189,6 +189,15 @@ export const createResourceRuntime = (
     // the composition root never supplied one. A bare code, never a token.
     recordRefusal: (code: string) =>
       process.stderr.write(`agent-connection refused: ${code}\n`),
+    // The one column this role may write, and until r15 nothing wrote it:
+    // the page's "last observed authenticated request" was permanently empty
+    // and the grant for it was dead. Fire-and-forget, and never before
+    // admission -- an observation must not claim a request that was refused.
+    recordVerified: (connectionId: string) => {
+      void connections.markVerified(connectionId).catch(() => {
+        process.stderr.write("agent-connection observation not recorded\n");
+      });
+    },
     close: () => closePostgresPool(pool),
   };
 };

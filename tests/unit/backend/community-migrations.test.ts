@@ -65,6 +65,7 @@ describe("community migration family", () => {
         "20260918050000_agent_connection_destroyed_at_terminal.sql",
         "20260920010000_agent_connection_principal_identity.sql",
         "20260920020000_agent_connection_consent.sql",
+        "20260920030000_agent_connection_identity_frozen.sql",
       ],
     );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);
