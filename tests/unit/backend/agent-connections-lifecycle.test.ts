@@ -9,7 +9,11 @@ import {
 } from "admin/agent-connections";
 import { describe, expect, it } from "vitest";
 
-import type { AgentConnection, VerifiedGrant } from "admin/agent-connections";
+import type {
+  AgentConnection,
+  ConnectionRecord,
+  VerifiedGrant,
+} from "admin/agent-connections";
 
 /**
  * Agent Connections V1 (Issue #141 r9): connect, disconnect, reconnect.
@@ -33,6 +37,27 @@ const expected = {
   resource: RESOURCE,
   environment: ENVIRONMENT,
 };
+
+/**
+ * What the store hands the boundary (r14 §4). The consent snapshot is derived
+ * from the connection at the moment it is taken, which is what makes these
+ * cases still mean what they said: a token minted under an older consent is
+ * checked against THAT consent, not against whatever the connection says now.
+ */
+const asRecord = (connection: AgentConnection): ConnectionRecord => ({
+  connection,
+  grant: {
+    grantId: `g-${connection.generation}`,
+    connectionId: connection.id,
+    generationAtConsent: connection.generation,
+    oauthClientId: connection.oauthClientId,
+    humanSubject: connection.humanAccountId,
+    issuer: ISSUER,
+    resource: RESOURCE,
+    presetAtConsent: connection.preset,
+    consentedAt: connection.consentedAt ?? AT,
+  },
+});
 
 const fresh = () =>
   openConnection({
@@ -109,7 +134,7 @@ describe("raising permission is a new consent, not an edit", () => {
     expect(managed.preset).toBe("management");
     expect(managed.generation).toBeGreaterThan(readOnly.generation);
     // The live session does not silently widen; it stops.
-    expect(() => admitGrant(narrowToken, managed, expected)).toThrow(
+    expect(() => admitGrant(narrowToken, asRecord(managed), expected)).toThrow(
       "CONNECTION_GENERATION_STALE",
     );
   });
@@ -119,9 +144,11 @@ describe("disconnect", () => {
   it("denies an unexpired access token on its next protected request", () => {
     const authorized = authorizeConnection(fresh(), consent());
     const live = tokenFor(authorized);
-    expect(admitGrant(live, authorized, expected).id).toBe("conn-1");
+    expect(admitGrant(live, asRecord(authorized), expected).connection.id).toBe(
+      "conn-1",
+    );
     const revoked = revokeConnection(authorized, AT);
-    expect(() => admitGrant(live, revoked, expected)).toThrow(
+    expect(() => admitGrant(live, asRecord(revoked), expected)).toThrow(
       "CONNECTION_REVOKED",
     );
   });
@@ -176,7 +203,9 @@ describe("disconnect", () => {
       consent(),
     );
     revokeConnection(mine, AT);
-    expect(admitGrant(tokenFor(theirs), theirs, expected).id).toBe("conn-2");
+    expect(
+      admitGrant(tokenFor(theirs), asRecord(theirs), expected).connection.id,
+    ).toBe("conn-2");
   });
 });
 
@@ -191,9 +220,9 @@ describe("reconnect is a fresh consent, not a restoration", () => {
     expect(reconnected.revokedAt).toBeNull();
     expect(reconnected.generation).toBeGreaterThan(revoked.generation);
     // The decisive assertion: reconnecting is not undoing.
-    expect(() => admitGrant(beforeDisconnect, reconnected, expected)).toThrow(
-      "CONNECTION_GENERATION_STALE",
-    );
+    expect(() =>
+      admitGrant(beforeDisconnect, asRecord(reconnected), expected),
+    ).toThrow("CONNECTION_GENERATION_STALE");
   });
 
   it("refuses to reconnect a connection that was never disconnected", () => {

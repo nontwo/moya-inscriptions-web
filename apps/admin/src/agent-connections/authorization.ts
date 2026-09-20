@@ -9,7 +9,13 @@ import {
   verifiedGrantSchema,
 } from "./contracts";
 
-import type { AgentConnection, VerifiedGrant } from "./contracts";
+import type {
+  AgentConnection,
+  ConnectionPreset,
+  ConnectionRecord,
+  ConsentSnapshot,
+  VerifiedGrant,
+} from "./contracts";
 import type { MCPAccessSettings } from "@payloadcms/plugin-mcp";
 import type { PayloadRequest, TypedUser } from "payload";
 
@@ -46,18 +52,19 @@ export type AccessTokenVerifier = (
 ) => Promise<VerifiedGrant | null>;
 
 /**
- * Reads the current connection record. Returns null when it does not exist.
+ * Reads the current connection record together with its frozen consent
+ * snapshot. Returns null when the connection does not exist.
  *
- * The record it returns is TRUSTED: unlike a grant, it comes from ArtVenn's
- * own store rather than from a caller-supplied token, so it is not parsed
- * here. A corrupt `preset` still fails closed (the preset lookup yields
- * undefined and the outer catch answers Unauthorized), and `principalLabel`
- * is re-validated downstream by `agentPrincipalOf` and again by the Backend.
- * When persistence lands, parse the row at the store boundary.
+ * The record it returns is TRUSTED in the sense that it comes from ArtVenn's
+ * own store rather than from a caller-supplied token — but "trusted" now
+ * means "already parsed", not "unparsed". r14's PostgreSQL store parses every
+ * row totally at the store boundary and refuses one that does not fit, which
+ * is what the earlier version of this comment asked the persistence
+ * implementer to do.
  */
 export type ConnectionReader = (
   connectionId: string,
-) => Promise<AgentConnection | null>;
+) => Promise<ConnectionRecord | null>;
 
 export interface ConnectionAuthDependencies {
   readonly verifyAccessToken: AccessTokenVerifier;
@@ -86,9 +93,9 @@ const bearerOf = (req: PayloadRequest): string | null => {
  * well as refused on call, so a read-only connection never even sees the
  * management tools.
  */
-const toolGrants = (connection: AgentConnection): Record<string, boolean> =>
+const toolGrants = (preset: ConnectionPreset): Record<string, boolean> =>
   Object.fromEntries(
-    PRESET_TOOLS[connection.preset].map((tool) => [toolGrantKey(tool), true]),
+    PRESET_TOOLS[preset].map((tool) => [toolGrantKey(tool), true]),
   );
 
 /**
@@ -118,12 +125,27 @@ const connectionUser = (connection: AgentConnection): TypedUser =>
  * exported for tests that construct grants deliberately; a production caller
  * that has not parsed first is handing it untrusted data.
  */
+/**
+ * What survives admission: the connection the request acts as, and the
+ * consent it was admitted under. The consent travels with it because the
+ * tools a request may call are the ones the human agreed to for THAT grant —
+ * a preset edited on the connection afterwards is not consent, and must not
+ * widen a token that already exists. Narrowing is done by revoking, which
+ * bumps the generation and is the mechanism that already has tests.
+ */
+export interface AdmittedConnection {
+  readonly connection: AgentConnection;
+  readonly consent: ConsentSnapshot;
+}
+
 export const admitGrant = (
   grant: VerifiedGrant,
-  connection: AgentConnection | null,
+  record: ConnectionRecord | null,
   expected: { issuer: string; resource: string; environment: string },
   now: Date = new Date(),
-): AgentConnection => {
+): AdmittedConnection => {
+  const connection = record?.connection ?? null;
+  const consent = record?.grant ?? null;
   // NOTE: currently vacuous, and said here rather than only in a design doc,
   // because this is where a future reader will decide whether to trust it. The
   // provider's access token carries no `iss`, so the verifier fills
@@ -141,13 +163,26 @@ export const admitGrant = (
     throw new ConnectionAuthError("CONNECTION_NOT_FOUND");
   if (connection.id !== grant.connectionId)
     throw new ConnectionAuthError("CONNECTION_MISMATCH");
+  // Identity comes off the FROZEN consent snapshot, never off the connection.
+  // r14 found these two comparisons reading `connection.humanAccountId` and
+  // `connection.oauthClientId` — columns that stay writable by design and that
+  // no trigger freezes — while the r13 migration's own COMMENT ON TABLE says
+  // authorization MUST read identity from the grant row for exactly that
+  // reason. The comment was right and the code was wrong.
+  //
+  // A connection with no current consent is refused HERE, with its own code,
+  // rather than being reported as a missing connection.
+  if (consent === null)
+    throw new ConnectionAuthError("CONNECTION_CONSENT_MISSING");
+  if (consent.connectionId !== connection.id)
+    throw new ConnectionAuthError("CONNECTION_CONSENT_MISMATCH");
   // The consenting human. A token minted for one person must never act on
   // another person's connection, however well-formed it is.
-  if (connection.humanAccountId !== grant.subject)
+  if (consent.humanSubject !== grant.subject)
     throw new ConnectionAuthError("CONNECTION_SUBJECT_MISMATCH");
   // The exact registered client, not the descriptive vendor family. Two
   // clients of the same family are two different authorizations.
-  if (connection.oauthClientId !== grant.clientId)
+  if (consent.oauthClientId !== grant.clientId)
     throw new ConnectionAuthError("CONNECTION_CLIENT_MISMATCH");
   if (connection.environment !== expected.environment)
     throw new ConnectionAuthError("CONNECTION_ENVIRONMENT_MISMATCH");
@@ -162,7 +197,7 @@ export const admitGrant = (
   // Exact scope agreement, checked LAST so a scope mismatch cannot be used to
   // probe whether a connection exists. Extra, missing, unknown, duplicated or
   // malformed claims all fail, and an absent claim never inherits the preset.
-  if (!scopesMatchPreset(grant.scopes, connection.preset))
+  if (!scopesMatchPreset(grant.scopes, consent.presetAtConsent))
     throw new ConnectionAuthError("CONNECTION_SCOPE_MISMATCH");
   // Freshness is this boundary's business. Leaving it to whatever the verifier
   // happens to enforce is the easiest obligation for the next implementer to
@@ -176,7 +211,7 @@ export const admitGrant = (
   const expiresAt = Date.parse(grant.expiresAt);
   if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime())
     throw new ConnectionAuthError("CONNECTION_TOKEN_EXPIRED");
-  return connection;
+  return { connection, consent };
 };
 
 /**
@@ -213,7 +248,7 @@ export const connectionAuth =
       if (!parsed.success)
         throw new ConnectionAuthError("CONNECTION_GRANT_MALFORMED");
       const grant = parsed.data;
-      const connection = admitGrant(
+      const { connection, consent } = admitGrant(
         grant,
         await dependencies.readConnection(grant.connectionId),
         {
@@ -244,7 +279,7 @@ export const connectionAuth =
           unlock: false,
           verify: false,
         },
-        "payload-mcp-tool": toolGrants(connection),
+        "payload-mcp-tool": toolGrants(consent.presetAtConsent),
       } satisfies MCPAccessSettings;
     } catch (error) {
       // One shape out, whatever went wrong, so a probe cannot tell a bad

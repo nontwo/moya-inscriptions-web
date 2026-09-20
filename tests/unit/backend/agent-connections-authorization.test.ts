@@ -19,7 +19,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentConnection, VerifiedGrant } from "admin/agent-connections";
+import type {
+  AgentConnection,
+  ConnectionRecord,
+  ConsentSnapshot,
+  VerifiedGrant,
+} from "admin/agent-connections";
 import type { PayloadRequest } from "payload";
 
 /**
@@ -61,6 +66,40 @@ const connection = (
   ...overrides,
 });
 
+/**
+ * The frozen consent snapshot. r14 moved identity here: `admitGrant` reads
+ * the subject, the client and the consented preset off this row rather than
+ * off the connection, whose own copies stay writable by design.
+ *
+ * It defaults to AGREEING with the connection, so a test that wants a
+ * mismatch has to say which side moved — which is the distinction the change
+ * exists to make visible.
+ */
+const consent = (
+  overrides: Partial<ConsentSnapshot> = {},
+  from: AgentConnection = connection(),
+): ConsentSnapshot => ({
+  grantId: "g-1",
+  connectionId: from.id,
+  generationAtConsent: from.generation,
+  oauthClientId: from.oauthClientId,
+  humanSubject: from.humanAccountId,
+  issuer: ISSUER,
+  resource: RESOURCE,
+  presetAtConsent: from.preset,
+  consentedAt: from.consentedAt ?? "2026-09-18T00:00:00Z",
+  ...overrides,
+});
+
+/** What the store hands the boundary. */
+const record = (
+  from: AgentConnection = connection(),
+  grantOverrides: Partial<ConsentSnapshot> | null = {},
+): ConnectionRecord => ({
+  connection: from,
+  grant: grantOverrides === null ? null : consent(grantOverrides, from),
+});
+
 const grant = (overrides: Partial<VerifiedGrant> = {}): VerifiedGrant => ({
   connectionId: "conn-1",
   subject: "user-owner",
@@ -94,12 +133,12 @@ const notOurs = ["ordinary", "payload", "api", "key"].join("-");
 const auth = (
   over: {
     verify?: (presented: string) => Promise<VerifiedGrant | null>;
-    read?: (id: string) => Promise<AgentConnection | null>;
+    read?: (id: string) => Promise<ConnectionRecord | null>;
   } = {},
 ) =>
   connectionAuth({
     verifyAccessToken: over.verify ?? (async () => grant()),
-    readConnection: over.read ?? (async () => connection()),
+    readConnection: over.read ?? (async () => record()),
     issuer: ISSUER,
     resource: RESOURCE,
     environment: ENVIRONMENT,
@@ -107,14 +146,16 @@ const auth = (
 
 describe("admitGrant", () => {
   it("admits a current grant whose issuer, resource, environment and generation all agree", () => {
-    expect(admitGrant(grant(), connection(), expected).id).toBe("conn-1");
+    expect(
+      admitGrant(grant(), record(connection()), expected).connection.id,
+    ).toBe("conn-1");
   });
 
   it("refuses a token minted by another issuer, so a look-alike authorization server cannot mint access", () => {
     expect(() =>
       admitGrant(
         grant({ issuer: "https://evil.invalid" }),
-        connection(),
+        record(connection()),
         expected,
       ),
     ).toThrow("CONNECTION_ISSUER_MISMATCH");
@@ -124,7 +165,7 @@ describe("admitGrant", () => {
     expect(() =>
       admitGrant(
         grant({ resource: "https://other.invalid/api/mcp" }),
-        connection(),
+        record(connection()),
         expected,
       ),
     ).toThrow("CONNECTION_RESOURCE_MISMATCH");
@@ -132,7 +173,11 @@ describe("admitGrant", () => {
 
   it("refuses a grant for a connection in another environment", () => {
     expect(() =>
-      admitGrant(grant(), connection({ environment: "production" }), expected),
+      admitGrant(
+        grant(),
+        record(connection({ environment: "production" })),
+        expected,
+      ),
     ).toThrow("CONNECTION_ENVIRONMENT_MISMATCH");
   });
 
@@ -146,7 +191,9 @@ describe("admitGrant", () => {
     expect(() =>
       admitGrant(
         grant(),
-        connection({ status: "revoked", revokedAt: "2026-09-18T00:00:00" }),
+        record(
+          connection({ status: "revoked", revokedAt: "2026-09-18T00:00:00" }),
+        ),
         expected,
       ),
     ).toThrow("CONNECTION_REVOKED");
@@ -154,7 +201,11 @@ describe("admitGrant", () => {
 
   it("refuses a connection still awaiting consent, so a grant cannot precede the human", () => {
     expect(() =>
-      admitGrant(grant(), connection({ status: "awaiting-consent" }), expected),
+      admitGrant(
+        grant(),
+        record(connection({ status: "awaiting-consent" })),
+        expected,
+      ),
     ).toThrow("CONNECTION_NOT_AUTHORIZED");
   });
 
@@ -162,7 +213,7 @@ describe("admitGrant", () => {
     expect(() =>
       admitGrant(
         grant({ generation: 2 }),
-        connection({ generation: 3 }),
+        record(connection({ generation: 3 })),
         expected,
       ),
     ).toThrow("CONNECTION_GENERATION_STALE");
@@ -170,7 +221,7 @@ describe("admitGrant", () => {
 
   it("refuses a token whose connection id disagrees with the record it resolved", () => {
     expect(() =>
-      admitGrant(grant(), connection({ id: "conn-2" }), expected),
+      admitGrant(grant(), record(connection({ id: "conn-2" })), expected),
     ).toThrow("CONNECTION_MISMATCH");
   });
 });
@@ -202,7 +253,7 @@ describe("connectionAuth", () => {
   it("never falls back when the connection is revoked", async () => {
     const legacy = vi.fn(async () => ({ user: { id: "legacy" } }) as never);
     await expect(
-      auth({ read: async () => connection({ status: "revoked" }) })(
+      auth({ read: async () => record(connection({ status: "revoked" })) })(
         request(header(token())),
         legacy,
       ),
@@ -236,7 +287,7 @@ describe("connectionAuth", () => {
 
   it("grants a management connection the execute tools but still never an approval tool", async () => {
     const settings = await auth({
-      read: async () => connection({ preset: "management" }),
+      read: async () => record(connection({ preset: "management" })),
       verify: async () => grant({ scopes: MANAGEMENT_SCOPES }),
     })(request(header(token())), async () => ({}) as never);
     const tools = settings["payload-mcp-tool"] ?? {};
@@ -259,7 +310,7 @@ describe("connectionAuth", () => {
   it("grants no editorial tool to any connection: the editorial domain is not inherited", async () => {
     for (const preset of ["read-only", "management"] as const) {
       const settings = await auth({
-        read: async () => connection({ preset }),
+        read: async () => record(connection({ preset })),
         verify: async () =>
           grant({
             scopes:
@@ -289,7 +340,7 @@ describe("connectionAuth", () => {
   });
 
   it("re-reads the connection on every request, so a disconnect takes effect on the next call rather than the next handshake", async () => {
-    const read = vi.fn(async () => connection());
+    const read = vi.fn(async () => record());
     const authorize = auth({ read });
     await authorize(request(header(token())), async () => ({}) as never);
     await authorize(request(header(token())), async () => ({}) as never);
@@ -301,7 +352,7 @@ describe("connectionAuth", () => {
       [
         auth({ verify: async () => null }),
         auth({ read: async () => null }),
-        auth({ read: async () => connection({ status: "revoked" }) }),
+        auth({ read: async () => record(connection({ status: "revoked" })) }),
         auth({ verify: async () => grant({ generation: 1 }) }),
       ].map(async (authorize) => {
         try {
@@ -367,7 +418,11 @@ describe("connectionOverrideAuth composition gate", () => {
 describe("r10 §3.1 — the token subject must be the consenting human", () => {
   it("admits a grant whose subject is the connection's human", () => {
     expect(
-      admitGrant(grant({ subject: "user-owner" }), connection(), expected).id,
+      admitGrant(
+        grant({ subject: "user-owner" }),
+        record(connection()),
+        expected,
+      ).connection.id,
     ).toBe("conn-1");
   });
 
@@ -375,7 +430,7 @@ describe("r10 §3.1 — the token subject must be the consenting human", () => {
     expect(() =>
       admitGrant(
         grant({ subject: "user-someone-else" }),
-        connection(),
+        record(connection()),
         expected,
       ),
     ).toThrow("CONNECTION_SUBJECT_MISMATCH");
@@ -395,16 +450,16 @@ describe("r10 §3.1 — the token subject must be the consenting human", () => {
 
 describe("r10 §3.2 — the exact registered OAuth client, not the vendor family", () => {
   it("admits a grant from the exact authorized client", () => {
-    expect(admitGrant(grant(), connection(), expected).oauthClientId).toBe(
-      CLIENT_ID,
-    );
+    expect(
+      admitGrant(grant(), record(connection()), expected).consent.oauthClientId,
+    ).toBe(CLIENT_ID);
   });
 
   it("refuses another registered client even when human, connection, issuer, resource and generation all match", () => {
     expect(() =>
       admitGrant(
         grant({ clientId: "artvenn-claude-desktop-02" }),
-        connection(),
+        record(connection()),
         expected,
       ),
     ).toThrow("CONNECTION_CLIENT_MISMATCH");
@@ -412,7 +467,7 @@ describe("r10 §3.2 — the exact registered OAuth client, not the vendor family
 
   it("does not accept the descriptive family label as a client identity", () => {
     expect(() =>
-      admitGrant(grant({ clientId: "claude" }), connection(), expected),
+      admitGrant(grant({ clientId: "claude" }), record(connection()), expected),
     ).toThrow("CONNECTION_CLIENT_MISMATCH");
   });
 });
@@ -420,13 +475,20 @@ describe("r10 §3.2 — the exact registered OAuth client, not the vendor family
 describe("r10 §3.3 — exact scope agreement", () => {
   const refuse = (scopes: unknown) =>
     expect(() =>
-      admitGrant(grant({ scopes: scopes as string[] }), connection(), expected),
+      admitGrant(
+        grant({ scopes: scopes as string[] }),
+        record(connection()),
+        expected,
+      ),
     ).toThrow("CONNECTION_SCOPE_MISMATCH");
 
   it("accepts the canonical set for the preset", () => {
     expect(
-      admitGrant(grant({ scopes: READ_ONLY_SCOPES }), connection(), expected)
-        .id,
+      admitGrant(
+        grant({ scopes: READ_ONLY_SCOPES }),
+        record(connection()),
+        expected,
+      ).connection.id,
     ).toBe("conn-1");
   });
 
@@ -434,9 +496,9 @@ describe("r10 §3.3 — exact scope agreement", () => {
     expect(
       admitGrant(
         grant({ scopes: ["artvenn:manage", "artvenn:read"] }),
-        connection({ preset: "management" }),
+        record(connection({ preset: "management" })),
         expected,
-      ).id,
+      ).connection.id,
     ).toBe("conn-1");
   });
 
@@ -468,9 +530,10 @@ describe("r10 §3.3 — exact scope agreement", () => {
   });
 
   it("requires the management capabilities for a management connection, and refuses the read-only set there", () => {
-    const managed = connection({ preset: "management" });
+    const managed = record(connection({ preset: "management" }));
     expect(
-      admitGrant(grant({ scopes: MANAGEMENT_SCOPES }), managed, expected).id,
+      admitGrant(grant({ scopes: MANAGEMENT_SCOPES }), managed, expected)
+        .connection.id,
     ).toBe("conn-1");
     expect(() =>
       admitGrant(grant({ scopes: READ_ONLY_SCOPES }), managed, expected),
@@ -541,7 +604,7 @@ describe("r10 review finding 6 — token freshness is checked here", () => {
     expect(() =>
       admitGrant(
         grant({ expiresAt: "2020-01-01T00:00:00Z" }),
-        connection(),
+        record(connection()),
         expected,
       ),
     ).toThrow("CONNECTION_TOKEN_EXPIRED");
@@ -551,10 +614,10 @@ describe("r10 review finding 6 — token freshness is checked here", () => {
     expect(
       admitGrant(
         grant({ expiresAt: "2099-01-01T00:00:00Z" }),
-        connection(),
+        record(connection()),
         expected,
         new Date("2026-09-18T00:00:00Z"),
-      ).id,
+      ).connection.id,
     ).toBe("conn-1");
   });
 });
@@ -576,7 +639,7 @@ describe("r10 re-review blocker — an unreadable expiry is an expired token", (
     expect(() =>
       admitGrant(
         { ...grant(), expiresAt: "not-a-date" } as VerifiedGrant,
-        connection(),
+        record(),
         expected,
       ),
     ).toThrow("CONNECTION_TOKEN_EXPIRED");
@@ -586,11 +649,7 @@ describe("r10 re-review blocker — an unreadable expiry is an expired token", (
     const withoutExpiry: Record<string, unknown> = { ...grant() };
     delete withoutExpiry.expiresAt;
     expect(() =>
-      admitGrant(
-        withoutExpiry as unknown as VerifiedGrant,
-        connection(),
-        expected,
-      ),
+      admitGrant(withoutExpiry as unknown as VerifiedGrant, record(), expected),
     ).toThrow("CONNECTION_TOKEN_EXPIRED");
   });
 
@@ -609,7 +668,7 @@ describe("r10 re-review — diagnostics never change the answer", () => {
     const codes: string[] = [];
     const settings = connectionAuth({
       verifyAccessToken: async () => null,
-      readConnection: async () => connection(),
+      readConnection: async () => record(),
       issuer: ISSUER,
       resource: RESOURCE,
       environment: ENVIRONMENT,
@@ -628,7 +687,7 @@ describe("r10 re-review — diagnostics never change the answer", () => {
   it("still answers UnauthorizedError when the diagnostics sink itself throws", async () => {
     const settings = connectionAuth({
       verifyAccessToken: async () => null,
-      readConnection: async () => connection(),
+      readConnection: async () => record(),
       issuer: ISSUER,
       resource: RESOURCE,
       environment: ENVIRONMENT,
@@ -647,6 +706,89 @@ describe("r10 re-review — diagnostics never change the answer", () => {
   });
 });
 
+describe("r14 §4 — identity comes off the frozen consent, never off the connection", () => {
+  it("refuses a token whose client matches the connection but not the consent", () => {
+    // The attack this closes. `agent_connections.oauth_client_id` is writable
+    // by design and no trigger freezes it, so anything that could rewrite the
+    // connection row could previously make a foreign client's token admit by
+    // simply editing the connection to agree with it. The grant cannot move.
+    const rewritten = connection({ oauthClientId: "attacker-client" });
+    expect(() =>
+      admitGrant(
+        grant({ clientId: "attacker-client" }),
+        { connection: rewritten, grant: consent({}, connection()) },
+        expected,
+      ),
+    ).toThrow("CONNECTION_CLIENT_MISMATCH");
+  });
+
+  it("refuses a token whose subject matches the connection but not the consent", () => {
+    const rewritten = connection({ humanAccountId: "user-other" });
+    expect(() =>
+      admitGrant(
+        grant({ subject: "user-other" }),
+        { connection: rewritten, grant: consent({}, connection()) },
+        expected,
+      ),
+    ).toThrow("CONNECTION_SUBJECT_MISMATCH");
+  });
+
+  it("still admits when the frozen consent is the one that agrees", () => {
+    // The same rewrite, with a token minted under the consent that is
+    // actually recorded, is admitted — so the refusals above are about the
+    // SOURCE of identity, not about rejecting everything.
+    const rewritten = connection({ oauthClientId: "attacker-client" });
+    expect(
+      admitGrant(
+        grant(),
+        { connection: rewritten, grant: consent({}, connection()) },
+        expected,
+      ).connection.id,
+    ).toBe("conn-1");
+  });
+
+  it("refuses a connection with no consent as ungranted, not as missing", () => {
+    // A real record behind a misleading code is worse than a refusal: the
+    // operator reading diagnostics would go looking for a connection that is
+    // sitting right there, awaiting consent.
+    expect(() =>
+      admitGrant(grant(), { connection: connection(), grant: null }, expected),
+    ).toThrow("CONNECTION_CONSENT_MISSING");
+  });
+
+  it("refuses a consent snapshot belonging to another connection", () => {
+    expect(() =>
+      admitGrant(
+        grant(),
+        {
+          connection: connection(),
+          grant: consent({ connectionId: "conn-2" }),
+        },
+        expected,
+      ),
+    ).toThrow("CONNECTION_CONSENT_MISMATCH");
+  });
+
+  it("takes the tool map from the consented preset, so editing the connection widens nothing", async () => {
+    // A preset raised on the connection without a new consent must not widen
+    // a token that already exists. Narrowing is done by revoking, which bumps
+    // the generation and already has its own regressions.
+    const widened = connection({ preset: "management" });
+    const settings = await auth({
+      read: async () => ({
+        connection: widened,
+        grant: consent({ presetAtConsent: "read-only" }, connection()),
+      }),
+      verify: async () => grant({ scopes: READ_ONLY_SCOPES }),
+    })(request(header(token())), async () => ({}) as never);
+    const tools = settings["payload-mcp-tool"] ?? {};
+    expect(Object.keys(tools).sort()).toEqual(
+      [...PRESET_TOOLS["read-only"]].map(toolGrantKey).sort(),
+    );
+    expect(tools.artvennOperationsExecute).toBeUndefined();
+  });
+});
+
 describe("r11 §3 — capability scopes, protocol scopes and Backend scopes are three vocabularies", () => {
   const admit = (
     scopes: unknown,
@@ -654,7 +796,7 @@ describe("r11 §3 — capability scopes, protocol scopes and Backend scopes are 
   ) =>
     admitGrant(
       grant({ scopes: scopes as string[] }),
-      connection({ preset }),
+      record(connection({ preset })),
       expected,
     );
 
@@ -675,10 +817,12 @@ describe("r11 §3 — capability scopes, protocol scopes and Backend scopes are 
   });
 
   it("accepts offline_access alongside the capability set, for the refresh lifecycle", () => {
-    expect(admit(["artvenn:read", "offline_access"]).id).toBe("conn-1");
+    expect(admit(["artvenn:read", "offline_access"]).connection.id).toBe(
+      "conn-1",
+    );
     expect(
       admit(["artvenn:read", "artvenn:manage", "offline_access"], "management")
-        .id,
+        .connection.id,
     ).toBe("conn-1");
   });
 
@@ -740,9 +884,9 @@ describe("r11 §4 — a CIMD client id is an HTTPS URL, not an identifier", () =
     expect(
       admitGrant(
         grant({ clientId: cimd }),
-        connection({ oauthClientId: cimd }),
+        record(connection({ oauthClientId: cimd })),
         expected,
-      ).id,
+      ).connection.id,
     ).toBe("conn-1");
   });
 
@@ -752,7 +896,7 @@ describe("r11 §4 — a CIMD client id is an HTTPS URL, not an identifier", () =
     expect(() =>
       admitGrant(
         grant({ clientId: theirs }),
-        connection({ oauthClientId: mine }),
+        record(connection({ oauthClientId: mine })),
         expected,
       ),
     ).toThrow("CONNECTION_CLIENT_MISMATCH");
@@ -846,9 +990,9 @@ describe("r12 §4.1 — client identity in two explicit forms, bounded by real b
     expect(
       admitGrant(
         grant({ clientId: cimd }),
-        connection({ oauthClientId: cimd }),
+        record(connection({ oauthClientId: cimd })),
         expected,
-      ).id,
+      ).connection.id,
     ).toBe("conn-1");
   });
 });

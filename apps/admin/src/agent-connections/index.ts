@@ -26,6 +26,8 @@ export {
 } from "./contracts";
 export type {
   AgentConnection,
+  ConnectionRecord,
+  ConsentSnapshot,
   CapabilityScope,
   ScopeAdmission,
   ConnectionClient,
@@ -36,6 +38,7 @@ export type {
 export { admitGrant, connectionAuth } from "./authorization";
 export type {
   AccessTokenVerifier,
+  AdmittedConnection,
   ConnectionAuthDependencies,
   ConnectionReader,
 } from "./authorization";

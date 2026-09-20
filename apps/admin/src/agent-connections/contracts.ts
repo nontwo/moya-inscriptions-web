@@ -314,6 +314,42 @@ export type AgentConnection = z.infer<typeof agentConnectionSchema>;
  * scopes and generation — so a token that is internally valid but disagrees
  * with its connection is refused rather than reconciled.
  */
+/**
+ * The immutable consent snapshot, as authorization sees it (r14 §4).
+ *
+ * This is the row `community.agent_connection_grants` froze at consent, and
+ * it — not the connection — is what a token's identity is checked against.
+ * The connection's own `oauthClientId` and `humanAccountId` stay writable by
+ * design and no trigger freezes them, so taking identity from there would
+ * reintroduce the mutable-identity hole the frozen generation exists to close.
+ * The database says so itself, as a `COMMENT ON TABLE` in migration
+ * 20260918040000.
+ */
+export interface ConsentSnapshot {
+  readonly grantId: string;
+  readonly connectionId: string;
+  readonly generationAtConsent: number;
+  readonly oauthClientId: string;
+  readonly humanSubject: string;
+  readonly issuer: string;
+  readonly resource: string;
+  readonly presetAtConsent: ConnectionPreset;
+  readonly consentedAt: string;
+}
+
+/**
+ * What the store hands the boundary: the connection whose CURRENT state
+ * decides revocation, and the frozen grant whose identity decides who.
+ *
+ * `grant` is null for a connection that has no current consent. That is a
+ * refusal with a reason rather than an absence — reporting it as "no such
+ * connection" would hide a real record behind a misleading code.
+ */
+export interface ConnectionRecord {
+  readonly connection: AgentConnection;
+  readonly grant: ConsentSnapshot | null;
+}
+
 export const verifiedGrantSchema = z.strictObject({
   connectionId: z.string().min(1).max(128),
   subject: z.string().min(1).max(128),
