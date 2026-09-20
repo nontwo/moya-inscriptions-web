@@ -129,13 +129,19 @@ export const createGrantDestroyer = (options: GrantDestroyerOptions) => {
       // precisely so an operator can tell a provider outage from a privilege
       // error on the wrapper sweep.
       //
-      // Six codes are reachable from this function, not three: the four `step`
-      // values below, plus PROVIDER_GRANT_STILL_PRESENT from the verification
-      // and PROVIDER_DESTROY_UNRECORDED from the race recovery. An earlier
-      // draft of this note said "one try, three codes" while sitting above two
-      // try blocks — left here as a corrected count rather than a deleted one,
-      // because a comment that miscounts what it introduces is the same defect
-      // this slice keeps finding.
+      // Six codes are reachable from this function. `step` takes THREE values
+      // — PROVIDER_REVOKE_FAILED, PROVIDER_DESTROY_FAILED and
+      // PROVIDER_DESTROY_UNVERIFIED — and the other three are passed
+      // directly: PROVIDER_GRANT_STILL_PRESENT from the verification,
+      // WRAPPER_INVALIDATION_FAILED from the second try, and
+      // PROVIDER_DESTROY_UNRECORDED from the race recovery.
+      //
+      // Two earlier drafts of this note got the count wrong: "one try, three
+      // codes" while sitting above two try blocks, then "the four `step`
+      // values" where `step` takes three. Corrected rather than deleted,
+      // because a comment that miscounts what it introduces is the same
+      // defect this slice keeps finding — and it took an outside reader to
+      // notice the second one.
       let step = "PROVIDER_REVOKE_FAILED";
       try {
         // Order matters only in that both must happen. Tokens first, so a

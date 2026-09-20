@@ -18,8 +18,17 @@ import { consentRuntime } from "./runtime";
  * own and the browser sent the `SameSite=Strict` session with it.
  *
  * Arming happens HERE, on the server, during the render that the Owner's
- * session authenticated — not in the form, not in a GET handler a link could
- * trigger, and not from anything the request supplied.
+ * session authenticated, and from the row the PROVIDER wrote rather than from
+ * anything the request supplied.
+ *
+ * Be exact about what that is: it IS a write during a GET page render, and a
+ * prefetch of this link would perform it. An independent review was right that
+ * an earlier version of this sentence said the opposite. What makes it safe is
+ * not the method but the two gates above it — the Owner check precedes it, and
+ * on the cross-site navigation the `SameSite=Strict` session is absent, so a
+ * prefetch from anywhere but an authenticated Admin page arms nothing. Re-arming
+ * is also idempotent in effect: it replaces the previous ticket and cannot
+ * touch a decided or expired interaction.
  */
 
 const Shell = ({

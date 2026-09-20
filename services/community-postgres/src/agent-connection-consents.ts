@@ -63,8 +63,12 @@ import {
  *   * a second resume                -> trigger "a resumed interaction is spent"
  *
  * The single-use property is therefore not a `SELECT ... then UPDATE` this
- * code could lose a race on. Two concurrent approvals both reach the UPDATE;
- * one wins and the other is refused by the trigger.
+ * code could lose a race on. Be exact about the mechanism, because an earlier
+ * version of this note was not: under READ COMMITTED the second approval
+ * BLOCKS on the row lock, re-evaluates `decided_at IS NULL`, matches zero rows
+ * and writes nothing — the trigger never fires. The trigger is the backstop
+ * for a caller that drops the guard from its WHERE clause, which is a
+ * different and still necessary job.
  */
 
 /** A decision, spelled exactly as the CHECK constraint spells it. */
@@ -256,17 +260,25 @@ type Queryable = {
 export interface ConsentStoreOptions {
   /**
    * WHICH ROLE this pool authenticates as is the whole story, and the two
-   * halves of the consent path deliberately cannot do each other's job:
+   * halves of the consent path deliberately cannot do each other's job. The
+   * privileges, exactly as `grant-authorization.sql` grants them:
    *
-   *   consent/control-plane role  -- INSERT, and UPDATE (decision, decided_at,
-   *                                  granted_generation). Cannot resume, cannot
-   *                                  write a grant, cannot touch a token store.
-   *   provider role               -- SELECT, and UPDATE (resumed_at, grant_id).
-   *                                  Cannot record a decision at all.
+   *   provider role  -- SELECT; INSERT on the seven columns it ENFORCES
+   *                     (interaction_uid, oauth_client_id, resource,
+   *                     capability_scopes, protocol_scopes, preset,
+   *                     expires_at); UPDATE (resumed_at, grant_id). It can
+   *                     neither record a decision nor say who made one.
+   *   consent role   -- SELECT; UPDATE (ticket_digest, human_account_id,
+   *                     connection_id, decision, decided_at,
+   *                     granted_generation). NO INSERT: it cannot conjure an
+   *                     interaction nobody requested, and no resume.
    *
-   * Probed on the live schema (r15): a provider-role decision write and a
-   * consent-role resume write are both refused with 42501, so calling the
-   * wrong method on the wrong pool fails loudly rather than succeeding.
+   * An earlier version of this note listed the consent role as holding INSERT
+   * and omitted the three identity columns it does hold. It also described a
+   * provider INSERT that "cannot approve" — which was false, because the
+   * grant was table-level and the freeze trigger is BEFORE UPDATE. Both are
+   * corrected here, and the committed regression now probes the INSERT form
+   * of every column rather than only the UPDATE form.
    */
   readonly pool: Queryable;
 }

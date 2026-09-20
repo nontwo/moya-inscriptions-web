@@ -33,6 +33,7 @@ export const registerAgentConnectionConsentTests = (
 
     const providerRole = "moya_consent_case_provider";
     const consentRole = "moya_consent_case_consent";
+    const resourceRole = "moya_consent_case_resource";
 
     const ticket = () => randomBytes(32).toString("hex");
     const digestOf = (value: string) =>
@@ -99,6 +100,10 @@ export const registerAgentConnectionConsentTests = (
         await client.query("SELECT set_config($1,$2,false)", [
           "agent_connections.consent_role",
           consentRole,
+        ]);
+        await client.query("SELECT set_config($1,$2,false)", [
+          "agent_connections.resource_role",
+          resourceRole,
         ]);
         await client.query(
           await readFile(
@@ -395,6 +400,14 @@ export const registerAgentConnectionConsentTests = (
       const denied = { ok: false, sqlState: "42501" };
 
       it("denies the provider role any way to say who consented", async () => {
+        // An independent review found the hole this test was NAMED for and
+        // did not cover: every statement here was an UPDATE, while the grant
+        // was table-level INSERT. The provider could therefore write a row
+        // with decision='approved' in the first place -- no UPDATE needed,
+        // and the freeze trigger is BEFORE UPDATE so it never fired.
+        // Measured on the live schema before the fix: INSERT 0 1, and the
+        // row read back approved. The INSERT case below is the regression.
+        const connection = await openConnection();
         for (const statement of [
           `UPDATE community.agent_connection_consents
               SET decision='approved', decided_at=CURRENT_TIMESTAMP,
@@ -405,11 +418,60 @@ export const registerAgentConnectionConsentTests = (
           `UPDATE community.agent_connection_consents SET ticket_digest=NULL`,
         ])
           expect(await asRole(providerRole, statement)).toEqual(denied);
+
+        // The whole forged-consent path, one column at a time. Each of these
+        // is a column the provider must not be able to write AT ALL.
+        for (const [column, value] of [
+          ["decision", "'approved'"],
+          ["decided_at", "CURRENT_TIMESTAMP"],
+          ["granted_generation", "1"],
+          ["ticket_digest", `'${"a".repeat(64)}'`],
+          ["human_account_id", "'user-owner'"],
+          ["connection_id", `'${connection.id}'`],
+          ["resumed_at", "CURRENT_TIMESTAMP"],
+          ["grant_id", "'forged'"],
+        ])
+          expect(
+            await asRole(
+              providerRole,
+              `INSERT INTO community.agent_connection_consents
+                 (interaction_uid, oauth_client_id, resource, preset,
+                  expires_at, ${column})
+               VALUES ('forged-${column}', 'c', 'https://r.invalid',
+                       'read-only', CURRENT_TIMESTAMP + interval '5 min',
+                       ${value})`,
+            ),
+          ).toEqual(denied);
+
+        // And the complete forgery, exactly as the review wrote it.
+        expect(
+          await asRole(
+            providerRole,
+            `INSERT INTO community.agent_connection_consents
+               (interaction_uid, oauth_client_id, resource, capability_scopes,
+                protocol_scopes, preset, expires_at, ticket_digest,
+                human_account_id, connection_id, decided_at, decision,
+                granted_generation)
+             VALUES ('forged-whole', 'c', 'https://r.invalid',
+                     '{artvenn:read}', '{}', 'read-only',
+                     CURRENT_TIMESTAMP + interval '10 min', $1,
+                     'user-owner', $2, CURRENT_TIMESTAMP, 'approved', 1)`,
+            ["a".repeat(64), connection.id],
+          ),
+        ).toEqual(denied);
       });
 
       it("denies the consent role any way to mint a grant, a token or an interaction", async () => {
         for (const statement of [
           `UPDATE community.agent_connections SET current_grant_id='forged'`,
+          // Same column, the INSERT form: a table-level INSERT let this role
+          // create a connection already pointing at a grant it did not make.
+          `INSERT INTO community.agent_connections
+             (id, human_account_id, client_family, oauth_client_id,
+              environment, principal_label, preset, status, current_grant_id)
+           VALUES ('conn-${"c".repeat(32)}', 'user-owner', 'claude', 'c',
+                   'development', 'agent-forged', 'read-only',
+                   'awaiting-consent', 'forged')`,
           `INSERT INTO community.agent_connection_grants
              (grant_id, connection_id, generation_at_consent, oauth_client_id,
               human_subject, issuer, resource, preset_at_consent)
@@ -425,6 +487,45 @@ export const registerAgentConnectionConsentTests = (
                    CURRENT_TIMESTAMP + interval '5 min')`,
         ])
           expect(await asRole(consentRole, statement)).toEqual(denied);
+      });
+
+      it("denies the resource role everything except reading and one stamp", async () => {
+        // The boundary that authenticates MCP requests decides nothing about
+        // authority. Until this run it was described in a comment and wired
+        // to the database owner, which is how a table-level INSERT on the
+        // consent table survived a review of the role split.
+        for (const statement of [
+          `UPDATE community.agent_connections SET status='revoked'`,
+          `UPDATE community.agent_connections SET generation=generation+1`,
+          `UPDATE community.agent_connections SET current_grant_id='forged'`,
+          `INSERT INTO community.agent_connection_grants
+             (grant_id, connection_id, generation_at_consent, oauth_client_id,
+              human_subject, issuer, resource, preset_at_consent)
+           VALUES ('forged','conn-x',1,'c','user-owner','https://a.invalid',
+                   'https://r.invalid','read-only')`,
+          `UPDATE community.agent_connection_wrappers SET invalidated_at=NULL`,
+          `SELECT interaction_uid FROM community.agent_connection_consents LIMIT 1`,
+          `SELECT 1 FROM community.agent_connection_provider_artifacts LIMIT 1`,
+        ])
+          expect(await asRole(resourceRole, statement)).toEqual(denied);
+
+        // The positives: it can read what it authenticates against, and stamp
+        // the one column the page shows as an observation.
+        const connection = await openConnection();
+        for (const statement of [
+          `SELECT id FROM community.agent_connections LIMIT 1`,
+          `SELECT grant_id FROM community.agent_connection_grants LIMIT 1`,
+          `SELECT lookup_digest FROM community.agent_connection_wrappers LIMIT 1`,
+        ])
+          expect(await asRole(resourceRole, statement)).toEqual({ ok: true });
+        expect(
+          await asRole(
+            resourceRole,
+            `UPDATE community.agent_connections SET last_verified_at=CURRENT_TIMESTAMP
+              WHERE id=$1`,
+            [connection.id],
+          ),
+        ).toEqual({ ok: true });
       });
 
       it("grants each role exactly the half it needs, so neither is merely locked out", async () => {

@@ -366,8 +366,31 @@ try {
   completed.push(stage);
 
   stage = "old-token-still-denied";
-  const stale = await mcp(firstToken, { method: "tools/list", params: {} });
+  // `initialize`, not `tools/list`. An independent review pointed out that the
+  // earlier version omitted the session id that every other `tools/list` in
+  // this file passes, so a transport-level refusal for a MISSING SESSION would
+  // have satisfied the assertion even with a fully valid token — the stage
+  // could not fail for its own name. `initialize` needs no session, so the
+  // only thing left that can refuse it is the boundary.
+  const stale = await mcp(firstToken, {
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "artvenn-acceptance-stale", version: "0" },
+    },
+  });
   assert.ok(stale.status !== 200 || stale.payload.error !== undefined);
+  // And the positive control, so "denied" is not just "everything is denied".
+  const live = await mcp(secondToken, {
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "artvenn-acceptance-live", version: "0" },
+    },
+  });
+  assert.equal(live.status, 200);
   completed.push(stage);
 
   // Handed across the restart in a mode-restricted file, never on stdout.

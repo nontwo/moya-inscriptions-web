@@ -311,6 +311,35 @@ export const registerAgentConnectionWrapperTests = (
         });
       });
 
+      it("records that destruction was never VERIFIED when the check itself fails", async () => {
+        // Carry-forward C3 from the r14 review: this was the one reachable
+        // `step` value with no witness. It is reached when the Grant was
+        // destroyed without throwing and the verification THEN fails — a
+        // provider outage between the two, not a destruction that did not
+        // happen. The distinction is the whole point of keeping the codes
+        // separate: an operator reading PROVIDER_DESTROY_UNVERIFIED knows the
+        // destroy call returned and the proof did not, which is a different
+        // thing to retry than a destroy that threw.
+        await aGrant("g-unverified");
+        expect(
+          await destroyerWith({
+            isAbsent: () => Promise.reject(new Error("provider unreachable")),
+          }).destroy("g-unverified"),
+        ).toMatchObject({
+          status: "failed",
+          reason: "PROVIDER_DESTROY_UNVERIFIED",
+        });
+        // Retryable, and still not recorded as done.
+        const { rows } = await pool.query(
+          "SELECT destroy_status, destroyed_at FROM community.agent_connection_grants WHERE grant_id=$1",
+          ["g-unverified"],
+        );
+        expect(rows[0]).toMatchObject({
+          destroy_status: "failed",
+          destroyed_at: null,
+        });
+      });
+
       it("is idempotent, and a second call never restates when it happened", async () => {
         await aGrant("g-twice-destroy");
         const first = await destroyerWith().destroy("g-twice-destroy");

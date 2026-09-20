@@ -17,6 +17,9 @@
 --                     record a consent decision.
 --   consent role   -- the Admin control plane. Authenticates the Owner and
 --                     records decisions. Cannot mint a grant or a token.
+--   resource role  -- the Admin's MCP boundary. May only READ a connection,
+--                     its grant and a wrapper, and stamp when a request last
+--                     authenticated. Cannot consent, mint or revoke.
 --
 -- Neither is a superuser and neither is the migration account.
 --
@@ -37,9 +40,12 @@ DO $$
 DECLARE
   provider_role text := current_setting('agent_connections.provider_role');
   consent_role  text := current_setting('agent_connections.consent_role');
+  resource_role text := current_setting('agent_connections.resource_role');
 BEGIN
-  IF provider_role = consent_role THEN
-    RAISE EXCEPTION 'the provider and consent roles must be distinct; splitting them IS the control';
+  IF provider_role = consent_role
+     OR provider_role = resource_role
+     OR consent_role = resource_role THEN
+    RAISE EXCEPTION 'the provider, consent and resource roles must be distinct; splitting them IS the control';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = provider_role) THEN
@@ -52,11 +58,16 @@ BEGIN
       'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
       consent_role, 'synthetic-local-consent-only');
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = resource_role) THEN
+    EXECUTE format(
+      'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
+      resource_role, 'synthetic-local-resource-only');
+  END IF;
 
-  EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I',
-    current_database(), provider_role, consent_role);
-  EXECUTE format('GRANT USAGE ON SCHEMA community TO %I, %I',
-    provider_role, consent_role);
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I, %I',
+    current_database(), provider_role, consent_role, resource_role);
+  EXECUTE format('GRANT USAGE ON SCHEMA community TO %I, %I, %I',
+    provider_role, consent_role, resource_role);
 
   -- ------------------------------------------------------------- provider --
   --
@@ -99,15 +110,31 @@ BEGIN
   -- The provider OPENS the interaction, writing only what it will enforce,
   -- and later marks it spent. It reads the decision somebody else made.
   --
-  -- DELIBERATELY ABSENT: UPDATE on decision, decided_at, granted_generation,
-  -- ticket_digest, human_account_id and connection_id. The provider never
-  -- authenticates a human, so it must not be able to say who consented, to
-  -- know the browser's single-use secret, or to record a decision. INSERT
-  -- alone cannot approve: `decision` starts NULL and the provider holds no
-  -- privilege that could move it.
+  -- The INSERT is a COLUMN LIST, and that is the whole control. An earlier
+  -- version granted table-level INSERT with a comment claiming "INSERT alone
+  -- cannot approve: `decision` starts NULL and the provider holds no
+  -- privilege that could move it". That was FALSE, and an independent review
+  -- caught it: the provider does not have to MOVE `decision`, it can write it
+  -- in the first place. Measured on the live schema before the fix -- the
+  -- provider role inserted a row with decision='approved' and a generation,
+  -- satisfying every CHECK, and then held the rest of the path (resumed_at,
+  -- a grant INSERT, current_grant_id) to turn it into a mintable token.
+  --
+  -- The freeze trigger is BEFORE UPDATE and never fires on INSERT, so it was
+  -- never the backstop that comment assumed.
+  --
+  -- DELIBERATELY ABSENT from this list: decision, decided_at,
+  -- granted_generation, ticket_digest, human_account_id, connection_id,
+  -- resumed_at and grant_id. The provider never authenticates a human, so it
+  -- must not be able to say who consented, know the browser's single-use
+  -- secret, or record a decision -- at INSERT or at UPDATE.
   EXECUTE format(
-    'GRANT SELECT, INSERT ON TABLE community.agent_connection_consents TO %I',
+    'GRANT SELECT ON TABLE community.agent_connection_consents TO %I',
     provider_role);
+  EXECUTE format(
+    'GRANT INSERT (interaction_uid, oauth_client_id, resource,
+                   capability_scopes, protocol_scopes, preset, expires_at)
+       ON TABLE community.agent_connection_consents TO %I', provider_role);
   EXECUTE format(
     'GRANT UPDATE (resumed_at, grant_id)
        ON TABLE community.agent_connection_consents TO %I', provider_role);
@@ -132,13 +159,32 @@ BEGIN
 
   -- The connection authority: status, generation and the consent timestamp
   -- move here and only here, under compare-and-set on version.
+  --
+  -- The INSERT is a column list for the same reason the provider's is. A
+  -- table-level INSERT let this role create a connection row already pointing
+  -- at any grant id it could read, which contradicted the stated absent
+  -- privilege below even though `admitGrant` refuses the result.
   EXECUTE format(
-    'GRANT SELECT, INSERT ON TABLE community.agent_connections TO %I',
-    consent_role);
+    'GRANT SELECT ON TABLE community.agent_connections TO %I', consent_role);
+  EXECUTE format(
+    'GRANT INSERT (id, human_account_id, client_family, oauth_client_id,
+                   environment, principal_label, preset, status, generation,
+                   version, created_at, consented_at, revoked_at)
+       ON TABLE community.agent_connections TO %I', consent_role);
+  -- The column list matches what `compareAndSet` actually writes: the store
+  -- round-trips the whole consented shape under one conditional UPDATE, so a
+  -- narrower grant makes every lifecycle transition fail with 42501. Narrowing
+  -- it further means narrowing the store first, which is a separate change
+  -- with its own concurrency argument.
+  --
+  -- What stays absent is the column that matters: `current_grant_id`. The
+  -- control plane must not be able to re-point a connection at a grant it did
+  -- not create, and that is the provider's column alone.
   EXECUTE format(
     'GRANT UPDATE (
-       status, generation, version, preset, consented_at, revoked_at,
-       provider_cleanup_status, provider_cleanup_error
+       principal_label, human_account_id, client_family, oauth_client_id,
+       environment, preset, status, generation, version, consented_at,
+       revoked_at, provider_cleanup_status, provider_cleanup_error
      ) ON TABLE community.agent_connections TO %I', consent_role);
 
   -- Read-only on the snapshot, for display. It cannot forge one.
@@ -147,6 +193,30 @@ BEGIN
     consent_role);
   EXECUTE format(
     'GRANT SELECT ON TABLE community.schema_migrations TO %I', consent_role);
+
+  -- ------------------------------------------------------------- resource --
+  --
+  -- The Admin's MCP boundary. It authenticates requests and decides nothing
+  -- about authority, so it reads three tables and writes exactly one column:
+  -- when a request last authenticated, which the page shows as an
+  -- OBSERVATION. An injection on the resource-server path therefore reaches a
+  -- role that cannot mint a token, record a consent or revoke anything.
+  --
+  -- DELIBERATELY ABSENT: every write except last_verified_at, and any
+  -- privilege at all on agent_connection_provider_artifacts and
+  -- agent_connection_consents. The resource server has no business near the
+  -- protocol's storage or near a decision.
+  EXECUTE format(
+    'GRANT SELECT ON TABLE
+       community.agent_connections,
+       community.agent_connection_grants,
+       community.agent_connection_wrappers
+     TO %I', resource_role);
+  EXECUTE format(
+    'GRANT UPDATE (last_verified_at) ON TABLE community.agent_connections
+     TO %I', resource_role);
+  EXECUTE format(
+    'GRANT SELECT ON TABLE community.schema_migrations TO %I', resource_role);
 
   -- DELIBERATELY ABSENT for the consent role:
   --   * current_grant_id -- the provider's column. The control plane must not
@@ -158,14 +228,15 @@ BEGIN
   --                         The control plane has no business near a token
   --                         store and cannot mint or resolve one.
 
-  -- Nothing anywhere gets DELETE on a connection, a grant or a consent. The
-  -- ledger is append-plus-freeze; removal is a retention decision, not a
-  -- runtime one.
-  EXECUTE format(
-    'REVOKE DELETE ON TABLE
-       community.agent_connections,
-       community.agent_connection_grants,
-       community.agent_connection_consents
-     FROM %I, %I', provider_role, consent_role);
+  -- Neither role is granted DELETE on a connection, a grant or a consent
+  -- anywhere above: the ledger is append-plus-freeze, and removal is a
+  -- retention decision rather than a runtime one.
+  --
+  -- The REVOKE that used to sit here was a no-op dressed as a control -- it
+  -- took back a privilege neither role had ever been given, and it said
+  -- nothing about any other role. Removed rather than kept, because a
+  -- statement that looks like enforcement and enforces nothing is worse than
+  -- no statement. What actually holds is the absence of the grant, and the
+  -- committed regression asserts the refusal.
 END
 $$;

@@ -27,11 +27,13 @@ export interface ConsentOutcome {
 /**
  * The decision.
  *
- * The order of the three writes is the whole safety argument:
+ * The order is the whole safety argument. There are TWO writes, not three —
+ * the first step is a pure computation, and calling it a write was an
+ * overstatement an independent review caught:
  *
  *  1. the pure transition is computed from the connection READ AT A VERSION,
  *     so the generation the consent will record is the one this decision
- *     would produce;
+ *     would produce (no write);
  *  2. `decide` is the gate — the ticket, the human and the deadline are all
  *     in its WHERE clause, and a wrong ticket writes NOTHING. It runs before
  *     any connection change, because a failed decision that had already

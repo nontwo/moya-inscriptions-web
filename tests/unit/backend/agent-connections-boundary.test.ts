@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,7 @@ import {
   canonicalScopes,
 } from "admin/agent-connections";
 import { createResourceRuntime } from "admin/agent-connections-resource";
+import { extractModuleReferences } from "../architecture/workspace-scanner.js";
 import { agentAdminTools } from "admin/agent-admin-mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -150,10 +151,53 @@ describe("F1: the NEW connection surface fails closed", () => {
     // the comment explaining it. The re-review added a live `payload` import
     // back into `admission.ts` and nothing in 130 architecture tests or 401
     // postgres tests noticed.
-    const admission = read("apps/admin/src/agent-connections/admission.ts");
-    expect(admission).not.toMatch(/from\s+"payload"/u);
-    expect(admission).not.toMatch(/from\s+"@payloadcms\//u);
-    expect(admission).not.toMatch(/from\s+"next/u);
+    // Carry-forward C1: the r14 guard matched ONE SPELLING, and the review
+    // measured two bypasses it stayed silent for -- `payload/shared` in this
+    // file, and `payload` imported into `contracts.ts`, the second of which
+    // restored the full regression (22.7ms -> 153.5ms) with the guard saying
+    // nothing. So the closure is walked instead of one file being pattern
+    // matched, and the package NAME is what is matched, not an exact string.
+    //
+    // Stated honestly: this is the STATIC first-party closure, not the loaded
+    // module graph. A plain-Node loader hook cannot walk extensionless
+    // TypeScript imports, so the runtime graph is not what is asserted here.
+    // What this does cover is every relative hop from the admission entry,
+    // which is where both measured bypasses lived.
+    const framework =
+      /^(?:payload|next|react|react-dom)(?:\/|$)|^@payloadcms\//u;
+    const visited = new Set<string>();
+    const pending = ["apps/admin/src/agent-connections/admission.ts"];
+    const offenders: string[] = [];
+    while (pending.length) {
+      const relative = pending.pop();
+      if (relative === undefined || visited.has(relative)) continue;
+      visited.add(relative);
+      const source = read(relative);
+      for (const reference of extractModuleReferences(source)) {
+        if (reference.typeOnly) continue;
+        if (framework.test(reference.specifier)) {
+          offenders.push(`${relative}: ${reference.specifier}`);
+          continue;
+        }
+        if (!reference.specifier.startsWith(".")) continue;
+        const base = path.posix.join(
+          path.posix.dirname(relative),
+          reference.specifier,
+        );
+        const next = [
+          `${base}.ts`,
+          `${base}.tsx`,
+          base,
+          `${base}/index.ts`,
+        ].find((candidate) => existsSync(path.join(root, candidate)));
+        if (next !== undefined) pending.push(next);
+      }
+    }
+    expect(offenders).toEqual([]);
+    // The closure is real: it reaches past the entry file, which is where the
+    // second measured bypass lived.
+    expect(visited.size).toBeGreaterThan(1);
+    expect(visited).toContain("apps/admin/src/agent-connections/contracts.ts");
     // And it must stay reachable without going through the index, which does
     // import the framework.
     const manifest = JSON.parse(read("apps/admin/package.json")) as {

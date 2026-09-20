@@ -170,6 +170,11 @@ async function main() {
   // when it already exists.
   const parent = new URL(syntheticDatabase(process.env.CMS_TEST_DATABASE_URL));
   const owned = `${parent.pathname.slice(1)}_agent_conn_${randomBytes(4).toString("hex")}`;
+  // Built from an operator environment variable, so it is CHECKED rather than
+  // quoted and hoped for: PostgreSQL has no bind parameter for an identifier,
+  // and `syntheticDatabase` validates the URL, not this shape.
+  if (!/^[a-z][a-z0-9_]{0,62}$/u.test(owned))
+    throw new Error("HARNESS_DATABASE_NAME_INVALID");
   const admin = new URL(parent.href);
   admin.pathname = "/postgres";
 
@@ -197,6 +202,27 @@ async function main() {
   console.log(
     `Agent connections profile ${budget.profile}: ceiling ${budget.ceilingMs}ms (${budget.ceilingSource}); session ${budget.sessionBudgetMs}ms`,
   );
+
+  /**
+   * The three roles this harness creates, uses and drops. Names carry the
+   * database's own random suffix so two runs never collide, and PostgreSQL
+   * bounds an identifier at 63 bytes.
+   */
+  const roleNames = {
+    provider_role: `${owned}_provider`.slice(0, 63),
+    consent_role: `${owned}_consent`.slice(0, 63),
+    resource_role: `${owned}_resource`.slice(0, 63),
+  };
+  const rolePasswords = Object.fromEntries(
+    Object.keys(roleNames).map((key) => [key, randomBytes(24).toString("hex")]),
+  );
+  /** A loopback connection string for one of them. */
+  const asRole = (key) => {
+    const url = new URL(target.href);
+    url.username = roleNames[key];
+    url.password = rolePasswords[key];
+    return url.href;
+  };
 
   let summary;
   let operationError;
@@ -227,13 +253,19 @@ async function main() {
         pool,
         path.join(root, "database/community-migrations"),
       );
-      // The two narrow roles, from the file that ships rather than a copy.
+      // The three narrow roles, from the file that ships rather than a copy.
+      //
+      // The harness then RUNS AS THEM. An earlier version created the roles
+      // and connected every pool as the database owner that had just issued
+      // CREATE DATABASE -- so the role split was described in comments and
+      // exercised nowhere, which an independent review said plainly and which
+      // is how a table-level INSERT on the consent table survived.
+      //
+      // Each password is random per run, so the committed synthetic constants
+      // in the grant file never become live credentials on this cluster.
       const client = await pool.connect();
       try {
-        for (const [key, value] of [
-          ["provider_role", `${owned}_provider`.slice(0, 63)],
-          ["consent_role", `${owned}_consent`.slice(0, 63)],
-        ])
+        for (const [key, value] of Object.entries(roleNames))
           await client.query("SELECT set_config($1,$2,false)", [
             `agent_connections.${key}`,
             value,
@@ -247,6 +279,10 @@ async function main() {
             "utf8",
           ),
         );
+        for (const [key, name] of Object.entries(roleNames))
+          await client.query(
+            `ALTER ROLE "${name.replaceAll('"', '""')}" PASSWORD '${rolePasswords[key]}'`,
+          );
       } finally {
         client.release();
       }
@@ -329,9 +365,11 @@ async function main() {
       AGENT_AUTHORIZATION_PORT: String(authPort),
       AGENT_AUTHORIZATION_CLIENTS: clients,
       AGENT_AUTHORIZATION_ENVIRONMENT: "development",
-      AGENT_AUTHORIZATION_DATABASE_URL: target.href,
-      AGENT_CONSENT_DATABASE_URL: target.href,
-      AGENT_RESOURCE_DATABASE_URL: target.href,
+      // Each service authenticates as its OWN role, so the grant plan is the
+      // thing under test rather than a paragraph about one.
+      AGENT_AUTHORIZATION_DATABASE_URL: asRole("provider_role"),
+      AGENT_CONSENT_DATABASE_URL: asRole("consent_role"),
+      AGENT_RESOURCE_DATABASE_URL: asRole("resource_role"),
     };
 
     /** Starts both services and waits for each to answer. */
@@ -475,10 +513,40 @@ async function main() {
     // Only what this harness made. The database is dropped last, after every
     // child is gone, so nothing is holding a connection to it.
     if (created) {
+      // Roles are CLUSTER-wide, not per-database: dropping the database frees
+      // their grants and leaves the LOGIN accounts behind. An independent
+      // review caught an earlier version accumulating two of them per run,
+      // with the grant file's synthetic passwords, against the developer's
+      // own cluster. Owned objects go first, because a role that still owns
+      // something cannot be dropped.
+      for (const name of Object.values(roleNames)) {
+        const quoted = `"${name.replaceAll('"', '""')}"`;
+        try {
+          const scoped = createPostgresPool(
+            parsePostgresConfig({ DATABASE_URL: target.href }),
+          );
+          try {
+            await scoped.query(`DROP OWNED BY ${quoted}`);
+          } finally {
+            await closePostgresPool(scoped);
+          }
+        } catch {
+          // A role that never got as far as owning anything is already fine.
+        }
+      }
       try {
         await control.query(`DROP DATABASE IF EXISTS "${owned}" WITH (FORCE)`);
       } catch {
         operationError ??= new Error("HARNESS_DATABASE_CLEANUP_FAILED");
+      }
+      for (const name of Object.values(roleNames)) {
+        try {
+          await control.query(
+            `DROP ROLE IF EXISTS "${name.replaceAll('"', '""')}"`,
+          );
+        } catch {
+          operationError ??= new Error("HARNESS_ROLE_CLEANUP_FAILED");
+        }
       }
     }
     await closePostgresPool(control);

@@ -97,9 +97,17 @@ export const digestConsentTicket = (ticket: string): string =>
   createHash("sha256").update(ticket, "utf8").digest("hex");
 
 /**
- * Constant-time comparison for the one place two tickets are compared in
- * process rather than in a WHERE clause. Lengths are checked first because
- * `timingSafeEqual` throws on a mismatch, and a throw is itself a signal.
+ * Constant-time ticket comparison, for a caller that has to compare two
+ * tickets in process rather than in a WHERE clause.
+ *
+ * Nothing in the product calls it today: every comparison that matters is the
+ * `decide` statement's own WHERE clause, which is the stronger arrangement
+ * because it leaves no check-then-act window. An earlier version of this note
+ * claimed it was "the one place" such a comparison happens, which an
+ * independent review correctly read as describing a caller that does not
+ * exist. Kept because a future caller that needs it should not reach for
+ * `===`, and lengths are checked first because `timingSafeEqual` throws on a
+ * mismatch and a throw is itself a signal.
  */
 export const consentTicketsEqual = (a: string, b: string): boolean => {
   const left = Buffer.from(a, "utf8");

@@ -215,7 +215,12 @@ export const editorialMcp = () => {
     // `null` is the same closed door it always was: a request presenting a
     // connection token is refused outright rather than falling through to the
     // API-key resolver. Wiring the real boundary did not remove that door; it
-    // gave it a hinge. Legacy callers are unaffected either way.
+    // gave it a hinge.
+    //
+    // It also cannot throw. This runs inside `buildConfig`, so a
+    // misconfiguration that escaped would stop the whole Admin — editorial,
+    // media, community and every legacy API-key caller — from starting.
+    // It fails closed and reports a bare code instead.
     overrideAuth: connectionOverrideAuth(connectionAuthDependencies()),
     mcp: {
       handlerOptions: { disableSse: true, verboseLogs: false, maxDuration: 30 },

@@ -182,6 +182,13 @@ export const createResourceRuntime = (
     issuer: issuer.origin,
     resource: resource.href,
     environment: environment.CMS_ENVIRONMENT ?? "development",
+    // The boundary answers one shape on the wire whatever went wrong, so an
+    // operator has no way to tell a store outage from a forged signature from
+    // a revoked connection unless the code is recorded HERE. Nothing was
+    // recording it: `connectionAuth` has always called `recordRefusal`, and
+    // the composition root never supplied one. A bare code, never a token.
+    recordRefusal: (code: string) =>
+      process.stderr.write(`agent-connection refused: ${code}\n`),
     close: () => closePostgresPool(pool),
   };
 };
@@ -202,10 +209,35 @@ export const resetResourceRuntime = (): void => {
 /**
  * What `mcp.ts` passes to `connectionOverrideAuth`.
  *
- * `null` is the CLOSED DOOR and is still the shipped default: where the
- * connection surface is not composed, a request presenting a connection token
- * is refused outright rather than falling through to the API-key resolver.
+ * `null` is the CLOSED DOOR: a request presenting a connection token is
+ * refused outright rather than falling through to the API-key resolver.
  * Wiring the real boundary did not remove that door; it gave it a hinge.
+ *
+ * A REFUSAL HERE MUST NOT TAKE DOWN THE ADMIN. This is called inside
+ * `buildConfig`, during module evaluation of the Payload config, so a thrown
+ * `ResourceRuntimeError` — a missing wrapper key, say — would stop editorial,
+ * media, community and every legacy API-key caller from starting at all.
+ * `connectionOverrideAuth(null)` could never do that, and an independent
+ * review pointed out that wiring it had quietly introduced the possibility
+ * while a comment still promised legacy callers were unaffected.
+ *
+ * So a misconfiguration fails CLOSED and LOUD rather than fatal: the
+ * connection surface is absent, connection tokens are refused, everything
+ * else starts, and the operator gets a bare code on stderr. Silence would be
+ * the wrong trade in the other direction.
  */
-export const connectionAuthDependencies =
-  (): ConnectionAuthDependencies | null => resourceRuntime();
+export const connectionAuthDependencies = (
+  report: (code: string) => void = (code) =>
+    process.stderr.write(`agent-connections composition refused: ${code}\n`),
+): ConnectionAuthDependencies | null => {
+  try {
+    return resourceRuntime();
+  } catch (error) {
+    report(
+      error instanceof ResourceRuntimeError
+        ? error.code
+        : "RESOURCE_UNAVAILABLE",
+    );
+    return null;
+  }
+};

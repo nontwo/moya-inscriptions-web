@@ -75,6 +75,40 @@ export const registerAgentConnectionStoreTests = (
       );
     };
 
+    it("refuses a stored value the consented shape will not accept", async () => {
+      // Carry-forward C2 from the r14 review: reverting all four frozen-field
+      // parsers to bare `text()` left 403 tests passing, so the bounds were
+      // unwitnessed. The gap is real and specific: the column CHECK counts
+      // CHARACTERS (`char_length(oauth_client_id) BETWEEN 1 AND 1024`) while
+      // the consented shape bounds UTF-8 BYTES, so a value can be perfectly
+      // storable and still be something authorization must not accept.
+      const id = newId();
+      const wide = "字".repeat(400); // 400 characters, 1200 UTF-8 bytes
+      await pool.query(
+        `INSERT INTO community.agent_connections
+           (id, human_account_id, client_family, oauth_client_id, environment,
+            principal_label, preset, status)
+         VALUES ($1,'user-owner','claude',$2,'development','agent-wide',
+                 'read-only','awaiting-consent')`,
+        [id, wide],
+      );
+      // Storable: the database accepted it.
+      const { rows } = await pool.query(
+        "SELECT char_length(oauth_client_id) AS chars FROM community.agent_connections WHERE id=$1",
+        [id],
+      );
+      expect(Number((rows[0] as { chars: string }).chars)).toBe(400);
+      // And refused on the way out, rather than reaching a comparison.
+      await expect(store.read(id)).rejects.toBeInstanceOf(
+        AgentConnectionRowError,
+      );
+      // One witness, not four, and deliberately: `principal_label` is checked
+      // by the SAME pattern in the column and in the schema, so there is no
+      // storable-but-unacceptable value to write. The byte-versus-character
+      // gap on the client id is the one place the two genuinely disagree, and
+      // it is the one the r14 review named.
+    });
+
     afterEach(async () => {
       // A consent references its connection, so this leaf goes before the
       // connection does, exactly like the wrappers below it.
