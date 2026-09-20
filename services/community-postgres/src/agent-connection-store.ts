@@ -651,6 +651,12 @@ export const createAgentConnectionStore = (
      * liveness claim. Deliberately unconditional on status — recording that a
      * request authenticated is a fact about the past, and filtering it would
      * make a revoked connection's last sighting disappear.
+     *
+     * It deliberately does NOT touch `version`. This fires once per admitted
+     * MCP request and takes a row lock the disconnect's compare-and-set also
+     * wants; leaving `version` alone is what stops an observation from making
+     * a concurrent lifecycle transition lose its race. Recorded because it
+     * reads as an omission and is a decision.
      */
     async markVerified(connectionId: string): Promise<boolean> {
       const { rowCount } = await pool.query(

@@ -543,10 +543,15 @@ async function main() {
       // catch here would only ever hide a real failure -- which is what an
       // earlier version did, with a comment claiming the opposite. A failure
       // is recorded; the later `DROP ROLE` is what would then fail loudly.
-      const scoped = createPostgresPool(
-        parsePostgresConfig({ DATABASE_URL: target.href }),
-      );
+      // Constructed INSIDE the try: a throw here (realistically only
+      // `parsePostgresConfig`) would otherwise replace the original error and
+      // skip the database drop, the role drops, the token removal and the
+      // source restore below it.
+      let scoped;
       try {
+        scoped = createPostgresPool(
+          parsePostgresConfig({ DATABASE_URL: target.href }),
+        );
         for (const name of Object.values(roleNames)) {
           try {
             await scoped.query(`DROP OWNED BY "${name.replaceAll('"', '""')}"`);
@@ -554,8 +559,10 @@ async function main() {
             operationError ??= new Error("HARNESS_ROLE_CLEANUP_FAILED");
           }
         }
+      } catch {
+        operationError ??= new Error("HARNESS_ROLE_CLEANUP_FAILED");
       } finally {
-        await closePostgresPool(scoped);
+        if (scoped) await closePostgresPool(scoped);
       }
       try {
         await control.query(`DROP DATABASE IF EXISTS "${owned}" WITH (FORCE)`);

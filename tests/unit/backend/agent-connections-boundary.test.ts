@@ -158,11 +158,20 @@ describe("F1: the NEW connection surface fails closed", () => {
     // nothing. So the closure is walked instead of one file being pattern
     // matched, and the package NAME is what is matched, not an exact string.
     //
-    // Stated honestly: this is the STATIC first-party closure, not the loaded
-    // module graph. A plain-Node loader hook cannot walk extensionless
-    // TypeScript imports, so the runtime graph is not what is asserted here.
-    // What this does cover is every relative hop from the admission entry,
-    // which is where both measured bypasses lived.
+    // Stated honestly, and narrower than my first wording, which an
+    // independent review had to ask for TWICE because the edit that was
+    // supposed to trim it never landed:
+    //
+    // this is the STATIC RELATIVE closure from the admission entry. Not the
+    // loaded module graph — a plain-Node loader hook cannot walk
+    // extensionless TypeScript imports — and NOT the first-party closure: a
+    // bare workspace specifier such as `@moya/community-postgres` is neither
+    // matched by `framework` nor followed, so a workspace package pulling the
+    // framework in would leave this silent. `contracts.ts`, which this test
+    // asserts it reaches, imports exactly such a specifier.
+    //
+    // What it does cover is every relative hop from the entry, which is where
+    // both bypasses the r14 review measured actually lived.
     const framework =
       /^(?:payload|next|react|react-dom)(?:\/|$)|^@payloadcms\//u;
     const visited = new Set<string>();
