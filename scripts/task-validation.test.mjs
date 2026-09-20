@@ -317,11 +317,15 @@ describe("task routing follows the complete changed-path set", () => {
       { web: true, cms: true, scope: "smoke" },
     ],
     [
+      // community-postgres reaches the cms job from r15: the Admin's
+      // agent-connection control plane and resource boundary import it, so
+      // `pnpm --filter admin build` builds it and the Owner-browser stage
+      // runs it. The job-derived closure test is what caught this.
       [
         "packages/search/scripts/native-runtime.mjs",
         "services/community-postgres/src/index.ts",
       ],
-      { web: true, scope: "smoke" },
+      { web: true, cms: true, scope: "smoke" },
     ],
     [["packages/search/README.md", "services/api/README.md"], {}],
     [["services/public-api/src/openapi.ts"], { contracts: true }],
