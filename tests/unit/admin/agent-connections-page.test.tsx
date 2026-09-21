@@ -318,6 +318,38 @@ describe("the AI connections page", () => {
     expect(hint?.textContent).toContain("不需要先断开");
   });
 
+  it("reports the strongest state when one client holds two rows", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection(),
+            connection({
+              id: "conn-ffffffffffffffffffffffffffffffff",
+              status: "awaiting-consent",
+              hasCurrentGrant: false,
+              consentedAt: null,
+              lastVerifiedAt: null,
+            }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    // A live connection outranks a half-finished one: saying 等待应用完成授权
+    // here would contradict the 已授权 card one row above.
+    expect(card.textContent).toContain("已连接");
+    expect(card.textContent).not.toContain("等待应用完成授权");
+  });
+
   it("does not promise that two addresses are all it takes", async () => {
     vi.stubGlobal("fetch", mockFetch(result()));
     render(createElement(AgentConnectionsClient));

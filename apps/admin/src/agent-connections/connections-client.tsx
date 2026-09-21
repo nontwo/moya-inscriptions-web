@@ -320,12 +320,16 @@ export const AgentConnectionsClient = () => {
         connection.oauthClientId === clientId &&
         connection.status !== "revoked",
     );
-    if (rows.some((row) => row.status === "awaiting-consent"))
-      return "awaiting" as const;
+    // Strongest state first. Checking `awaiting` first would let a client
+    // that holds a live connection AND a half-finished one read
+    // 等待应用完成授权 here while its own card read 已授权 -- the same
+    // disagreement, one row over.
     if (rows.some((row) => row.status === "authorized" && row.hasCurrentGrant))
       return "connected" as const;
     if (rows.some((row) => row.status === "authorized"))
       return "needs-consent" as const;
+    if (rows.some((row) => row.status === "awaiting-consent"))
+      return "awaiting" as const;
     if (rows.length > 0) return "unknown" as const;
     return "available" as const;
   };
