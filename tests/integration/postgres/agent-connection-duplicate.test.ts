@@ -222,6 +222,13 @@ describe("one human, one client, one connection", () => {
     // it: the loser is what arms the interaction the human then approves.
     expect(first.id).toBe(second.id);
     expect(rows[0]?.id).toBe(first.id);
+    // NOTE, because the name of this case promises more than it can force: if
+    // the two resolves serialize on the pool, the second takes
+    // `findForClient`'s fast path and the conflict branch never runs, and
+    // every assertion here still holds. This case pins the OUTCOME. The
+    // branch itself is pinned deterministically below, by calling the store
+    // directly — see "hands back a revoked row on conflict without reviving
+    // it".
   });
 
   it("refuses a second row for the pair in the database itself", async () => {
@@ -316,6 +323,84 @@ describe("one human, one client, one connection", () => {
     expect(after[0]?.status).toBe("revoked");
     expect(after[0]?.revoked_at).toEqual(revoked?.revoked_at);
     expect(String(after[0]?.generation)).toBe(String(revoked?.generation));
+  });
+
+  it("leaves a real grant alone when a revoked connection is re-opened", async () => {
+    // The two cases above revoke a connection that never held a grant, so
+    // their "grant unchanged" assertion is null against null. This is the
+    // shape an Owner actually reaches: authorized, carrying a grant, then
+    // disconnected. Re-opening must not move any of it.
+    const owner = human();
+    const opened = await resolveConnection(runtime, owner, CLIENT_ID);
+
+    // Consent, as the other suites record it: `setCurrentGrant` will only
+    // attach to an authorized row that is not revoked.
+    const current = await runtime.connections.read(opened.id);
+    const authorizedGeneration = opened.generation + 1;
+    expect(
+      await runtime.connections.compareAndSet(
+        opened.id,
+        current?.version ?? 1,
+        {
+          ...(current?.connection ?? ({} as never)),
+          status: "authorized",
+          generation: authorizedGeneration,
+          consentedAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+      ),
+    ).not.toBeNull();
+
+    const grantId = `grant-${randomBytes(12).toString("hex")}`;
+    expect(
+      await runtime.connections.createGrant({
+        grantId,
+        connectionId: opened.id,
+        generationAtConsent: authorizedGeneration,
+        oauthClientId: CLIENT_ID,
+        humanSubject: owner,
+        issuer: "http://127.0.0.1:34741",
+        resource: "http://admin.localhost:3442/api/mcp",
+        capabilityScopes: ["artvenn:read"],
+        protocolScopes: ["offline_access"],
+        presetAtConsent: "read-only",
+      }),
+    ).toBe(true);
+    expect(
+      await runtime.connections.setCurrentGrant(
+        opened.id,
+        grantId,
+        authorizedGeneration,
+      ),
+    ).toBe(true);
+    await runtime.authority.revoke(opened.id, new Date().toISOString());
+
+    const before = (await rowsFor(owner))[0];
+    expect(before?.status).toBe("revoked");
+    // The grant is the thing that must not move, so the assertion is only
+    // worth anything if there is one.
+    expect(before?.current_grant_id).toBe(grantId);
+
+    const handedBack = await runtime.connections.createForClient({
+      id: `conn-${randomBytes(16).toString("hex")}`,
+      principalLabel: `agent-cursor-${randomBytes(6).toString("hex")}`,
+      humanAccountId: owner,
+      client: "cursor",
+      oauthClientId: CLIENT_ID,
+      environment: "development",
+      preset: "read-only",
+      status: "awaiting-consent",
+      generation: 0,
+      revokedAt: null,
+      consentedAt: null,
+    });
+
+    expect(handedBack?.connection.id).toBe(opened.id);
+    const after = (await rowsFor(owner))[0];
+    expect(after?.status).toBe("revoked");
+    expect(after?.current_grant_id).toBe(grantId);
+    expect(String(after?.generation)).toBe(String(before?.generation));
+    expect(after?.revoked_at).toEqual(before?.revoked_at);
   });
 
   it("names an unmigrated database instead of raising a raw 42P10", async () => {

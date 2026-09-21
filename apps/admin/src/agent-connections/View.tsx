@@ -85,13 +85,22 @@ import { consentRuntime } from "./runtime";
 const Shell = ({
   children,
   props,
+  stepNav,
 }: {
   readonly children: React.ReactNode;
   readonly props: AdminViewServerProps;
+  /**
+   * Rendered on EVERY branch, including the refusal. A breadcrumb belongs to
+   * the route, not to whether the reader is allowed to see what is on it —
+   * and the refusal branch is precisely where a leaked one would sit under a
+   * page that never mounted its own client.
+   */
+  readonly stepNav?: React.ReactNode;
 }) => {
   const { req, visibleEntities } = props.initPageResult;
   return (
     <DefaultTemplate {...props} req={req} visibleEntities={visibleEntities}>
+      {stepNav}
       {isOwner(req) ? children : <p role="alert">此工作区仅限 Owner。</p>}
     </DefaultTemplate>
   );
@@ -111,18 +120,16 @@ const firstParam = (
 ): string | undefined => (Array.isArray(value) ? value[0] : value);
 
 export const AgentConnectionsView = (props: AdminViewServerProps) => (
-  <Shell props={props}>
+  // The breadcrumb is client state the last view to mount owns, so a branch
+  // that mounts no connections UI would otherwise show whichever page the
+  // reader came from. Set here, on every branch of this route; the enabled
+  // branch's client sets the same label again on mount, which is the same
+  // value and therefore not a second answer.
+  <Shell props={props} stepNav={<ConnectionsStepNav />}>
     {connectionsEnabled() ? (
       <AgentConnectionsClient />
     ) : (
-      <>
-        {/* The breadcrumb is client state the last view to mount owns, and
-            this branch mounts no connections UI, so without this it would
-            show whichever page the reader came from. Only here: the enabled
-            branch sets it from inside the client. */}
-        <ConnectionsStepNav />
-        <p role="alert">AI 连接未启用。</p>
-      </>
+      <p role="alert">AI 连接未启用。</p>
     )}
   </Shell>
 );

@@ -100,13 +100,13 @@ const result = (overrides: Record<string, unknown> = {}) => ({
 
 let posted: { url: string; body: unknown }[] = [];
 
-const mockFetch = (payload: unknown) =>
+const mockFetch = (body: unknown) =>
   vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
     if (init?.method === "POST")
       posted.push({ url: String(url), body: JSON.parse(init.body ?? "{}") });
     return {
       ok: true,
-      json: async () => (init?.method === "POST" ? { ok: true } : payload),
+      json: async () => (init?.method === "POST" ? { ok: true } : body),
     } as unknown as Response;
   });
 
