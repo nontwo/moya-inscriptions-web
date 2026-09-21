@@ -652,6 +652,23 @@ export const createAgentConnectionStore = (
           ],
         );
       } catch (error) {
+        // 42P10 is not a race and not an invariant: it is PostgreSQL saying no
+        // unique index matches the conflict target, which means migration
+        // 20260921010000 has not been applied here. Every first open fails
+        // that way, not only concurrent ones, so it is worth naming — the raw
+        // message says "no unique or exclusion constraint matching the ON
+        // CONFLICT specification", which reads like a code defect rather than
+        // an unmigrated database.
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          String((error as { code?: unknown }).code) === "42P10"
+        )
+          throw new AgentConnectionRowError(
+            "CONNECTION_UNIQUENESS_NOT_MIGRATED",
+            "oauth_client_id",
+          );
         return asInvariant(error);
       }
       const opened = result.rows[0] as Record<string, unknown> | undefined;

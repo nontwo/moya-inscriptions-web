@@ -318,6 +318,30 @@ describe("one human, one client, one connection", () => {
     expect(String(after[0]?.generation)).toBe(String(revoked?.generation));
   });
 
+  it("names an unmigrated database instead of raising a raw 42P10", async () => {
+    // `ON CONFLICT (human_account_id, oauth_client_id)` needs the index to
+    // infer an arbiter, so an Admin pointed at a database that predates
+    // migration 20260921010000 fails EVERY first connection open, not only
+    // concurrent ones. Raw, that surfaces as "no unique or exclusion
+    // constraint matching the ON CONFLICT specification", which reads like a
+    // code defect rather than an unmigrated target.
+    const owner = human();
+    try {
+      await pool.query(
+        "DROP INDEX community.agent_connections_human_client_unique",
+      );
+      await expect(
+        resolveConnection(runtime, owner, CLIENT_ID),
+      ).rejects.toMatchObject({ code: "CONNECTION_UNIQUENESS_NOT_MIGRATED" });
+      expect(await rowsFor(owner)).toHaveLength(0);
+    } finally {
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS agent_connections_human_client_unique
+           ON community.agent_connections (human_account_id, oauth_client_id)`,
+      );
+    }
+  });
+
   it("keeps one human's two registered clients independent", async () => {
     // Property A. The pair is the key, so the same human running two
     // integrations holds two connections, and each resolves back to its own.
