@@ -192,8 +192,22 @@
   white-space: pre-wrap;
 }
 .phase4-comment-highlight {
-  outline: 2px solid var(--yoyi-color-seal-red);
-  outline-offset: 4px;
+  animation: phase4-comment-arrival 1.8s ease-out;
+  scroll-margin-block: 30vh;
+}
+@keyframes phase4-comment-arrival {
+  0%,
+  35% {
+    background: color-mix(in srgb, var(--yoyi-color-seal-red) 11%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phase4-comment-highlight {
+    animation-duration: 1ms;
+  }
 }
 [data-author-bar] {
   grid-template-columns: 48px minmax(0, 1fr) 48px !important;

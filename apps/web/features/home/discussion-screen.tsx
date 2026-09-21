@@ -1,12 +1,17 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "@moya/ui";
+import { DiscussionIcon } from "../discussion-preview/discussion-icons";
 import { AnimatedTopTabs } from "../shell/animated-top-tabs";
 import { HorizontalPager } from "../shell/horizontal-pager";
 import type { HorizontalPagerHandle } from "../shell/horizontal-pager";
 import type { ReactNode } from "react";
 import type { HomeSurfaceData } from "./home-feed";
 import { useProductShell } from "../product-shell/product-shell";
+import { useDiscussionPreview } from "../discussion-preview/preview-context";
+import {
+  DiscussionPreviewFeed,
+  previewFeed,
+} from "../discussion-preview/discussion-preview";
 import { CatalogMasonry } from "./catalog-masonry";
 import { TopicCard } from "../topics/topic-card";
 import styles from "./home-screen.module.css";
@@ -30,12 +35,14 @@ export function DiscussionScreen({
   readonly initialTopicId?: string | null;
 }) {
   const shell = useProductShell();
+  const preview = useDiscussionPreview();
+  const initialFeed =
+    (preview && previewFeed(initialTopicId)) ||
+    (initialTopicId ? "topics" : "news");
   const root = useRef<HTMLDivElement>(null);
   const pager = useRef<HorizontalPagerHandle<DiscussionFeed>>(null);
-  const [active, setActive] = useState<DiscussionFeed>(
-    initialTopicId ? "topics" : "news",
-  );
-  const [progress, setProgress] = useState(initialTopicId ? 2 : 0);
+  const [active, setActive] = useState<DiscussionFeed>(initialFeed);
+  const [progress, setProgress] = useState(feeds.indexOf(initialFeed));
   const openedInitial = useRef(false);
   const positions = useRef<Record<DiscussionFeed, number>>({
     news: 0,
@@ -53,15 +60,27 @@ export function DiscussionScreen({
     [active, shell],
   );
   useEffect(() => {
-    if (shell.activeTopicId !== null && active !== "topics")
-      pager.current?.scrollToKey("topics");
+    const targetFeed =
+      (preview && previewFeed(shell.activeTopicId)) || "topics";
+    const frame =
+      shell.activeTopicId !== null && active !== targetFeed
+        ? requestAnimationFrame(() => pager.current?.scrollToKey(targetFeed))
+        : null;
     const opener = Array.from(
       root.current?.querySelectorAll<HTMLButtonElement>("[data-topic-id]") ??
         [],
     ).find((button) => button.dataset.topicId === shell.activeTopicId);
     if (opener && shell.activeTopicId)
       shell.registerTopicOpener(shell.activeTopicId, opener);
-  }, [active, shell.activeTopicId, shell.registerTopicOpener]);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [
+    active,
+    Boolean(preview),
+    shell.activeTopicId,
+    shell.registerTopicOpener,
+  ]);
   useEffect(() => {
     if (!initialTopicId || openedInitial.current) return;
     if (shell.activeDestination !== "discussion") {
@@ -131,7 +150,7 @@ export function DiscussionScreen({
           items={feeds.map((id) => ({
             id,
             label: labels[id],
-            icon: <Icon name={icons[id]} aria-hidden="true" />,
+            icon: <DiscussionIcon name={icons[id]} />,
           }))}
           activeKey={active}
           progress={progress}
@@ -147,7 +166,15 @@ export function DiscussionScreen({
         activeKey={active}
         onCommit={commit}
         onProgress={setProgress}
-        panels={{ news: null, threads: null, topics }}
+        panels={
+          preview
+            ? {
+                news: <DiscussionPreviewFeed feed="news" />,
+                threads: <DiscussionPreviewFeed feed="threads" />,
+                topics: <DiscussionPreviewFeed feed="topics" />,
+              }
+            : { news: null, threads: null, topics }
+        }
         platform={shell.platform}
         visible={shell.activeDestination === "discussion"}
         scrollOwner={shell.platform === "pc" ? "document" : "panel"}

@@ -3,6 +3,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -449,7 +450,8 @@ export const CommentSection = ({
 }: CommentSectionProps) => {
   const catalogId = contentKey ?? legacyCatalogId ?? "discussion";
   const sectionRef = useRef<HTMLElement>(null),
-    highlighted = useRef<string | null>(null);
+    highlighted = useRef<string | null>(null),
+    highlightTimer = useRef<number | null>(null);
   const [draft, setDraft] = useState("");
   const [expandedCommentIds, setExpandedCommentIds] = useState<Set<string>>(
     () => new Set(),
@@ -479,10 +481,25 @@ export const CommentSection = ({
     );
     if (node) {
       highlighted.current = highlightCommentId;
+      if (highlightTimer.current !== null)
+        window.clearTimeout(highlightTimer.current);
       node.classList.add("phase4-comment-highlight");
-      node.scrollIntoView({ block: "center" });
+      node.setAttribute("aria-current", "true");
+      node.scrollIntoView?.({ block: "center" });
+      highlightTimer.current = window.setTimeout(() => {
+        node.classList.remove("phase4-comment-highlight");
+        node.removeAttribute("aria-current");
+        highlightTimer.current = null;
+      }, 1800);
     }
   }, [highlightCommentId, hotItems, items, expandedCommentIds]);
+  useEffect(
+    () => () => {
+      if (highlightTimer.current !== null)
+        window.clearTimeout(highlightTimer.current);
+    },
+    [],
+  );
   const [replyTarget, setReplyTarget] = useState<CommentReplyTarget | null>(
     null,
   );

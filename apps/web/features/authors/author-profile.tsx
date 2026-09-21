@@ -29,20 +29,44 @@ const labels = {
   likes: "喜欢",
   history: "历史",
 };
+interface AuthorProfilePreview {
+  readonly self?: boolean;
+  readonly profile: AuthorProfile;
+  readonly onFollowChange: (enabled: boolean) => void;
+}
+interface AuthorProfilePresentationProps {
+  /** Development-only local data; no runtime requests or account-cache writes. */
+  readonly preview?: AuthorProfilePreview | undefined;
+  /** Retain the overlay layout inside an already-owned modal surface. */
+  readonly insideDialog?: boolean | undefined;
+  /** Primary-page action; overlay profiles retain their Back button. */
+  readonly headerStart?: ReactNode;
+}
 const ScopedAuthorProfile = ({
   state,
   backButtonRef,
   onClose,
   onViewChange,
   embedded = false,
-}: ProductShellProfileOverlayRenderProps & { embedded?: boolean }) => {
+  preview,
+  insideDialog = false,
+  headerStart,
+}: ProductShellProfileOverlayRenderProps &
+  AuthorProfilePresentationProps & { embedded?: boolean }) => {
   const author = useAuthors(),
     shell = useProductShell(),
-    id = state.authorId ?? author.viewer?.id ?? null,
-    owner = id === author.viewer?.id || id === null,
+    isPreview = preview !== undefined,
+    viewerId = isPreview ? null : author.viewer?.id,
+    checking = isPreview ? false : author.checking,
+    sessionError = isPreview ? false : author.sessionError,
+    authorRevision = isPreview ? 0 : author.revision,
+    id = preview?.profile.id ?? state.authorId ?? viewerId ?? null,
+    owner = !isPreview && (id === viewerId || id === null),
     cacheKey = `profile:${id}`;
-  const [profile, setProfile] = useState<AuthorProfile | null>(
-      () => (author.cache.get(cacheKey) as AuthorProfile | undefined) ?? null,
+  const [loadedProfile, setProfile] = useState<AuthorProfile | null>(() =>
+      isPreview
+        ? null
+        : ((author.cache.get(cacheKey) as AuthorProfile | undefined) ?? null),
     ),
     [error, setError] = useState(""),
     [modal, setModal] = useState<"edit" | "settings" | "background" | null>(
@@ -53,6 +77,7 @@ const ScopedAuthorProfile = ({
     [progress, setProgress] = useState(
       Math.max(0, tabs.indexOf(state.tab as (typeof tabs)[number])),
     );
+  const profile = preview?.profile ?? loadedProfile;
   const root = useRef<HTMLElement>(null),
     profileHeader = useRef<HTMLElement>(null),
     pendingScrollTop = useRef<number | null>(null),
@@ -64,12 +89,14 @@ const ScopedAuthorProfile = ({
     viewTab = visibleTabs.includes(currentTab as (typeof tabs)[number])
       ? currentTab
       : "works";
-  const ownProfile = !!profile?.isOwner && profile.id === author.viewer?.id;
+  const ownProfile =
+    !isPreview && !!profile?.isOwner && profile.id === viewerId;
   useEffect(() => {
     if ((modal === "edit" || modal === "background") && !ownProfile)
       setModal(null);
   }, [modal, ownProfile]);
   useEffect(() => {
+    if (isPreview) return;
     let current = true;
     setError("");
     if (!id) {
@@ -78,7 +105,7 @@ const ScopedAuthorProfile = ({
     }
     // Keep the loaded profile (and its editor) while the session is rechecked.
     // Cleanup retires any earlier read before a failed check invalidates it.
-    if (author.checking || author.sessionError) return;
+    if (checking || sessionError) return;
     void authorClient
       .profile(id)
       .then((result) => {
@@ -98,16 +125,19 @@ const ScopedAuthorProfile = ({
     };
   }, [
     id,
-    author.viewer?.id,
-    author.checking,
-    author.sessionError,
-    author.revision,
+    viewerId,
+    checking,
+    sessionError,
+    authorRevision,
     revision,
+    isPreview,
   ]);
   const save = () => setRevision((v) => v + 1);
   const positions = useRef<Record<string, number>>(
-    (author.cache.get(`profile-scroll:${state.entryId}`) as
-      Record<string, number> | undefined) ?? {},
+    isPreview
+      ? {}
+      : ((author.cache.get(`profile-scroll:${state.entryId}`) as
+          Record<string, number> | undefined) ?? {}),
   );
   const scrollTab = viewTab;
   const scrollElement = () =>
@@ -149,13 +179,15 @@ const ScopedAuthorProfile = ({
     const target = embedded && shell.platform === "pc" ? window : node;
     const scroll = () => {
       positions.current[scrollTab] = node.scrollTop;
-      author.cache.set(`profile-scroll:${state.entryId}`, positions.current);
+      if (!isPreview)
+        author.cache.set(`profile-scroll:${state.entryId}`, positions.current);
       if (!embedded) onViewChange(scrollTab, node.scrollTop);
     };
     target.addEventListener("scroll", scroll, { passive: true });
     return () => target.removeEventListener("scroll", scroll);
   }, [
     embedded,
+    isPreview,
     scrollTab,
     state.entryId,
     profile?.isOwner,
@@ -185,7 +217,8 @@ const ScopedAuthorProfile = ({
         positions.current[scrollTab] = node.scrollTop;
         if (!embedded) onViewChange(scrollTab, node.scrollTop);
       }
-      author.cache.set(`profile-scroll:${state.entryId}`, positions.current);
+      if (!isPreview)
+        author.cache.set(`profile-scroll:${state.entryId}`, positions.current);
     };
     measure();
     const observer =
@@ -196,6 +229,7 @@ const ScopedAuthorProfile = ({
     return () => observer?.disconnect();
   }, [
     embedded,
+    isPreview,
     scrollTab,
     state.entryId,
     shell.activeDestination,
@@ -205,14 +239,20 @@ const ScopedAuthorProfile = ({
     tabs.map((tab) => [
       tab,
       <div className={styles.panelContent}>
-        <ProfileList
-          key={`${author.viewer?.id ?? "guest"}:${id}:${tab}:${state.entryId}`}
-          authorId={id}
-          tab={tab}
-          entryId={state.entryId}
-          owner={owner}
-          active={tab === viewTab}
-        />
+        {isPreview ? (
+          <div>
+            <p>暂无可显示的内容</p>
+          </div>
+        ) : (
+          <ProfileList
+            key={`${viewerId ?? "guest"}:${id}:${tab}:${state.entryId}`}
+            authorId={id}
+            tab={tab}
+            entryId={state.entryId}
+            owner={owner}
+            active={tab === viewTab}
+          />
+        )}
       </div>,
     ]),
   ) as Record<(typeof tabs)[number], ReactNode>;
@@ -220,22 +260,26 @@ const ScopedAuthorProfile = ({
   return (
     <section
       ref={root}
-      role={embedded ? "region" : "dialog"}
-      aria-modal={embedded ? undefined : true}
+      role={embedded || insideDialog ? "region" : "dialog"}
+      aria-modal={embedded || insideDialog ? undefined : true}
       aria-label={embedded ? "用户主页" : "作者主页"}
       className={embedded ? styles.page : styles.overlay}
       data-author-profile={id ?? "guest"}
     >
       <header className={styles.header}>
-        <button
-          type="button"
-          ref={backButtonRef}
-          aria-label="返回"
-          className="yoyi-icon-button"
-          onClick={onClose}
-        >
-          <Icon name="back" />
-        </button>
+        {embedded && headerStart ? (
+          headerStart
+        ) : (
+          <button
+            type="button"
+            ref={backButtonRef}
+            aria-label="返回"
+            className="yoyi-icon-button"
+            onClick={onClose}
+          >
+            <Icon name="back" />
+          </button>
+        )}
         <span />
         {owner ? (
           <nav className={styles.profileActions} aria-label="主页管理">
@@ -300,7 +344,7 @@ const ScopedAuthorProfile = ({
                 <p>@{profile.handle}</p>
                 <p>{profile.bio}</p>
                 <div className="phase4-actions">
-                  {profile.totals.following !== null && (
+                  {!isPreview && profile.totals.following !== null && (
                     <button
                       type="button"
                       className="phase4-inline-total"
@@ -312,7 +356,7 @@ const ScopedAuthorProfile = ({
                       </strong>
                     </button>
                   )}
-                  {profile.totals.followers !== null && (
+                  {!isPreview && profile.totals.followers !== null && (
                     <button
                       type="button"
                       className="phase4-inline-total"
@@ -324,7 +368,20 @@ const ScopedAuthorProfile = ({
                       </strong>
                     </button>
                   )}
-                  {!profile.isOwner && author.viewer ? (
+                  {preview ? (
+                    preview.self ? null : (
+                      <button
+                        type="button"
+                        aria-pressed={profile.following}
+                        className="phase4-inline-total phase4-follow-toggle"
+                        onClick={() =>
+                          preview.onFollowChange(!profile.following)
+                        }
+                      >
+                        {profile.following ? "取消关注" : "关注"}
+                      </button>
+                    )
+                  ) : !profile.isOwner && author.viewer ? (
                     <>
                       <button
                         type="button"
@@ -468,7 +525,8 @@ const ScopedAuthorProfile = ({
           onSaved={save}
         />
       )}
-      {people &&
+      {!isPreview &&
+        people &&
         profile &&
         (ownProfile || profile.privacy[people] === "public") && (
           <PeopleList
@@ -673,13 +731,16 @@ export const MyComments = ({
 };
 
 export const AuthorProfileOverlay = (
-  props: ProductShellProfileOverlayRenderProps,
+  props: ProductShellProfileOverlayRenderProps & AuthorProfilePresentationProps,
 ) => {
   const author = useAuthors();
+  const preview =
+    process.env.NODE_ENV === "development" ? props.preview : undefined;
   return (
     <ScopedAuthorProfile
-      key={`${author.viewer?.id ?? "guest"}:${props.state.entryId}`}
+      key={`${preview ? "preview" : (author.viewer?.id ?? "guest")}:${props.state.entryId}`}
       {...props}
+      preview={preview}
     />
   );
 };
@@ -687,9 +748,11 @@ export const AuthorProfileOverlay = (
 /** An in-flow primary destination; the shell owns its vertical scroll and Back. */
 export const AuthorProfilePage = ({
   onBack,
+  headerStart,
   entryId = "primary-user",
 }: {
   onBack: () => void;
+  headerStart?: ReactNode;
   entryId?: string;
 }) => {
   const author = useAuthors();
@@ -697,15 +760,18 @@ export const AuthorProfilePage = ({
     <ScopedAuthorProfilePage
       key={`${author.viewer?.id ?? "guest"}:${entryId}`}
       onBack={onBack}
+      headerStart={headerStart}
       entryId={entryId}
     />
   );
 };
 const ScopedAuthorProfilePage = ({
   onBack,
+  headerStart,
   entryId,
 }: {
   onBack: () => void;
+  headerStart?: ReactNode;
   entryId: string;
 }) => {
   const author = useAuthors();
@@ -720,6 +786,7 @@ const ScopedAuthorProfilePage = ({
   return (
     <ScopedAuthorProfile
       embedded
+      headerStart={headerStart}
       state={{
         kind: "profile",
         version: 2,

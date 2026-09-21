@@ -7,7 +7,13 @@ import { AuthorDialog } from "./author-dialog";
 import { MyComments } from "./author-profile";
 import { useAuthors } from "./author-context";
 import { useProductShell } from "../product-shell/product-shell";
+import type { PrimaryDestination } from "../shell/primary-shell";
+import {
+  useDiscussionPreview,
+  type PreviewCommentLocation,
+} from "../discussion-preview/preview-context";
 import styles from "./message-center.module.css";
+import { MessagePreview } from "./message-preview";
 const sections = ["direct", "likes", "favorites", "comments"] as const;
 type Section = (typeof sections)[number];
 const labels = {
@@ -36,11 +42,26 @@ function ScopedMessageTrigger({
 }) {
   const author = useAuthors();
   const shell = useProductShell();
+  const discussionPreview = useDiscussionPreview();
   const opener = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<Section>("direct");
   const [closeRequested, setCloseRequested] = useState(false);
+  const [previewCommentTab, setPreviewCommentTab] = useState<
+    "received" | "sent" | null
+  >(null);
   const pending = useRef<ContentIdentity | null>(null);
+  const pendingPreviewComment = useRef<{
+    location: PreviewCommentLocation;
+    sourceTab: "received" | "sent";
+    sourceDestination: PrimaryDestination;
+  } | null>(null);
+  const previewCommentReturn = useRef<{
+    topicId: string;
+    sourceTab: "received" | "sent";
+    sourceDestination: PrimaryDestination;
+    opened: boolean;
+  } | null>(null);
   const frame = useRef<number | null>(null);
   const confirmedAccount = useRef<string | null>(null);
   confirmedAccount.current =
@@ -55,11 +76,27 @@ function ScopedMessageTrigger({
   useEffect(
     () => () => {
       pending.current = null;
+      pendingPreviewComment.current = null;
+      previewCommentReturn.current = null;
       confirmedAccount.current = null;
       if (frame.current !== null) cancelAnimationFrame(frame.current);
     },
     [],
   );
+  useEffect(() => {
+    const target = previewCommentReturn.current;
+    if (!target) return;
+    if (shell.activeTopicId === target.topicId) {
+      target.opened = true;
+      return;
+    }
+    if (!target.opened || shell.activeTopicId !== null) return;
+    previewCommentReturn.current = null;
+    shell.navigatePrimary(target.sourceDestination);
+    setCloseRequested(false);
+    setPreviewCommentTab(target.sourceTab);
+    setOpen(true);
+  }, [shell.activeTopicId]);
   return (
     <>
       <button
@@ -69,6 +106,7 @@ function ScopedMessageTrigger({
         aria-label={unread > 0 ? `打开消息，${badge} 条未读消息` : "打开消息"}
         onClick={() => {
           setCloseRequested(false);
+          setPreviewCommentTab(null);
           setOpen(true);
         }}
       >
@@ -83,7 +121,44 @@ function ScopedMessageTrigger({
           </span>
         )}
       </button>
-      {open && (
+      {open && process.env.NODE_ENV === "development" ? (
+        <MessagePreview
+          closeRequested={closeRequested}
+          initialCommentTab={previewCommentTab ?? "received"}
+          initialView={previewCommentTab === null ? "home" : "comments"}
+          onOpenComment={(location, sourceTab) => {
+            if (!discussionPreview) return;
+            discussionPreview.queueCommentLocation(location);
+            pendingPreviewComment.current = {
+              location,
+              sourceTab,
+              sourceDestination: shell.activeDestination,
+            };
+            setCloseRequested(true);
+          }}
+          onClose={() => {
+            setOpen(false);
+            setCloseRequested(false);
+            setPreviewCommentTab(null);
+            const target = pendingPreviewComment.current;
+            pendingPreviewComment.current = null;
+            if (!target || !discussionPreview) return;
+            frame.current = requestAnimationFrame(() => {
+              frame.current = null;
+              const targetOpener = opener.current;
+              if (!targetOpener) return;
+              previewCommentReturn.current = {
+                topicId: target.location.topicId,
+                sourceTab: target.sourceTab,
+                sourceDestination: target.sourceDestination,
+                opened: false,
+              };
+              shell.navigatePrimary("discussion");
+              shell.openTopic(target.location.topicId, targetOpener, 0);
+            });
+          }}
+        />
+      ) : open ? (
         <AuthorDialog
           title="消息"
           className={styles.page}
@@ -191,7 +266,7 @@ function ScopedMessageTrigger({
             )}
           </section>
         </AuthorDialog>
-      )}
+      ) : null}
     </>
   );
 }

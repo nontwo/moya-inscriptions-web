@@ -103,6 +103,10 @@ const AuthorProduct = ({
             <T02pProductPreview
               {...preview}
               detailScopeKey={author.viewer?.id ?? "guest"}
+              developmentDiscussion={
+                process.env.NODE_ENV === "development" &&
+                process.env.NEXT_PUBLIC_MOYA_DISCUSSION_PREVIEW === "true"
+              }
               // Publishing takes the one dock action; Search moves to the headers.
               navigationAction={<CreateWorkAction />}
               renderEditorOverlay={renderEditorOverlay}
@@ -138,5 +142,10 @@ const AuthorProduct = ({
 
 const UserPage = () => {
   const shell = useProductShell();
-  return <AuthorProfilePage onBack={() => shell.navigatePrimary("home")} />;
+  return (
+    <AuthorProfilePage
+      onBack={() => shell.navigatePrimary("home")}
+      headerStart={<CatalogSearchHeaderAction />}
+    />
+  );
 };

@@ -51,6 +51,7 @@ export interface HorizontalPagerProps<Key extends string> {
   readonly onCommit: (key: Key) => void;
   readonly onProgress?: (progress: number) => void;
   readonly visible?: boolean;
+  readonly canStartGesture?: () => boolean;
   readonly registerActiveScrollElement?: (element: HTMLElement) => () => void;
   readonly panels: Readonly<Record<Key, ReactNode>>;
   readonly platform: PresentationPlatform;
@@ -77,6 +78,7 @@ function HorizontalPagerImplementation<Key extends string>(
     activeKey,
     onCommit,
     onProgress,
+    canStartGesture,
     panels,
     platform,
     scrollOwner,
@@ -105,6 +107,7 @@ function HorizontalPagerImplementation<Key extends string>(
   const visibleRef = useRef(visible);
   const onCommitRef = useRef(onCommit);
   const onProgressRef = useRef(onProgress);
+  const gestureGuardRef = useRef(canStartGesture);
   const sessionRef = useRef<ScrollSession | null>(null);
   const generationRef = useRef(0);
   const fallbackFrameRef = useRef<number | null>(null);
@@ -125,6 +128,7 @@ function HorizontalPagerImplementation<Key extends string>(
   visibleRef.current = visible;
   onCommitRef.current = onCommit;
   onProgressRef.current = onProgress;
+  gestureGuardRef.current = canStartGesture;
 
   const setScrolling = useCallback(
     (scrolling: boolean) => {
@@ -484,7 +488,8 @@ function HorizontalPagerImplementation<Key extends string>(
 
   const handleTouchStart = useCallback(
     (event: ReactTouchEvent) => {
-      if (event.touches?.length > 1) return;
+      if (event.touches?.length > 1 || gestureGuardRef.current?.() === false)
+        return;
       const frame = frameRef.current;
       if (frame === null) return;
       touchActiveRef.current = true;
@@ -523,6 +528,7 @@ function HorizontalPagerImplementation<Key extends string>(
     (event: ReactWheelEvent<HTMLDivElement>) => {
       if (
         platform !== "pc" ||
+        gestureGuardRef.current?.() === false ||
         !isExplicitHorizontalWheel(event.deltaX, event.deltaY, event.ctrlKey)
       ) {
         return;
@@ -555,6 +561,7 @@ function HorizontalPagerImplementation<Key extends string>(
     frame.scrollLeft = 0;
     const engine = createCategoryPagerEngine(frame, {
       getCommittedIndex: () => activeIndexRef.current,
+      canStartGesture: () => gestureGuardRef.current?.() !== false,
       onCommit: (index) => {
         const key = keys[index];
         if (key === undefined) return;

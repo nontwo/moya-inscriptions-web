@@ -3,6 +3,14 @@
 import { CatalogBrowseScreen } from "../home/catalog-screen";
 import { AllCalligraphyFeed } from "../calligraphy/calligraphy-category-screen";
 import { HomeScreen } from "../home/home-screen";
+import {
+  DiscussionPreviewProvider,
+  useDiscussionPreview,
+} from "../discussion-preview/preview-context";
+import {
+  DiscussionPreviewDetail,
+  previewFeed,
+} from "../discussion-preview/discussion-preview";
 import { DiscussionScreen } from "../home/discussion-screen";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
@@ -43,6 +51,7 @@ const PreviewBrowse = ({ state }: { readonly state: HomeCatalogState }) => {
 
 export interface T02pProductPreviewProps {
   readonly detailScopeKey?: string;
+  readonly developmentDiscussion?: boolean;
   readonly headerStart?: ReactNode;
   readonly headerEnd?: ReactNode;
   readonly renderProfileOverlay?: (
@@ -78,6 +87,7 @@ export interface T02pProductPreviewProps {
 export const T02pProductPreview = ({
   catalogDetailLoader = loadCatalogDetailPresentation,
   detailScopeKey = "catalog",
+  developmentDiscussion = false,
   headerStart,
   headerEnd,
   renderProfileOverlay,
@@ -100,95 +110,99 @@ export const T02pProductPreview = ({
   showDevelopmentPagerControls = false,
   states,
 }: T02pProductPreviewProps) => (
-  <div data-clean-product-preview="">
-    <ProductShell
-      discussion={
-        <div data-product-panel="discussion">
-          <ContentQuickActionsProvider environment={quickActions}>
-            <DiscussionScreen
-              data={states.home.topics}
-              headerStart={headerStart}
-              headerEnd={headerEnd}
-              initialTopicId={initialTopicId}
-            />
-          </ContentQuickActionsProvider>
-        </div>
-      }
-      user={
-        userPage ?? (
-          <section className="phase4-page">
-            <h1>用户</h1>
-            <p>登录后查看个人主页。</p>
-          </section>
-        )
-      }
-      developmentPlatformOverride={developmentPlatformOverride}
-      home={
-        <div data-product-panel="home">
-          <ContentQuickActionsProvider environment={quickActions}>
-            <HomeScreen
-              data={states.home}
-              initialFeed={initialHomeFeed}
-              {...(onHomeFeedChange ? { onFeedChange: onHomeFeedChange } : {})}
-              headerStart={headerStart}
-              headerEnd={headerEnd}
-              {...(renderDiscover ? { renderDiscover } : {})}
-              renderInscriptions={
-                renderInscriptions ??
-                (() => <PreviewBrowse state={states.inscriptions} />)
-              }
-              calligraphy={<AllCalligraphyFeed data={states.calligraphy} />}
-            />
-          </ContentQuickActionsProvider>
-        </div>
-      }
-      initialPlatform={initialPlatform}
-      primaryUtility={productUtility}
-      navigationAction={navigationAction}
-      {...(renderProfileOverlay ? { renderProfileOverlay } : {})}
-      {...(renderEditorOverlay ? { renderEditorOverlay } : {})}
-      showDevelopmentPagerControls={showDevelopmentPagerControls}
-      renderDetailOverlay={({
-        backButtonRef,
-        target,
-        initialScrollTop,
-        navigationRevision,
-        onClose,
-        onScrollTopChange,
-      }) => (
-        <PreviewCatalogDetailOverlay
-          backButtonRef={backButtonRef}
-          key={`${detailScopeKey}:${target.type}:${target.id}:${navigationRevision}`}
-          catalogId={target.id}
-          commentSection={
-            renderDiscussion?.(target) ??
-            (target.type === "catalog"
-              ? renderCommentSection?.(target.id)
-              : undefined)
-          }
-          {...(renderDetailActions
-            ? { renderActions: renderDetailActions }
-            : {})}
-          initialScrollTop={initialScrollTop}
-          loader={
-            target.type === "work"
-              ? (workDetailLoader ?? unavailableDetailLoader)
-              : catalogDetailLoader
-          }
-          onClose={onClose}
-          onScrollTopChange={onScrollTopChange}
-        />
-      )}
-      renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
-        <PreviewTopicOverlay
-          backButtonRef={backButtonRef}
-          onClose={onClose}
-          topicId={topicId}
-          topicsState={states.home.topics}
-        />
-      )}
-    />
-  </div>
+  <DiscussionPreviewProvider enabled={developmentDiscussion}>
+    <div data-clean-product-preview="">
+      <ProductShell
+        discussion={
+          <div data-product-panel="discussion">
+            <ContentQuickActionsProvider environment={quickActions}>
+              <DiscussionScreen
+                data={states.home.topics}
+                headerStart={headerStart}
+                headerEnd={headerEnd}
+                initialTopicId={initialTopicId}
+              />
+            </ContentQuickActionsProvider>
+          </div>
+        }
+        user={
+          userPage ?? (
+            <section className="phase4-page">
+              <h1>用户</h1>
+              <p>登录后查看个人主页。</p>
+            </section>
+          )
+        }
+        developmentPlatformOverride={developmentPlatformOverride}
+        home={
+          <div data-product-panel="home">
+            <ContentQuickActionsProvider environment={quickActions}>
+              <HomeScreen
+                data={states.home}
+                initialFeed={initialHomeFeed}
+                {...(onHomeFeedChange
+                  ? { onFeedChange: onHomeFeedChange }
+                  : {})}
+                headerStart={headerStart}
+                headerEnd={headerEnd}
+                {...(renderDiscover ? { renderDiscover } : {})}
+                renderInscriptions={
+                  renderInscriptions ??
+                  (() => <PreviewBrowse state={states.inscriptions} />)
+                }
+                calligraphy={<AllCalligraphyFeed data={states.calligraphy} />}
+              />
+            </ContentQuickActionsProvider>
+          </div>
+        }
+        initialPlatform={initialPlatform}
+        primaryUtility={productUtility}
+        navigationAction={navigationAction}
+        {...(renderProfileOverlay ? { renderProfileOverlay } : {})}
+        {...(renderEditorOverlay ? { renderEditorOverlay } : {})}
+        showDevelopmentPagerControls={showDevelopmentPagerControls}
+        renderDetailOverlay={({
+          backButtonRef,
+          target,
+          initialScrollTop,
+          navigationRevision,
+          onClose,
+          onScrollTopChange,
+        }) => (
+          <PreviewCatalogDetailOverlay
+            backButtonRef={backButtonRef}
+            key={`${detailScopeKey}:${target.type}:${target.id}:${navigationRevision}`}
+            catalogId={target.id}
+            commentSection={
+              renderDiscussion?.(target) ??
+              (target.type === "catalog"
+                ? renderCommentSection?.(target.id)
+                : undefined)
+            }
+            {...(renderDetailActions
+              ? { renderActions: renderDetailActions }
+              : {})}
+            initialScrollTop={initialScrollTop}
+            loader={
+              target.type === "work"
+                ? (workDetailLoader ?? unavailableDetailLoader)
+                : catalogDetailLoader
+            }
+            onClose={onClose}
+            onScrollTopChange={onScrollTopChange}
+          />
+        )}
+        renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
+          <PreviewTopicOverlay
+            backButtonRef={backButtonRef}
+            onClose={onClose}
+            topicId={topicId}
+            topicsState={states.home.topics}
+          />
+        )}
+      />
+    </div>
+  </DiscussionPreviewProvider>
 );
 
 const PreviewTopicOverlay = ({
@@ -203,6 +217,16 @@ const PreviewTopicOverlay = ({
   readonly topicsState: HomeSurfaceData["topics"];
 }) => {
   const { feedLayout, platform } = useProductShell();
+  const preview = useDiscussionPreview();
+  if (preview && previewFeed(topicId))
+    return (
+      <DiscussionPreviewDetail
+        key={topicId}
+        id={topicId}
+        backButtonRef={backButtonRef}
+        onClose={onClose}
+      />
+    );
   const topics = topicsState.state === "populated" ? topicsState.items : [];
   return (
     <TopicDetail

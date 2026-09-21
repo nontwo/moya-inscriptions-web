@@ -1,0 +1,324 @@
+.reader {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-top: var(--yoyi-space-6);
+  color: var(--yoyi-color-text-primary);
+  font-family: var(--yoyi-font-interface);
+}
+
+.reader[data-academic-embedded="true"] {
+  overflow: visible;
+}
+
+.article {
+  width: min(100%, 760px);
+  box-sizing: border-box;
+  margin-inline: auto;
+  padding: var(--yoyi-space-9) var(--yoyi-space-10)
+    calc(var(--yoyi-space-12) + env(safe-area-inset-bottom)) var(--yoyi-space-6);
+}
+
+.category,
+.meta,
+.chapterNumber,
+.sourceNote {
+  font-size: var(--yoyi-type-caption-size);
+  line-height: 1.8;
+  color: var(--yoyi-color-text-tertiary);
+}
+
+.category {
+  color: var(--yoyi-color-seal-red);
+  margin: 0 0 var(--yoyi-space-5);
+}
+
+.header h2 {
+  margin: 0;
+  font: 600 var(--yoyi-type-page-title-size)/1.55 var(--yoyi-font-editorial);
+  overflow-wrap: anywhere;
+}
+
+.header h2 span {
+  display: block;
+  margin-top: var(--yoyi-space-3);
+  font-size: var(--yoyi-type-section-title-size);
+  font-weight: 500;
+}
+
+.author {
+  margin: var(--yoyi-space-6) 0 var(--yoyi-space-2);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.meta {
+  margin: 0;
+}
+
+.abstract {
+  margin-block: var(--yoyi-space-9);
+  padding-block: var(--yoyi-space-6);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.abstract h3,
+.citation h3,
+.tocHeading {
+  margin: 0 0 var(--yoyi-space-4);
+  font-size: var(--yoyi-type-body-small-size);
+  font-weight: 600;
+}
+
+.abstract p {
+  margin: 0;
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.95;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.toc {
+  margin-bottom: var(--yoyi-space-10);
+}
+
+/* Preserve this block's height so returning above the body never shifts text. */
+.toc[data-collapsed="true"] {
+  visibility: hidden;
+}
+
+.toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc button {
+  display: flex;
+  align-items: baseline;
+  gap: var(--yoyi-space-4);
+  width: 100%;
+  min-height: var(--yoyi-space-10);
+  padding: var(--yoyi-space-4) 0;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--yoyi-color-text-secondary);
+  font: var(--yoyi-type-body-small-size)/1.7 var(--yoyi-font-editorial);
+  cursor: pointer;
+}
+
+.toc button > span {
+  flex: 0 0 auto;
+  color: var(--yoyi-color-text-tertiary);
+  font: var(--yoyi-type-caption-size)/1.7 var(--yoyi-font-interface);
+  font-variant-numeric: tabular-nums;
+}
+
+.toc li + li {
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.chapter + .chapter {
+  margin-top: var(--yoyi-space-11);
+}
+
+.body {
+  display: flow-root;
+}
+
+.chapterNumber {
+  margin: 0 0 var(--yoyi-space-3);
+  color: var(--yoyi-color-seal-red);
+  font: 400 var(--yoyi-type-display-size)/1.1 var(--yoyi-font-editorial);
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter h3 {
+  margin: 0 0 var(--yoyi-space-6);
+  font: 600 var(--yoyi-type-section-title-size)/1.7 var(--yoyi-font-editorial);
+  overflow-wrap: anywhere;
+}
+
+.paragraphGroup > p {
+  margin: 0 0 var(--yoyi-space-6);
+  font-size: var(--yoyi-type-body-size);
+  line-height: 2;
+  overflow-wrap: anywhere;
+}
+
+.figure {
+  margin: var(--yoyi-space-7) 0 var(--yoyi-space-8);
+}
+
+.figure img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: var(--yoyi-color-background-muted);
+}
+
+.figure figcaption {
+  margin-top: var(--yoyi-space-3);
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-caption-size);
+  line-height: 1.7;
+  text-align: center;
+}
+
+.citation {
+  margin-top: var(--yoyi-space-11);
+  padding-top: var(--yoyi-space-7);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.citation p {
+  margin: var(--yoyi-space-4) 0 0;
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.9;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.citation .sourceNote {
+  font-size: var(--yoyi-type-caption-size);
+  color: var(--yoyi-color-text-tertiary);
+}
+
+.rail {
+  position: fixed;
+  z-index: 3;
+  right: max(env(safe-area-inset-right), calc((100vw - 840px) / 2));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  width: var(--yoyi-space-11);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rail button {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: var(--yoyi-space-7);
+  flex: 0 0 var(--yoyi-space-7);
+  padding: 0;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.railDot {
+  position: absolute;
+  top: 50%;
+  right: var(--yoyi-space-4);
+  width: var(--yoyi-space-2);
+  height: var(--yoyi-space-2);
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-text-tertiary);
+  transform: translateY(-50%) scale(var(--chapter-dot-scale));
+  transition:
+    transform var(--yoyi-duration-instant) var(--yoyi-easing-emphasized),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+  will-change: transform;
+}
+
+.rail button[aria-current="location"] .railDot,
+.rail button[data-previewed="true"] .railDot {
+  background: var(--yoyi-color-seal-red);
+}
+
+.railLabel {
+  position: absolute;
+  top: 50%;
+  right: var(--yoyi-space-6);
+  transform: translateY(-50%) scale(var(--chapter-label-scale));
+  transform-origin: right center;
+  opacity: var(--chapter-label-opacity);
+  width: max-content;
+  max-width: min(260px, calc(100vw - var(--yoyi-space-12)));
+  box-sizing: border-box;
+  padding: var(--yoyi-space-2) var(--yoyi-space-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: var(--yoyi-radius-sm);
+  background: var(--yoyi-color-background-page);
+  color: var(--yoyi-color-text-primary);
+  font: 500 var(--yoyi-type-body-small-size)/1.4 var(--yoyi-font-editorial);
+  pointer-events: none;
+  transition:
+    transform var(--yoyi-duration-instant) var(--yoyi-easing-emphasized),
+    opacity var(--yoyi-duration-instant) var(--yoyi-easing-standard);
+  will-change: transform, opacity;
+}
+
+.railLabel > span {
+  margin-right: var(--yoyi-space-3);
+  color: var(--yoyi-color-seal-red);
+  font-family: var(--yoyi-font-interface);
+  font-variant-numeric: tabular-nums;
+}
+
+.rail button[data-previewed="true"] .railLabel {
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+/* While scrubbing, the finger supplies the animation frame by frame. Avoid a
+   trailing transform tween that could leave the previous item visually larger
+   than the newly selected item after crossing a chapter midpoint. */
+.rail[data-scrubbing="true"] .railDot {
+  transition: background-color var(--yoyi-duration-instant)
+    var(--yoyi-easing-standard);
+}
+
+.rail[data-scrubbing="true"] .railLabel {
+  transition: opacity var(--yoyi-duration-instant) var(--yoyi-easing-standard);
+}
+
+.rail[data-scrubbing="false"] button:focus-visible .railLabel {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.toc button:focus-visible,
+.rail button:focus-visible,
+.chapter h3:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: var(--yoyi-space-1);
+}
+
+@media (min-width: 768px) {
+  .article {
+    padding: var(--yoyi-space-10) var(--yoyi-space-9)
+      calc(var(--yoyi-space-12) + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader {
+    scroll-behavior: auto;
+  }
+  .railDot,
+  .railLabel {
+    transition: none;
+  }
+}
