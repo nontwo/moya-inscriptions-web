@@ -403,23 +403,47 @@ export const registerAgentConnectionStoreTests = (
         ).toThrow(/BIGINT_OUT_OF_SAFE_RANGE/u);
       });
 
-      it("refuses a value outside an enum rather than widening the type", () => {
-        expect(() =>
-          parseConnectionRow({
-            id: "conn-x",
-            principal_label: "agent-probe",
-            human_account_id: "u",
-            client_family: "copilot",
-            oauth_client_id: "c",
-            environment: "development",
-            preset: "read-only",
-            status: "authorized",
-            generation: "1",
-            version: "1",
-            revoked_at: null,
-            consented_at: null,
-          }),
-        ).toThrow(/NOT_IN_ALLOWED_SET/u);
+      it("refuses a family outside the slug shape, and accepts one the presets never listed", () => {
+        // The family stopped being a three-value enum: ArtVenn is a tool
+        // service, and a new approved client is a registration rather than a
+        // schema change. What did NOT stop is the bound — this parser sits on
+        // the authorization READ path, so it has to agree with the column's
+        // CHECK or a row the database accepted becomes a connection nobody
+        // can authenticate against.
+        const row = (client_family: string) => ({
+          id: "conn-x",
+          principal_label: "agent-probe",
+          human_account_id: "u",
+          client_family,
+          oauth_client_id: "c",
+          environment: "development",
+          preset: "read-only",
+          status: "authorized",
+          generation: "1",
+          version: "1",
+          revoked_at: null,
+          consented_at: null,
+        });
+        // A vendor nobody enumerated parses, which is the point.
+        expect(parseConnectionRow(row("copilot")).connection.client).toBe(
+          "copilot",
+        );
+        for (const family of [
+          "",
+          "-leading",
+          "Upper",
+          "under_score",
+          "with space",
+          "a".repeat(33),
+        ])
+          // Either refusal code is correct: an empty string is caught one
+          // layer earlier by the text check (NOT_TEXT), everything else by
+          // the pattern (MALFORMED). The property is that the row is refused
+          // and the column is named, not which of the two guards got there
+          // first.
+          expect(() => parseConnectionRow(row(family)), family).toThrow(
+            /(?:MALFORMED|NOT_TEXT) \(client_family\)/u,
+          );
       });
     });
   });

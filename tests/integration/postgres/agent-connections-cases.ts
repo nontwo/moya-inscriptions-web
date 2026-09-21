@@ -553,7 +553,10 @@ export const registerAgentConnectionTests = (
             `${column} accepted ${value}`,
           ).rejects.toMatchObject({ code: "23001" });
 
-        // The CHECK still guards the path that can set the column.
+        // The CHECK still guards the path that can set the column — but it
+        // guards a SHAPE now, not a list of three vendors. A family nobody
+        // enumerated is accepted, because adding a client is a registration;
+        // a family that would not fit inside `principal_label` is not.
         await expect(
           pool.query(
             `INSERT INTO community.agent_connections
@@ -563,7 +566,20 @@ export const registerAgentConnectionTests = (
                      'agent-family','read-only','awaiting-consent')`,
             [`conn-${"b".repeat(32)}`],
           ),
-        ).rejects.toMatchObject({ code: "23514" });
+        ).resolves.toMatchObject({ rowCount: 1 });
+
+        for (const family of ["", "Upper", "under_score", "-leading"])
+          await expect(
+            pool.query(
+              `INSERT INTO community.agent_connections
+                 (id, human_account_id, client_family, oauth_client_id,
+                  environment, principal_label, preset, status)
+               VALUES ($1,'user-owner',$2,'c1','development',
+                       'agent-family','read-only','awaiting-consent')`,
+              [`conn-${"c".repeat(32)}`, family],
+            ),
+            `client_family accepted ${JSON.stringify(family)}`,
+          ).rejects.toMatchObject({ code: "23514" });
       });
 
       it("refuses a bad principal shape on INSERT, and any principal change at all on UPDATE", async () => {
