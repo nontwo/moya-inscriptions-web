@@ -388,7 +388,16 @@ export const AgentConnectionsClient = () => {
         </span>
       );
     if (state === "awaiting")
-      return (
+      return ambiguous(client.clientId) ? (
+        <span className={styles.presetAction}>
+          <span className={styles.badge} data-tone="muted">
+            未知 / 暂不可用
+          </span>
+          <span className={styles.presetHint}>
+            这个客户端有多条记录，授权无法完成
+          </span>
+        </span>
+      ) : (
         <span className={styles.badge} data-tone="pending">
           等待应用完成授权
         </span>
@@ -729,7 +738,10 @@ export const AgentConnectionsClient = () => {
                     status column disagrees with this page -- would otherwise
                     have it nowhere on screen. */}
                 {connection.status === "revoked" ? null : (
-                  <span className={styles.mono}>{connection.status}</span>
+                  <span className={styles.sectionNote}>
+                    数据库状态：
+                    <span className={styles.mono}>{connection.status}</span>
+                  </span>
                 )}
               </div>
             ))}

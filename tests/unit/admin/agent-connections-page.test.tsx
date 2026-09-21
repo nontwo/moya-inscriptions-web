@@ -494,9 +494,11 @@ describe("the AI connections page", () => {
     });
     expect(card.textContent).toContain("已断开");
     expect(card.textContent).toContain("暂时无法在这里重新连上");
-    // And the raw status is reachable, because a history row has no 查看详情.
+    // And the raw status is reachable, because a history row has no 查看详情
+    // -- labelled, so it does not read as a second status word competing with
+    // the 已断开 badge beside it.
     const history = document.querySelector("[data-agent-connections-history]");
-    expect(history?.textContent).toContain("authorized");
+    expect(history?.textContent).toContain("数据库状态：authorized");
   });
 
   it("counts revoked rows when deciding a pair is ambiguous", async () => {
@@ -533,6 +535,74 @@ describe("the AI connections page", () => {
     });
     expect(card.textContent).toContain("暂时无法在这里重新连上");
     expect(card.textContent).not.toContain("重新授权即可");
+  });
+
+  it("does not tell the Owner to wait for an authorization that cannot land", async () => {
+    // Two live awaiting-consent rows is the shape the consent-page prefetch
+    // race produces. `findForClient` refuses the pair, so consent renders
+    // CONSENT_UNAVAILABLE and the wait never ends.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection({
+              status: "awaiting-consent",
+              hasCurrentGrant: false,
+              consentedAt: null,
+            }),
+            connection({
+              id: "conn-ffffffffffffffffffffffffffffffff",
+              status: "awaiting-consent",
+              hasCurrentGrant: false,
+              consentedAt: null,
+            }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).not.toContain("等待应用完成授权");
+    expect(card.textContent).toContain("多条记录");
+  });
+
+  it("still reports a live connection beside a revoked one as connected", async () => {
+    // The ambiguity blocks future consents; it does not stop the grant that
+    // already exists. Gating this too would report a working connection as
+    // unavailable.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection(),
+            connection({
+              id: "conn-ffffffffffffffffffffffffffffffff",
+              status: "revoked",
+              revokedAt: "2026-09-21T00:02:00.000Z",
+              hasCurrentGrant: false,
+            }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).toContain("已连接");
+    expect(card.textContent).not.toContain("多条记录");
   });
 
   it("does not promise that two addresses are all it takes", async () => {
