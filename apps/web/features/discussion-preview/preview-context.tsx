@@ -291,10 +291,6 @@ export function DiscussionPreviewProvider({
   enabled: boolean;
   children: ReactNode;
 }) {
-  return enabled ? (
-    <PreviewState>{children}</PreviewState>
-  ) : (
-    children
-  );
+  return enabled ? <PreviewState>{children}</PreviewState> : children;
 }
 export const useDiscussionPreview = () => useContext(PreviewContext);

@@ -130,9 +130,7 @@ const AuthorProduct = ({
               headerStart={<CatalogSearchHeaderAction />}
               headerEnd={
                 <MessageTrigger
-                  developmentPreview={
-                    preview.developmentDiscussion ?? false
-                  }
+                  developmentPreview={preview.developmentDiscussion ?? false}
                   unreadCount={unreadCount}
                 />
               }
