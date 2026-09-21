@@ -23,6 +23,7 @@ export const CommunityAcceptancePreview = ({
   <div data-community-acceptance-preview="">
     <ProductApplication
       comments={{ signInHref: developmentSignInPath }}
+      developmentDiscussion
       initialPlatform={initialPlatform}
       states={states}
     />

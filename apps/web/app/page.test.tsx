@@ -75,10 +75,12 @@ describe("FormalPage", () => {
 
   it("composes the live comment section with the Development sign-in entry only in Development", async () => {
     vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("NEXT_PUBLIC_MOYA_DISCUSSION_PREVIEW", "true");
     renderToStaticMarkup(await FormalPage({}));
     expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
       comments: { signInHref: "/dev/community" },
       authorCommunity: true,
+      developmentDiscussion: true,
     });
 
     productApplicationMock.mockReset();
@@ -88,6 +90,9 @@ describe("FormalPage", () => {
       comments: null,
       authorCommunity: false,
     });
+    expect(productApplicationMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "developmentDiscussion",
+    );
   });
 
   it.each(["discover", "nearby", "inscriptions", "calligraphy"] as const)(

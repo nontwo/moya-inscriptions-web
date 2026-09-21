@@ -32,6 +32,7 @@ export default async function T02pDevelopmentPage({
   return (
     <ProductApplication
       comments={{ signInHref: developmentSignInPath }}
+      developmentDiscussion
       initialHomeFeed={initialHomeFeed}
       initialPlatform={initialPlatform}
       initialTopicId={initialTopicId}
