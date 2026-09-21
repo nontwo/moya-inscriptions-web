@@ -31,8 +31,15 @@ const PRODUCTION_BROWSER = "pnpm test:cms:browser --profile complete";
 
 const cmsJob = () => {
   const workflow = read(".github/workflows/ci.yml");
-  const job = workflow.split("\n  cms:\n")[1]?.split("\n  build:\n")[0];
-  assert.ok(job, "the cms job must exist");
+  const after = workflow.split("\n  cms:\n")[1];
+  assert.ok(after, "the cms job must exist");
+  // Bounded by the NEXT job key rather than by a neighbour's name. Splitting
+  // on the literal "\n  build:\n" meant renaming an unrelated job swallowed
+  // every job after this one into the slice, and the whole-job assertions
+  // below then failed while pointing at the wrong thing entirely.
+  const next = /\n {2}[a-z][a-z0-9_-]*:\n/u.exec(after);
+  const job = next ? after.slice(0, next.index) : after;
+  assert.ok(job.includes("runs-on:"), "the cms job slice must be a job");
   return job;
 };
 
@@ -160,11 +167,16 @@ describe("the agent-connections acceptance runs in CI", () => {
       harness.includes("await verifyLoopbackDisposableTarget(process.env)"),
       "the harness must assert its target is disposable before any DDL",
     );
-    assert.ok(
-      harness.indexOf("verifyLoopbackDisposableTarget") <
-        harness.indexOf("CREATE DATABASE"),
-      "that assertion must precede CREATE DATABASE",
+    // Anchored on the CALL and on the STATEMENT. The obvious spelling --
+    // `indexOf("verifyLoopbackDisposableTarget") < indexOf("CREATE DATABASE")`
+    // -- compares the import against a comment, and stayed green when the
+    // call was moved to after the DDL.
+    const marker = harness.indexOf(
+      "await verifyLoopbackDisposableTarget(process.env)",
     );
+    const ddl = harness.indexOf("control.query(`CREATE DATABASE");
+    assert.ok(marker > 0 && ddl > 0, "both anchors must exist");
+    assert.ok(marker < ddl, "that assertion must precede CREATE DATABASE");
     // And the three read stages are part of the exact expected sequence.
     for (const stage of [
       "backend-read-returns-the-seeded-record",
@@ -206,27 +218,72 @@ describe("the agent-connections acceptance runs in CI", () => {
     // cannot tell a refusal code from an environment variable name and would
     // fail on the peer-role list above -- measured, and the reason this is a
     // list.
-    const refusals = new Set(
-      [...backend.matchAll(/refuse\(\s*"([A-Z][A-Z0-9_]{2,63})"/gu)].map(
-        (match) => match[1],
-      ),
-    );
+    // Collected by scanning FORWARD from each `refuse(` rather than by
+    // matching a literal first argument. Two of this file's refusals pass a
+    // ternary -- `refuse(cond ? error.message : "CODE")` -- and a pattern
+    // anchored on `refuse("` is structurally incapable of seeing them. That
+    // was the defect in the first version of this check, and it let the
+    // marker probe's whole catch block be replaced with `catch { }` while
+    // every assertion here stayed green. Measured, twice.
+    const refusals = new Set();
+    for (const call of backend.matchAll(/\brefuse\(/gu))
+      for (const code of backend
+        .slice(call.index, call.index + 400)
+        .matchAll(/"([A-Z][A-Z0-9_]{2,63})"/gu))
+        refusals.add(code[1]);
     for (const code of [
+      "DATABASE_REQUIRED",
+      "DATABASE_MALFORMED",
       "NOT_DEVELOPMENT",
       "NOT_ENABLED",
       "DATABASE_NOT_LOOPBACK",
       "DATABASE_URL_CARRIES_OVERRIDES",
+      "DATABASE_PORT_REQUIRED",
       "DATABASE_NOT_HARNESS_OWNED",
       "OPERATOR_CREDENTIAL_REQUIRED",
       "PORT_INVALID",
+      // The marker gate. Its refusal lives in a catch block, and removing
+      // that block is the mutation that neutered safeguard #5 unnoticed.
+      "DISPOSABLE_TARGET_PROBE_FAILED",
+      "ACTING_ROLE_UNREADABLE",
       "PEER_ROLE_URLS_REQUIRED",
       "BACKEND_ROLE_SHARED_WITH_ANOTHER_SERVICE",
+      "ACCEPTANCE_BACKEND_FAILED",
     ])
       assert.ok(refusals.has(code), `${code} must be reached through refuse()`);
     assert.doesNotMatch(
       backend,
       /console\.warn|console\.log/u,
       "a refusal is never a warning",
+    );
+
+    // THE GUARDING CATCHES, ANCHORED. A code can appear at two sites, so its
+    // presence cannot tell that one of them stopped refusing: replacing the
+    // `current_user` catch with `actingRole = "unknown"` leaves the string
+    // intact at the second site AND makes the role comparison match nothing,
+    // which is the check passing for no reason. Measured.
+    //
+    // Anchored on the two catches that guard a gate, rather than on a blanket
+    // "every catch must refuse" rule -- the peer-URL catch legitimately
+    // assigns the FAILING value instead of refusing, and a rule with an
+    // exception is the drift this is trying to prevent.
+    for (const [label, anchor] of [
+      ["the disposable-marker probe", "guard.assertDisposableTestTarget("],
+      ["the acting-role read", '"SELECT current_user AS role"'],
+    ]) {
+      const at = backend.indexOf(anchor);
+      assert.ok(at > 0, `${label} must exist`);
+      assert.match(
+        backend.slice(at, at + 400),
+        /\}\s*catch[^}]*refuse\(/su,
+        `${label} must refuse when it fails`,
+      );
+    }
+    // And the peer-URL catch's fallback must be the value the next line
+    // refuses on, which is what makes NOT refusing there correct.
+    assert.ok(
+      backend.includes('theirs === "" || theirs === actingRole'),
+      "an unreadable peer username must be treated as a collision",
     );
     // The production composition's own database-name condition is untouched.
     const production = readFileSync(

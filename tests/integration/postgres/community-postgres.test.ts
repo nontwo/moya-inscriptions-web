@@ -41,6 +41,10 @@ import {
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  communityPublicUserDependents,
+  resetCommunityPublicUsers,
+} from "./community-public-user-reset.js";
 import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
 
 import type { BackendProcessHandle } from "@moya/backend-runtime";
@@ -112,9 +116,12 @@ beforeAll(async () => {
   // are reset before the Development accounts are seeded.
   await runCommunityMigrations(pool, migrationsDirectory);
   expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual([]);
-  await pool.query(
-    "DELETE FROM community.catalog_comment_replies; DELETE FROM community.catalog_comments; DELETE FROM community.sessions; DELETE FROM community.development_accounts; DELETE FROM community.public_users",
-  );
+  // Everything that references public_users, derived from pg_constraint on
+  // every run. It used to be four tables written down here, which left an
+  // interrupted run's author_command_receipts and discovery_sequences behind
+  // to fail the NEXT run's DELETE on the foreign key — in this hook, before a
+  // single test executed. See community-public-user-reset.ts.
+  await resetCommunityPublicUsers(pool);
   await pool.query(await readFile(seedFile, "utf8"));
   // The Catalog discovery projection, created once for the whole file.
   //
@@ -178,6 +185,62 @@ describe("community PostgreSQL identity and sessions", () => {
       { handle: "dev-user-03", display_name: "石刻研究者", status: "active" },
     ]);
     // Re-seeding is idempotent.
+    await pool.query(await readFile(seedFile, "utf8"));
+    expect(
+      (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM community.public_users",
+        )
+      ).rows[0],
+    ).toEqual({ n: 3 });
+  });
+
+  it("resets every table that references public_users, not a list written down here", async () => {
+    // The debris an interrupted phase 4 run leaves behind. Its actor-scoped
+    // cleanup never ran, so nobody will ever delete these rows again, and the
+    // reset in `beforeAll` is the only thing standing between them and a
+    // database that fails every later run before a single test executes.
+    const abandoned = `user-${"ab4ff1".padEnd(32, "0")}`;
+    await pool.query(
+      "INSERT INTO community.public_users(id,handle,display_name) VALUES($1,'abandoned-p4-actor','弃置演员')",
+      [abandoned],
+    );
+    await pool.query(
+      "INSERT INTO community.author_command_receipts(actor_id,request_id,fingerprint,result) VALUES($1,gen_random_uuid(),$2,'{}'::jsonb)",
+      [abandoned, "a".repeat(64)],
+    );
+    await pool.query(
+      "INSERT INTO community.discovery_sequences(id,viewer_id,query) VALUES(gen_random_uuid(),$1,'{}'::jsonb)",
+      [abandoned],
+    );
+    // Both tables reference public_users and neither was in the four-table
+    // list this reset used to carry, which is exactly why the list failed.
+    const reset = await resetCommunityPublicUsers(pool);
+    expect(reset).toEqual(await communityPublicUserDependents(pool));
+    expect(reset).toEqual(
+      expect.arrayContaining([
+        "community.author_command_receipts",
+        "community.discovery_sequences",
+        "community.public_users",
+      ]),
+    );
+    // A reset that misses a table cannot reach this line: the TRUNCATE above
+    // fails by name on the foreign key the missed table holds.
+    expect(
+      (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM community.author_command_receipts",
+        )
+      ).rows[0],
+    ).toEqual({ n: 0 });
+    expect(
+      (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM community.discovery_sequences",
+        )
+      ).rows[0],
+    ).toEqual({ n: 0 });
+    // Back to the state `beforeAll` leaves behind, for the suites that follow.
     await pool.query(await readFile(seedFile, "utf8"));
     expect(
       (

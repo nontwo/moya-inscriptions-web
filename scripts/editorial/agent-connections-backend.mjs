@@ -24,9 +24,9 @@ import { fileURLToPath, URL } from "node:url";
  *   1. NODE_ENV must be development, and an explicit opt-in must be present.
  *      A name or a flag alone is never authorization.
  *   2. The listener binds 127.0.0.1 and nothing else.
- *   3. The database URL must be loopback AND carry no override — the
- *      hostname is not where `pg` connects if a query parameter says
- *      otherwise.
+ *   3. The database URL must be loopback, name an explicit port, and carry
+ *      no override — the hostname is not where `pg` connects if a query
+ *      parameter says otherwise, and an absent port defers to `PGPORT`.
  *   4. The database name must be one this harness owns, by pattern.
  *   5. The disposable marker is verified ON THE DATABASE ACTUALLY CONNECTED
  *      TO, not on the name in the URL — `assertDisposableTestTarget` compares
@@ -94,6 +94,15 @@ const main = async () => {
     )
   )
     return refuse("DATABASE_URL_CARRIES_OVERRIDES");
+  // And an explicit port, for the same reason one level down: `pg` falls back
+  // to `PGPORT` whenever the parsed port is empty, so a URL that simply omits
+  // the port is steerable by an ambient variable. Weaker than the override
+  // above -- the host stays pinned, the name must still match and the marker
+  // must still be present -- and unreachable under the harness, which strips
+  // every `PG*` variable from its children. Held anyway, so safeguard #3 is
+  // true end to end rather than true in the configuration that happens to
+  // call it.
+  if (url.port === "") return refuse("DATABASE_PORT_REQUIRED");
   // `databaseNameFromUrl` answers a DESCRIPTOR, not a string. Testing the
   // object against the pattern silently compared "[object Object]" and
   // refused every legitimate database -- a gate that fails closed, but for
@@ -239,10 +248,21 @@ const main = async () => {
 // A bare `void main()` turned any unexpected throw into an unhandled
 // rejection with a stack on stderr and no code, which is exactly the
 // diagnosis problem the harness's refusal extractor exists to solve.
+const CODE = /^[A-Z][A-Z0-9_]{2,63}$/u;
 void main().catch((error) => {
+  // `error.code` before the generic, because Node puts the identifier THERE:
+  // an `ERR_MODULE_NOT_FOUND` or an `EADDRINUSE` carries a human message and
+  // a machine code, and reading only the message threw away the one the
+  // harness's extractor names in its own comment. `ERR_MODULE_NOT_FOUND` is
+  // the failure this harness lost the most time to; reporting it as a
+  // generic would have cost that time again.
+  const message = error instanceof Error ? error.message : "";
+  const code = typeof error?.code === "string" ? error.code : "";
   refuse(
-    error instanceof Error && /^[A-Z][A-Z0-9_]{2,63}$/u.test(error.message)
-      ? error.message
-      : "ACCEPTANCE_BACKEND_FAILED",
+    CODE.test(message)
+      ? message
+      : CODE.test(code)
+        ? code
+        : "ACCEPTANCE_BACKEND_FAILED",
   );
 });
