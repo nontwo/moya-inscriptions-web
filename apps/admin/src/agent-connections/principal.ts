@@ -96,43 +96,54 @@ export const provisionPrincipal = async (
 ): Promise<void> => {
   const label = connection.principalLabel;
   const scopes = canonicalScopes(preset);
-  const existing = await registry.findPrincipal(label);
 
-  if (existing !== null && existing.revokedAt !== null)
-    throw new PrincipalProvisionError("PRINCIPAL_REVOKED");
+  /** Exactly what this consent needs, or the reason it is not. */
+  const verdict = (
+    row: Awaited<ReturnType<PrincipalRegistry["findPrincipal"]>>,
+  ): "absent" | "satisfied" | "revoked" | "disabled" | "different" => {
+    if (row === null) return "absent";
+    if (row.revokedAt !== null) return "revoked";
+    if (!row.enabled) return "disabled";
+    const held = [...row.scopes].sort();
+    return held.length === scopes.length &&
+      held.every((scope, index) => scope === scopes[index])
+      ? "satisfied"
+      : "different";
+  };
 
-  const satisfied =
-    existing !== null &&
-    existing.enabled &&
-    existing.scopes.length === scopes.length &&
-    [...existing.scopes]
-      .sort()
-      .every((scope, index) => scope === scopes[index]);
-  if (satisfied) return;
+  /** A bare code naming which Owner decision is in the way. */
+  const refuse = (state: string): never => {
+    if (state === "revoked")
+      throw new PrincipalProvisionError("PRINCIPAL_REVOKED");
+    if (state === "disabled")
+      throw new PrincipalProvisionError("PRINCIPAL_DISABLED");
+    if (state === "different")
+      throw new PrincipalProvisionError("PRINCIPAL_SCOPES_DIFFER");
+    throw new PrincipalProvisionError("PRINCIPAL_NOT_PROVISIONED");
+  };
 
+  const before = verdict(await registry.findPrincipal(label));
+  if (before === "satisfied") return;
+  if (before !== "absent") refuse(before);
+
+  // Absent, so create it. `expectedVersion: 0` is the registry's own
+  // "insert only if there is no row" contract; it never updates one.
   const written = await registry.writePrincipal(
     {
       label,
       displayName: displayNameFor(connection),
       scopes,
       enabled: true,
-      expectedVersion: existing === null ? 0 : existing.version,
+      expectedVersion: 0,
     },
     now,
   );
   if (written !== null) return;
 
-  // The write did not apply. Either somebody else wrote first — in which case
-  // the row may already be exactly what this consent wanted — or the row is
-  // revoked. Re-read and accept only the state we asked for; never retry into
-  // existence.
-  const after = await registry.findPrincipal(label);
-  if (
-    after === null ||
-    after.revokedAt !== null ||
-    !after.enabled ||
-    after.scopes.length !== scopes.length ||
-    ![...after.scopes].sort().every((scope, index) => scope === scopes[index])
-  )
-    throw new PrincipalProvisionError("PRINCIPAL_NOT_PROVISIONED");
+  // The insert did not apply, so somebody wrote between the read and the
+  // write. Re-read and accept only the state this consent needed; never retry
+  // into existence, and never write over whatever they left.
+  const after = verdict(await registry.findPrincipal(label));
+  if (after === "satisfied") return;
+  refuse(after);
 };

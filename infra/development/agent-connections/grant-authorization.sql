@@ -229,30 +229,65 @@ BEGIN
   -- authenticated and was then refused by the Backend on every business tool.
   -- Onboarding was only ever completable by hand.
   --
-  -- WHAT IT IS BOUNDED TO, and what stays out of reach:
-  --   * a COLUMN LIST, not a table-level grant, so this role writes the
-  --     registry's own fields and cannot touch `revoked_at`. A principal an
-  --     Owner revoked stays revoked; a consent cannot revive an identity that
-  --     was taken away, which is why `provisionPrincipal` refuses instead of
-  --     working around it.
-  --   * SELECT so it can be idempotent — read, compare, and write only when
-  --     the row is not already what this consent wanted.
+  -- INSERT, SELECT, and UPDATE ON ONE COSMETIC COLUMN. The two columns that
+  -- decide authority are out of reach on every row.
+  --
+  -- An independent review pointed out that the first version of this grant was
+  -- bounded in one dimension and unbounded in the other: a column list, yes,
+  -- but over EVERY ROW. `scopes` and `enabled` are exactly the two columns the
+  -- Backend authorizes on, so at the SQL level the control plane could have
+  -- widened any non-revoked principal in the registry -- including an
+  -- Owner-created operations principal that has nothing to do with agent
+  -- connections. The comment said "bounded" and a reader would have believed
+  -- it. Nothing in the application did that; the bound was the code, not the
+  -- grant, and a grant is what has to hold when the code is wrong.
+  --
+  -- `provisionPrincipal` is CREATE-ONLY now -- it never writes a row that
+  -- already exists, it refuses instead -- so the broad UPDATE had no remaining
+  -- caller. Dropping it ENTIRELY was the first attempt and it does not work:
+  -- `writePrincipal` locks the row with `SELECT ... FOR UPDATE`, and
+  -- PostgreSQL requires an UPDATE privilege on at least one column to take a
+  -- row lock. Measured, not predicted -- with no UPDATE at all, every consent
+  -- failed with CONSENT_UNAVAILABLE.
+  --
+  -- So exactly one column is granted, and it is chosen for being unable to
+  -- decide anything: `display_name`. What that buys, as a property of the
+  -- database rather than of a function:
+  --
+  --   * `scopes` and `enabled` -- the two columns the Backend authorizes on --
+  --     cannot be written by this role on ANY row. The concrete scenario a
+  --     review raised against the previous grant, setting `operations:execute`
+  --     on an Owner-created operations principal, is now refused by
+  --     PostgreSQL rather than merely not attempted by the code.
+  --   * a principal an Owner revoked stays revoked, one they disabled stays
+  --     disabled, and one whose scopes they narrowed stays narrowed.
+  --   * WHAT REMAINS, stated rather than glossed: this role can write
+  --     `display_name` on any row in the registry. That is cosmetic --
+  --     nothing reads it for a decision -- but it is a real residual, and
+  --     "the grant is minimal" would be too strong a sentence for it. It is
+  --     minimal among the shapes that still permit a row lock.
+  --   * INSERT can only ever create a label that does not exist, because the
+  --     label is the primary key. The label it uses is `principal_label` off
+  --     the connection row, minted at creation and frozen by the trigger in
+  --     20260920060000, so this cannot be used to adopt another connection's
+  --     identity either.
+  --   * `revoked_at` and `version` stay out of the column list: the first is
+  --     an Owner's decision and the second is the registry's own concurrency
+  --     token, defaulted on insert.
   --   * nothing on `agent_delegations` or `agent_operations`: this role
   --     provisions a READ-ONLY identity and has no business near delegation,
   --     approval or execution.
-  --
-  -- The label it writes is not its own to choose: it is `principal_label` off
-  -- the connection row, minted at creation and frozen by the trigger in
-  -- 20260920060000, so this privilege cannot be used to adopt another
-  -- connection's identity.
   EXECUTE format(
     'GRANT SELECT ON TABLE community.agent_principals TO %I', consent_role);
   EXECUTE format(
     'GRANT INSERT (label, display_name, scopes, enabled, created_at, updated_at)
        ON TABLE community.agent_principals TO %I', consent_role);
+  -- Row locking only. See the note above: this is the narrowest UPDATE that
+  -- still lets `SELECT ... FOR UPDATE` take a lock, and it deliberately
+  -- excludes every column that decides anything.
   EXECUTE format(
-    'GRANT UPDATE (display_name, scopes, enabled, version, updated_at)
-       ON TABLE community.agent_principals TO %I', consent_role);
+    'GRANT UPDATE (display_name) ON TABLE community.agent_principals TO %I',
+    consent_role);
 
   -- ------------------------------------------------------------- resource --
   --
@@ -312,6 +347,9 @@ BEGIN
   END IF;
 
   -- DELIBERATELY ABSENT for the consent role:
+  --   * UPDATE on agent_principals.scopes and .enabled -- the two columns
+  --                         the Backend authorizes on. This role cannot widen
+  --                         or re-enable any principal, its own included.
   --   * agent_principals.revoked_at -- a revoked machine identity is an
   --                         Owner's decision, and a consent must not be able
   --                         to set it or clear it.
