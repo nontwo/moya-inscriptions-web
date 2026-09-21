@@ -486,26 +486,42 @@
   display: none;
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composer
   > .avatar {
   width: 36px;
   height: 36px;
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composerBody {
   gap: var(--yoyi-space-2);
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composerInputRow {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--yoyi-space-3);
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composer
   textarea {
   height: 44px;
@@ -515,12 +531,20 @@
   line-height: 1.45;
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composerFooter {
   display: contents;
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composerFooter
   > span {
   position: absolute;
@@ -532,7 +556,11 @@
   white-space: nowrap;
 }
 
-:is([data-detail-content-pager], [data-detail-landscape-comments])
+:is(
+    [data-detail-content-pager],
+    [data-detail-landscape-comments],
+    [data-discussion-comments-host]
+  )
   .composerFooter
   button {
   min-width: 64px;
@@ -576,4 +604,12 @@
   .skeleton span {
     animation: none;
   }
+}
+
+[data-discussion-comments-host] button.userName {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
 }

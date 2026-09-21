@@ -44,7 +44,7 @@ const touch = (
   target.dispatchEvent(event);
   return event;
 };
-const setup = () => {
+const setup = (canStartGesture?: () => boolean) => {
   const frame = document.createElement("div");
   frame.innerHTML =
     "<div><section><button>one</button></section><section><button>two</button></section><section><button>three</button></section></div>";
@@ -73,6 +73,7 @@ const setup = () => {
     });
   }
   const engine = createCategoryPagerEngine(frame, {
+    ...(canStartGesture ? { canStartGesture } : {}),
     getCommittedIndex: () => active,
     onCommit: (index) => {
       active = index;
@@ -153,6 +154,21 @@ describe("category paging with the actual Embla core", () => {
     vi.unstubAllGlobals();
   });
 
+  it("blocks only opted-out gestures and resumes without replacing the engine", () => {
+    let allowed = false;
+    const host = setup(() => allowed);
+    host.drag();
+    touch(host.button, "touchend", []);
+    advance(120);
+    expect(host.active()).toBe(0);
+    expect(host.commits).toEqual([]);
+    allowed = true;
+    host.drag();
+    touch(host.button, "touchend", []);
+    advance(120);
+    expect(host.active()).toBe(1);
+    expect(host.commits).toEqual([1]);
+  });
   it("hands selection and inert over on release, before visual settlement", () => {
     const view = setup();
     view.drag();

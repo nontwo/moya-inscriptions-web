@@ -376,6 +376,25 @@ describe("Primary user profile", () => {
     expect(onBack).toHaveBeenCalledOnce();
     expect(onViewChange).not.toHaveBeenCalled();
   });
+  it("uses the supplied Search action on the primary root while overlays retain Back", async () => {
+    const search = vi.fn();
+    const node = await render(
+      <AuthorProfilePage
+        onBack={vi.fn()}
+        headerStart={
+          <button aria-label="搜索" onClick={search}>
+            搜索
+          </button>
+        }
+      />,
+    );
+    expect(button(node, "返回")).toBeUndefined();
+    await act(async () => button(node, "搜索")!.click());
+    expect(search).toHaveBeenCalledOnce();
+    await act(async () => root!.render(overlay()));
+    expect(button(node, "返回")).toBeDefined();
+    expect(button(node, "搜索")).toBeUndefined();
+  });
   it("resets account-scoped page state and owner controls when the session changes", async () => {
     const page = <AuthorProfilePage onBack={vi.fn()} />;
     const node = await render(page);

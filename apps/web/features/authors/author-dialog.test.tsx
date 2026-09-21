@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { StrictMode, act } from "react";
+import { StrictMode, act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthorDialog } from "./author-dialog";
+import type { AuthorDialogNavigationHandle } from "./author-dialog";
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -28,6 +29,7 @@ beforeEach(() => {
   );
 });
 afterEach(async () => {
+  window.history.replaceState({ screen: "detail" }, "", "/");
   await act(async () => root?.unmount());
   root = null;
   document.body.replaceChildren();
@@ -142,5 +144,165 @@ describe("author modal history ownership", () => {
     expect(back).not.toHaveBeenCalled();
     expect(node.querySelector("input")?.value).toBe("草稿");
     window.history.replaceState({ screen: "detail" }, "", window.location.href);
+  });
+});
+
+const childBack = vi.fn();
+const ModalChildren = ({
+  onClose,
+  dirty = false,
+  dismissible = true,
+}: {
+  onClose: () => void;
+  dirty?: boolean;
+  dismissible?: boolean;
+}) => {
+  const [depth, setDepth] = useState(0);
+  const navigation = useRef<AuthorDialogNavigationHandle>(null);
+  return (
+    <AuthorDialog
+      title="消息"
+      titleContent={<button>聊天作者</button>}
+      navigationDepth={depth}
+      navigationRef={navigation}
+      onBack={(target) => {
+        childBack(target);
+        setDepth(target);
+      }}
+      dirty={dirty}
+      dismissible={dismissible}
+      onClose={onClose}
+    >
+      <output>{depth}</output>
+      <button data-open-child="" onClick={() => setDepth((old) => old + 1)}>
+        下一页
+      </button>
+      <button data-profile-back="" onClick={() => navigation.current?.back()}>
+        主页返回
+      </button>
+    </AuthorDialog>
+  );
+};
+const renderChildren = async (
+  onClose = vi.fn(),
+  dirty = false,
+  dismissible = true,
+) => {
+  childBack.mockClear();
+  const node = document.createElement("div");
+  document.body.append(node);
+  root = createRoot(node);
+  await act(async () =>
+    root!.render(
+      <StrictMode>
+        <ModalChildren
+          onClose={onClose}
+          dirty={dirty}
+          dismissible={dismissible}
+        />
+      </StrictMode>,
+    ),
+  );
+  return node;
+};
+const popDialog = async (state: unknown) =>
+  act(async () => {
+    window.history.replaceState(state, "", window.location.href);
+    window.dispatchEvent(new PopStateEvent("popstate", { state }));
+  });
+
+describe("author modal child navigation", () => {
+  it("returns profile to fans to messages before dismissing the modal", async () => {
+    const close = vi.fn(),
+      underlying = vi.fn();
+    const node = await renderChildren(close);
+    const messages = window.history.state;
+    expect(node.querySelector("dialog")?.getAttribute("aria-label")).toBe(
+      "消息",
+    );
+    expect(node.querySelector("h2 button")?.textContent).toBe("聊天作者");
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    const fans = window.history.state;
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    expect(window.history.state.phase4DialogDepth).toBe(2);
+    window.addEventListener("popstate", underlying);
+    await popDialog(fans);
+    expect(node.querySelector("output")?.textContent).toBe("1");
+    await popDialog(messages);
+    expect(node.querySelector("output")?.textContent).toBe("0");
+    expect(close).not.toHaveBeenCalled();
+    await popDialog({ screen: "detail" });
+    expect(close).toHaveBeenCalledOnce();
+    expect(underlying).not.toHaveBeenCalled();
+    window.removeEventListener("popstate", underlying);
+  });
+  it("shares one pending Back between the profile close handle and header", async () => {
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const close = vi.fn();
+    const node = await renderChildren(close);
+    const messages = window.history.state;
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    await act(async () => {
+      node.querySelector<HTMLButtonElement>("[data-profile-back]")!.click();
+      node.querySelector<HTMLButtonElement>(".phase4-back")!.click();
+    });
+    expect(back).toHaveBeenCalledOnce();
+    expect(childBack).not.toHaveBeenCalled();
+    await popDialog(messages);
+    expect(childBack).toHaveBeenCalledWith(0);
+    expect(close).not.toHaveBeenCalled();
+  });
+  it("retains a dirty child when browser Back is declined", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const forward = vi
+      .spyOn(window.history, "forward")
+      .mockImplementation(() => {});
+    const node = await renderChildren(vi.fn(), true);
+    const messages = window.history.state;
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    const child = window.history.state;
+    await popDialog(messages);
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(forward).toHaveBeenCalledOnce();
+    expect(childBack).not.toHaveBeenCalled();
+    await popDialog(child);
+    expect(node.querySelector("output")?.textContent).toBe("1");
+  });
+  it("keeps non-dismissible children in place without asking to discard", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    const forward = vi
+      .spyOn(window.history, "forward")
+      .mockImplementation(() => {});
+    const node = await renderChildren(vi.fn(), true, false);
+    const messages = window.history.state;
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    await popDialog(messages);
+    expect(forward).toHaveBeenCalledOnce();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(childBack).not.toHaveBeenCalled();
+  });
+  it("consumes root plus nested child entries on session-change unmount", async () => {
+    const go = vi.spyOn(window.history, "go").mockImplementation(() => {});
+    const node = await renderChildren();
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>("[data-open-child]")!.click(),
+    );
+    await act(async () => root!.unmount());
+    root = null;
+    expect(go).toHaveBeenCalledWith(-3);
+    await popDialog({ screen: "detail" });
   });
 });

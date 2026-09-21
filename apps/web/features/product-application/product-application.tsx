@@ -29,6 +29,7 @@ export interface ProductApplicationProps extends Pick<
   | "initialHomeFeed"
   | "initialPlatform"
   | "initialTopicId"
+  | "developmentDiscussion"
   | "navigationAction"
   | "productUtility"
   | "states"
@@ -127,7 +128,12 @@ const AuthorProduct = ({
               )}
               userPage={<UserPage />}
               headerStart={<CatalogSearchHeaderAction />}
-              headerEnd={<MessageTrigger unreadCount={unreadCount} />}
+              headerEnd={
+                <MessageTrigger
+                  developmentPreview={preview.developmentDiscussion ?? false}
+                  unreadCount={unreadCount}
+                />
+              }
             />
           </PublishingEntryProvider>
         </LiveCatalogCards>
@@ -138,5 +144,10 @@ const AuthorProduct = ({
 
 const UserPage = () => {
   const shell = useProductShell();
-  return <AuthorProfilePage onBack={() => shell.navigatePrimary("home")} />;
+  return (
+    <AuthorProfilePage
+      onBack={() => shell.navigatePrimary("home")}
+      headerStart={<CatalogSearchHeaderAction />}
+    />
+  );
 };

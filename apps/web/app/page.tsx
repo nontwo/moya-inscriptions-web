@@ -32,6 +32,10 @@ export default async function FormalPage({
       <ProductApplication
         authorCommunity={resolveCommunityCommentSurface() !== null}
         comments={resolveCommunityCommentSurface()}
+        {...(process.env.NODE_ENV === "development" &&
+        process.env.NEXT_PUBLIC_MOYA_DISCUSSION_PREVIEW === "true"
+          ? { developmentDiscussion: true }
+          : {})}
         initialHomeFeed={initialHomeFeed}
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId}

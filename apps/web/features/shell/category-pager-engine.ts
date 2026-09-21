@@ -1,6 +1,7 @@
 import EmblaCarousel from "embla-carousel";
 
 interface CategoryPagerCallbacks {
+  readonly canStartGesture?: () => boolean;
   readonly getCommittedIndex: () => number;
   readonly onCommit: (index: number) => void;
   readonly onProgress: (progress: number) => void;
@@ -69,6 +70,7 @@ export function createCategoryPagerEngine(
     reset();
   };
   const start = (event: TouchEvent) => {
+    if (contacts === 0 && callbacks.canStartGesture?.() === false) return;
     if (!frame.contains(event.target as Node) && contacts === 0) return;
     if (event.touches.length > 1) {
       contacts = event.touches.length;
@@ -178,6 +180,7 @@ export function createCategoryPagerEngine(
     watchResize: false,
     watchSlides: false,
     watchDrag: (_api, event) =>
+      callbacks.canStartGesture?.() !== false &&
       "touches" in event &&
       event.touches.length === 1 &&
       !blocked &&

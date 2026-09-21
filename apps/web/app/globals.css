@@ -16,6 +16,20 @@ body {
   margin: 0;
 }
 
+/* Phone interaction does not show persistent focus frames after taps or
+   programmatic return focus. Desktop keyboard focus remains unchanged. */
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus,
+  :focus-visible,
+  :focus-within {
+    outline: none !important;
+  }
+}
+
 [data-t02p-qa-harness] > [data-qa-controls] {
   position: fixed;
   z-index: calc(var(--yoyi-z-index-navigation) + 10);
