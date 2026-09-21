@@ -9,6 +9,33 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The page sets the Admin breadcrumb through Payload's `SetStepNav`, and that
+// package's client barrel imports CSS, which this jsdom run cannot load. The
+// same problem and the same shape of answer already exist in
+// `community-bulk-actions.test.ts`: name the file the component actually
+// resolves, because the package is reachable only from the Admin workspace.
+const payload = await vi.hoisted(async () => {
+  const { createRequire } = await import("node:module");
+  const { realpathSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  // Under jsdom import.meta.url is an http URL; the directory stays a path.
+  const adminRequire = createRequire(
+    join(import.meta.dirname, "../../../apps/admin/"),
+  );
+  return {
+    ui: realpathSync(adminRequire.resolve("@payloadcms/ui")),
+    setStepNav: vi.fn(),
+  };
+});
+vi.mock(payload.ui, () => ({
+  // Records the breadcrumb instead of rendering it, so the page's claim about
+  // its own location is assertable here rather than only in a browser.
+  SetStepNav: ({ nav }: { readonly nav: readonly { label: string }[] }) => {
+    payload.setStepNav(nav);
+    return null;
+  },
+}));
+
 import { AgentConnectionsClient } from "admin/agent-connections-client";
 
 /**
@@ -85,6 +112,7 @@ const mockFetch = (payload: unknown) =>
 
 beforeEach(() => {
   posted = [];
+  payload.setStepNav.mockClear();
   // jsdom implements neither modal dialogs nor the clipboard.
   if (!HTMLDialogElement.prototype.showModal)
     HTMLDialogElement.prototype.showModal = function showModal(
@@ -106,6 +134,17 @@ afterEach(() => {
 });
 
 describe("the AI connections page", () => {
+  it("tells the Admin shell it is the AI connections page", async () => {
+    // Payload keeps the breadcrumb in one provider at the Admin root and
+    // nothing resets it between views, so a page that sets nothing inherits
+    // the last one — which is how this page came to display 社区 / 作品与推荐,
+    // a different module entirely.
+    vi.stubGlobal("fetch", mockFetch(result()));
+    render(createElement(AgentConnectionsClient));
+    await waitFor(() => expect(payload.setStepNav).toHaveBeenCalled());
+    expect(payload.setStepNav).toHaveBeenCalledWith([{ label: "AI 连接" }]);
+  });
+
   it("does not disconnect on the first click; it asks", async () => {
     vi.stubGlobal("fetch", mockFetch(result()));
     render(createElement(AgentConnectionsClient));

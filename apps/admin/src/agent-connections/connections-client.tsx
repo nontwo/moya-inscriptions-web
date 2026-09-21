@@ -1,8 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SetStepNav } from "@payloadcms/ui";
 
 import styles from "./connections.module.css";
+
+/**
+ * What this page calls itself in the Admin breadcrumb, in one place because
+ * two renders set it: this client, and the refusal branch in `View.tsx` that
+ * never mounts this client at all.
+ */
+const PAGE_LABEL = "AI 连接";
+
+/** The breadcrumb alone, for a branch that renders no connections UI. */
+export const ConnectionsStepNav = () => (
+  <SetStepNav nav={[{ label: PAGE_LABEL }]} />
+);
 
 interface ListedConnectionView {
   readonly id: string;
@@ -459,6 +472,16 @@ export const AgentConnectionsClient = () => {
 
   return (
     <section className={styles.page} data-agent-connections>
+      {/* Payload's breadcrumb is client state that the LAST view to mount
+          owns, so a page that never sets it keeps whatever the previous one
+          left -- which is why arriving from 作品与推荐 showed this page as
+          `社区 / 作品与推荐`, a different module entirely. Setting it on mount
+          fixes both routes into here for the same reason: a direct load has
+          nothing to inherit, and an in-app navigation replaces what it
+          inherited. One step, because `AI 连接` is its own sidebar group
+          rather than something under 社区, and a second step naming it again
+          would just repeat itself. */}
+      <SetStepNav nav={[{ label: PAGE_LABEL }]} />
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>AI 连接</h2>

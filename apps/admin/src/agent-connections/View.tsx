@@ -2,7 +2,10 @@ import { DefaultTemplate } from "@payloadcms/next/templates";
 import type { AdminViewServerProps } from "payload";
 
 import { isOwner } from "../editorial/access";
-import { AgentConnectionsClient } from "./connections-client";
+import {
+  AgentConnectionsClient,
+  ConnectionsStepNav,
+} from "./connections-client";
 import { AgentConsentClient } from "./consent-client";
 import { ConsentError, describeConsent, mintConsentTicket } from "./consent";
 import { connectionsEnabled } from "./composition";
@@ -26,9 +29,57 @@ import { consentRuntime } from "./runtime";
  * an earlier version of this sentence said the opposite. What makes it safe is
  * not the method but the two gates above it — the Owner check precedes it, and
  * on the cross-site navigation the `SameSite=Strict` session is absent, so a
- * prefetch from anywhere but an authenticated Admin page arms nothing. Re-arming
- * is also idempotent in effect: it replaces the previous ticket and cannot
- * touch a decided or expired interaction.
+ * prefetch from anywhere but an authenticated Admin page arms nothing.
+ *
+ * RE-ARMING IS NOT IDEMPOTENT, and an earlier version of this paragraph called
+ * it that. The store says what it actually is, in as many words: re-arming is
+ * "deliberately allowed and deliberately destructive", because reloading this
+ * page mints a FRESH ticket and kills the previous one. Repeating the same SQL
+ * input would be idempotent; a render that produces NEW input is not. What is
+ * true is narrower and is the part that matters: it cannot touch a decided or
+ * expired interaction, because `decided_at IS NULL` and the live deadline are
+ * in the WHERE clause.
+ *
+ * THAT REASONING IS ABOUT AUTHORIZATION, AND IT MISSED A COST. The gates above
+ * answer who may arm an interaction, and they still hold. None of them answers
+ * what happens when this render runs TWICE for one navigation,
+ * which a prefetch plus the real navigation does: `resolveConnection` was
+ * read-then-create, so both renders read "no connection" and both opened one.
+ * Measured on a disposable target, and reported once from the Owner
+ * walkthrough — two rows for one (human, client) pair, and a pair with two
+ * rows is a pair `findForClient` then refuses, so the next consent for it could
+ * not succeed at all. The duplicate is closed underneath this page, in the
+ * store and in migration 20260921010000, NOT here.
+ *
+ * SO WHAT DOES A SECOND RENDER COST, now that the connection cannot duplicate?
+ * Exactly one thing: the ticket rendered into the FIRST page is dead. That is
+ * survivable in the ordinary sequence and is already pinned, in
+ * `agent-connection-consent-cases.ts` under the name "re-arms an undecided
+ * interaction, which kills the ticket it replaced" — the second ticket decides,
+ * the first is refused, and a decided interaction can never be re-armed at all.
+ * A prefetch followed by the real navigation leaves the reader looking at the
+ * LAST render, so the form in front of them is the live one. An older tab is
+ * the case that loses, and it loses recoverably: `decide` matches no row, the
+ * page refuses with CONSENT_NOT_DECIDABLE, and reloading arms a fresh ticket
+ * because the interaction is still undecided. A refusal, not a wedge, and not
+ * a second connection.
+ *
+ * ONE THING THAT IS NOT PROVEN EITHER WAY, recorded rather than claimed: the
+ * two renders arm in whatever order they reach the database, and the order the
+ * BROWSER paints them in is not that order. If the slower prefetch arms after
+ * the navigation, the ticket in the form the reader is looking at is already
+ * dead and their first click is refused — still recoverable by reloading, but
+ * a refusal they did nothing to earn. A review raised it by reading; it has
+ * NOT been reproduced, and nothing here is built on the assumption that it
+ * cannot happen. Closing it means deciding where arming belongs, which is the
+ * open question below, not a line to add to a uniqueness guard.
+ *
+ * WHAT IS STILL OPEN, deliberately and separately: whether a GET render is the
+ * right place for a write at all. The open question is the shape, not a known
+ * defect. It is recorded rather than changed here, because moving arming out of
+ * the render is a change to the consent flow's two-step — the thing the measured
+ * cookie behaviour forced — and that deserves its own slice with its own
+ * evidence rather than riding along with a uniqueness guard.
  */
 
 const Shell = ({
@@ -64,7 +115,14 @@ export const AgentConnectionsView = (props: AdminViewServerProps) => (
     {connectionsEnabled() ? (
       <AgentConnectionsClient />
     ) : (
-      <p role="alert">AI 连接未启用。</p>
+      <>
+        {/* The breadcrumb is client state the last view to mount owns, and
+            this branch mounts no connections UI, so without this it would
+            show whichever page the reader came from. Only here: the enabled
+            branch sets it from inside the client. */}
+        <ConnectionsStepNav />
+        <p role="alert">AI 连接未启用。</p>
+      </>
     )}
   </Shell>
 );

@@ -456,6 +456,33 @@ export const createAgentConnectionStore = (
 ) => {
   const { pool } = options;
 
+  /**
+   * The pair read, in one place because two callers must agree on it: the
+   * public `findForClient`, and the re-read `createForClient` performs when it
+   * loses the race. A second spelling of this query would be a second answer
+   * to "how many rows is too many", which is a security decision and not a
+   * detail.
+   */
+  const readForClient = async (
+    humanAccountId: string,
+    oauthClientId: string,
+  ): Promise<VersionedStoredConnection | null> => {
+    const { rows } = await pool.query(
+      `SELECT ${CONNECTION_SELECT}
+         FROM community.agent_connections
+        WHERE human_account_id=$1 AND oauth_client_id=$2
+        LIMIT 2`,
+      [humanAccountId, oauthClientId],
+    );
+    if (rows.length > 1)
+      throw new AgentConnectionRowError(
+        "AMBIGUOUS_CLIENT_CONNECTION",
+        "oauth_client_id",
+      );
+    const row = rows[0] as Record<string, unknown> | undefined;
+    return row === undefined ? null : parseConnectionRow(row);
+  };
+
   return {
     /**
      * `ConnectionStore.read`. Returns null ONLY for a row that is genuinely
@@ -541,6 +568,11 @@ export const createAgentConnectionStore = (
      * hoped for: `ON CONFLICT DO NOTHING` plus a null result means the id
      * already exists, and re-opening it would reset `generation` to 0 and
      * revalidate a generation-1 token from that id's previous life.
+     *
+     * This opens a row at an ID and says nothing about the PAIR, so a caller
+     * that means "the connection this human holds for this client" wants
+     * `createForClient` instead. Calling this one twice for one pair raises on
+     * the unique index rather than quietly making a second row.
      */
     async create(
       connection: StoredConnection,
@@ -574,6 +606,61 @@ export const createAgentConnectionStore = (
       }
       const row = result.rows[0] as Record<string, unknown> | undefined;
       return row === undefined ? null : parseConnectionRow(row);
+    },
+
+    /**
+     * Opens THE connection for a (human, client) pair, or hands back the one a
+     * concurrent writer opened first. What the consent path calls.
+     *
+     * `create` cannot do this job: its conflict target is the id, and the id is
+     * fresh on every call, so two renders that both read "no connection" both
+     * insert one. The conflict that matters is the PAIR, and it is a conflict
+     * at all only because migration 20260921010000 makes that pair unique.
+     *
+     * A lost race is not an error here, for the same reason it is not one in
+     * `compareAndSet`: the winner's row IS the row this consent must attach to.
+     * An ID collision is a different thing and is deliberately NOT swallowed —
+     * it is not in the conflict target, so it still raises, because re-opening
+     * an existing id would reset `generation` to 0 and revalidate a
+     * generation-1 token from that id's previous life.
+     */
+    async createForClient(
+      connection: StoredConnection,
+    ): Promise<VersionedStoredConnection | null> {
+      let result;
+      try {
+        result = await pool.query(
+          `INSERT INTO community.agent_connections
+             (id, principal_label, human_account_id, client_family,
+              oauth_client_id, environment, preset, status, generation,
+              revoked_at, consented_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           ON CONFLICT (human_account_id, oauth_client_id) DO NOTHING
+        RETURNING ${CONNECTION_SELECT}`,
+          [
+            connection.id,
+            connection.principalLabel,
+            connection.humanAccountId,
+            connection.client,
+            connection.oauthClientId,
+            connection.environment,
+            connection.preset,
+            connection.status,
+            connection.generation,
+            connection.revokedAt,
+            connection.consentedAt,
+          ],
+        );
+      } catch (error) {
+        return asInvariant(error);
+      }
+      const opened = result.rows[0] as Record<string, unknown> | undefined;
+      if (opened !== undefined) return parseConnectionRow(opened);
+      // The pair was taken. A SEPARATE statement on purpose: the winner's row
+      // is committed by the time this one runs, while a read inside the
+      // statement that just conflicted would still be looking at a snapshot
+      // taken before it.
+      return readForClient(connection.humanAccountId, connection.oauthClientId);
     },
 
     /**
@@ -725,29 +812,21 @@ export const createAgentConnectionStore = (
      *
      * Exact, never by family: two clients of one family are two
      * authorizations, and matching loosely here would let a second client
-     * inherit the first one's consent. The database has no unique constraint
-     * on the pair, so more than one row is a refusal rather than a pick —
-     * silently choosing the newest is how a revoked connection gets bypassed
-     * by a duplicate nobody noticed.
+     * inherit the first one's consent.
+     *
+     * More than one row is a refusal rather than a pick, and that stays true
+     * now that migration 20260921010000 makes the pair unique. The index is
+     * what PREVENTS a second row; this refusal is what happens when one is
+     * there regardless — a database migrated from before the index, or a row
+     * written around the store. Silently choosing the newest is how a revoked
+     * connection gets bypassed by a duplicate nobody noticed, so neither the
+     * index nor this check is the other's excuse to go away.
      */
     async findForClient(
       humanAccountId: string,
       oauthClientId: string,
     ): Promise<VersionedStoredConnection | null> {
-      const { rows } = await pool.query(
-        `SELECT ${CONNECTION_SELECT}
-           FROM community.agent_connections
-          WHERE human_account_id=$1 AND oauth_client_id=$2
-          LIMIT 2`,
-        [humanAccountId, oauthClientId],
-      );
-      if (rows.length > 1)
-        throw new AgentConnectionRowError(
-          "AMBIGUOUS_CLIENT_CONNECTION",
-          "oauth_client_id",
-        );
-      const row = rows[0] as Record<string, unknown> | undefined;
-      return row === undefined ? null : parseConnectionRow(row);
+      return readForClient(humanAccountId, oauthClientId);
     },
 
     /**

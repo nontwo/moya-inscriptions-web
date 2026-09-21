@@ -16,7 +16,7 @@ import {
   ConnectionAuthError,
   admitGrant,
 } from "admin/agent-connections-admission";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type {
   ConnectionRecord,
@@ -307,6 +307,28 @@ export const registerAgentConnectionTenStepTests = (
     afterAll(async () => {
       if (server !== undefined)
         await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    /**
+     * Per TEST, not per file, since migration 20260921010000 made
+     * (human_account_id, oauth_client_id) unique.
+     *
+     * Two cases here open a connection for the SAME pair, and both need it to
+     * be `user-owner` at this suite's one registered client: the provider
+     * authorizes as that subject for that client, and the consent this suite
+     * records names them too, so varying either would make a case refuse for a
+     * reason it is not testing — which is how a negative control goes green
+     * for the wrong cause. The pair is therefore a shared resource that each
+     * case returns.
+     *
+     * NOT because `admitGrant` compares them to the connection. It does not,
+     * and saying so here would reverse an r14 fix: `admission.ts:104-109`
+     * compares the CONSENT's subject and client against the GRANT's, precisely
+     * because the connection's own columns stay writable by design. The
+     * connection is reached through `consent.connectionId` and checked for
+     * identity, environment and revocation — never for who owns it.
+     */
+    afterEach(async () => {
       await pool.query(
         "DELETE FROM community.agent_connection_provider_artifacts",
       );
@@ -321,12 +343,12 @@ export const registerAgentConnectionTenStepTests = (
       await pool.query("DELETE FROM community.agent_connections");
     });
 
-    const openConnection = async () => {
+    const openConnection = async (humanAccountId = "user-owner") => {
       const id = `conn-${randomBytes(16).toString("hex")}`;
       const created = await connections.create({
         id,
         principalLabel: "agent-ten-step",
-        humanAccountId: "user-owner",
+        humanAccountId,
         client: "claude",
         oauthClientId: CLIENT_ID,
         environment: "development",
@@ -664,11 +686,15 @@ export const registerAgentConnectionTenStepTests = (
 
       // 10 — another connection is untouched; then G2 is revoked and stays
       //      unusable until a genuinely new consent.
-      const otherId = await openConnection();
+      //
+      // ANOTHER HUMAN's connection, because one human holds one connection per
+      // client now (migration 20260921010000) and a second row for this pair
+      // is the thing that index forbids. Nothing admits a token against this
+      // one; it is here to be left alone.
+      const otherId = await openConnection("user-other");
       await recordConsent(otherId);
-      expect((await connections.read(otherId))?.connection.status).toBe(
-        "authorized",
-      );
+      const otherBefore = await connections.read(otherId);
+      expect(otherBefore?.connection.status).toBe("authorized");
 
       const beforeSecondRevoke = await connections.read(connectionId);
       await connections.compareAndSet(
@@ -682,6 +708,16 @@ export const registerAgentConnectionTenStepTests = (
         },
       );
       expect(await admit(A2)).toBe("CONNECTION_REVOKED");
+      // AND THE OTHER CONNECTION IS STILL UNTOUCHED. This step is named for
+      // that, but until now it was only ever read BEFORE the revoke, so a
+      // revoke that scoped by (human, client) instead of by connection id
+      // would have left it green. Read after the event it is about.
+      const otherAfter = await connections.read(otherId);
+      expect(otherAfter?.connection.status).toBe("authorized");
+      expect(otherAfter?.connection.revokedAt).toBeNull();
+      expect(otherAfter?.connection.generation).toBe(
+        otherBefore?.connection.generation,
+      );
       await recordConsent(connectionId);
       // A NEW consent is what restores access — the old wrapper stays dead.
       expect(await admit(A2)).toBe("CONNECTION_GENERATION_STALE");

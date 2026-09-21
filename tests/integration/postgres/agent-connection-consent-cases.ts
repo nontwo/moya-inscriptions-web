@@ -64,13 +64,28 @@ export const registerAgentConnectionConsentTests = (
     const uid = () => `int-${randomBytes(12).toString("hex")}`;
     const later = (ms: number) => new Date(Date.now() + ms).toISOString();
 
-    const openConnection = async (): Promise<StoredConnection> => {
+    /**
+     * A client of its own per connection.
+     *
+     * One human holds at most ONE connection per registered client — migration
+     * 20260921010000 is the index that says so — and this suite opens a
+     * connection in most of its cases without dropping the earlier ones. A
+     * fixed pair here would therefore be eleven rows the product can never
+     * produce, and the first case to run would be the only one that could
+     * open a connection at all.
+     */
+    const caseClientId = () =>
+      `artvenn-consent-case-${randomBytes(6).toString("hex")}`;
+
+    const openConnection = async (
+      oauthClientId: string = caseClientId(),
+    ): Promise<StoredConnection> => {
       const fields: StoredConnection = {
         id: `conn-${randomBytes(16).toString("hex")}`,
         principalLabel: "agent-consent-case",
         humanAccountId: "user-owner",
         client: "claude",
-        oauthClientId: "artvenn-consent-case",
+        oauthClientId,
         environment: "development",
         preset: "read-only",
         status: "awaiting-consent",
@@ -83,9 +98,13 @@ export const registerAgentConnectionConsentTests = (
     };
 
     /** What the PROVIDER writes: the facts it will enforce, and no human. */
+    // The default client is generated per call for the same reason
+    // `openConnection`'s is: a fixed literal here would pair a consent for one
+    // client with a connection opened for another wherever the two are not
+    // threaded together through `armed()`.
     const providerFacts = (overrides: Record<string, unknown> = {}) => ({
       interactionUid: uid(),
-      oauthClientId: "artvenn-consent-case",
+      oauthClientId: caseClientId(),
       resource: "https://resource.invalid/mcp",
       capabilityScopes: ["artvenn:read"],
       protocolScopes: ["offline_access"],
@@ -101,8 +120,16 @@ export const registerAgentConnectionConsentTests = (
      */
     const armed = async (overrides: Record<string, unknown> = {}) => {
       const secret = ticket();
-      const facts = providerFacts(overrides);
-      const connection = await openConnection();
+      // One client id for both halves: the consent the provider enforces and
+      // the connection the review page attaches it to name the same client,
+      // exactly as they do in the product.
+      const client = caseClientId();
+      // The injected client comes LAST on purpose: spreading `overrides` after
+      // it would let a future `armed({ oauthClientId })` split the consent from
+      // the connection this opens, and nothing in the suite compares them, so
+      // the case would assert whatever it asserts for an unrelated reason.
+      const facts = providerFacts({ ...overrides, oauthClientId: client });
+      const connection = await openConnection(client);
       expect(await consents.open(facts)).not.toBeNull();
       const row = await consents.arm({
         interactionUid: facts.interactionUid,

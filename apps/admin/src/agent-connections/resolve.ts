@@ -31,6 +31,16 @@ const principalLabelFor = (family: string): string =>
  * A new connection is `awaiting-consent` at generation 0 — powerless until a
  * human says otherwise in a browser. Creating it here is not consent and does
  * not authorize anything; it is the record consent will later attach to.
+ *
+ * THE READ BELOW DOES NOT GUARD THE WRITE, and it is not trying to. This runs
+ * during the consent review page's server render, and Next prefetches links, so
+ * two renders of one navigation is an ordinary event rather than an exotic one:
+ * both read "no connection" and both used to insert one. Measured on a
+ * disposable target — two rows, same millisecond, matching the pair the Owner
+ * walkthrough reported. What closes it is `createForClient`, where the unique
+ * index from migration 20260921010000 decides the winner and the loser re-reads
+ * the winner's row. The read here is only the fast path for the common case,
+ * which is a connection that already exists.
  */
 export const resolveConnection = async (
   runtime: ConsentRuntime,
@@ -44,7 +54,7 @@ export const resolveConnection = async (
     oauthClientId,
   );
   if (existing !== null) return existing.connection;
-  const created = await runtime.connections.create({
+  const created = await runtime.connections.createForClient({
     id: newConnectionId(),
     principalLabel: principalLabelFor(client.family),
     humanAccountId,

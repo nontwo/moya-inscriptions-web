@@ -42,6 +42,18 @@ export const registerAgentConnectionTests = (
 
     let connection: string;
 
+    /**
+     * A human who is not the Owner of the connection under test.
+     *
+     * Several cases here need a SECOND connection to point a grant, a wrapper
+     * or a cleanup at, and since migration 20260921010000 a second connection
+     * for one (human, client) pair is the thing the schema forbids. So the
+     * other connection belongs to somebody else. Nothing these cases assert
+     * depends on who: they are about foreign keys and freezes between rows,
+     * and no trigger compares a connection's human to its grant's subject.
+     */
+    const anotherHuman = () => `user-other-${randomBytes(6).toString("hex")}`;
+
     const openConnection = async (
       overrides: Partial<{
         status: string;
@@ -49,6 +61,7 @@ export const registerAgentConnectionTests = (
         currentGrantId: string | null;
         consentedAt: string | null;
         revokedAt: string | null;
+        humanAccountId: string;
       }> = {},
     ) => {
       const id = connectionId();
@@ -57,7 +70,7 @@ export const registerAgentConnectionTests = (
            (id, human_account_id, client_family, oauth_client_id, environment,
             principal_label, preset, status, generation, current_grant_id,
             consented_at, revoked_at)
-         VALUES ($1,'user-owner','claude','artvenn-claude-01','development',
+         VALUES ($1,$7,'claude','artvenn-claude-01','development',
                  'agent-phone','read-only',$2,$3,$4,$5,$6)`,
         [
           id,
@@ -68,6 +81,7 @@ export const registerAgentConnectionTests = (
             ? new Date().toISOString()
             : overrides.consentedAt,
           overrides.revokedAt ?? null,
+          overrides.humanAccountId ?? "user-owner",
         ],
       );
       return id;
@@ -128,6 +142,7 @@ export const registerAgentConnectionTests = (
           status: "awaiting-consent",
           generation: 0,
           consentedAt: null,
+          humanAccountId: anotherHuman(),
         });
         const { rows } = await pool.query(
           `SELECT status, generation, current_grant_id, consented_at
@@ -182,7 +197,9 @@ export const registerAgentConnectionTests = (
       });
 
       it("refuses a current_grant_id belonging to another connection, or to nothing", async () => {
-        const other = await openConnection();
+        const other = await openConnection({
+          humanAccountId: anotherHuman(),
+        });
         await addGrant("grant-elsewhere", 1, other);
         // Previously unconstrained, so cleanup could have been pointed at
         // someone else's grant. Now a composite foreign key.
@@ -248,7 +265,9 @@ export const registerAgentConnectionTests = (
 
       it("refuses a wrapper pointing at another connection", async () => {
         await addGrant("grant-r1", 1);
-        const other = await openConnection();
+        const other = await openConnection({
+          humanAccountId: anotherHuman(),
+        });
         await expect(addWrapper("grant-r1", other, 1)).rejects.toMatchObject({
           code: "23503",
         });
@@ -344,7 +363,9 @@ export const registerAgentConnectionTests = (
 
       it("refuses to move a grant to another connection, or to rewrite what was consented to", async () => {
         await addGrant("grant-r1", 1);
-        const other = await openConnection();
+        const other = await openConnection({
+          humanAccountId: anotherHuman(),
+        });
         for (const sql of [
           `UPDATE community.agent_connection_grants SET connection_id='${other}' WHERE grant_id='grant-r1'`,
           "UPDATE community.agent_connection_grants SET oauth_client_id='other' WHERE grant_id='grant-r1'",
@@ -676,6 +697,7 @@ export const registerAgentConnectionTests = (
           status: "awaiting-consent",
           generation: 0,
           consentedAt: null,
+          humanAccountId: anotherHuman(),
         });
         await expect(
           pool.query(
