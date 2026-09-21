@@ -295,6 +295,7 @@
 }
 
 .presetClient {
+  margin-right: auto;
   flex: 1 1 auto;
   min-width: 0;
   font-size: 13px;
@@ -307,6 +308,24 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  /* The action sits at the right of its row, so the actions across the grid
+     read as a column. Dropping a redundant label had let them fall back to
+     flex-start, which scattered them. */
+  justify-content: flex-end;
+}
+
+.presetAction {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* What to do about a state the page cannot offer a button for. */
+.presetHint {
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* Belongs to the grid above it, not to the page's section rhythm. */

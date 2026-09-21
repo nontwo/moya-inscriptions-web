@@ -217,8 +217,14 @@ describe("the AI connections page", () => {
       expect(found).not.toBeNull();
       return found as Element;
     });
-    expect(card.textContent).toContain("Cursor Desktop");
-    expect(card.textContent).toContain("Hostname callback client");
+    // Scoped to the rows, not the card: `Cursor Desktop` is also the card's
+    // own heading, so asserting on the card's text passes even when the row
+    // has no label at all.
+    const labels = [...card.querySelectorAll("div")].map(
+      (row) => row.firstElementChild?.textContent ?? "",
+    );
+    expect(labels).toContain("Cursor Desktop");
+    expect(labels).toContain("Hostname callback client");
 
     const second = card.querySelector(
       '[data-agent-connections-start="artvenn-cursor-second"]',
@@ -348,6 +354,120 @@ describe("the AI connections page", () => {
     // here would contradict the 已授权 card one row above.
     expect(card.textContent).toContain("已连接");
     expect(card.textContent).not.toContain("等待应用完成授权");
+  });
+
+  it("does not offer a button a disconnected client cannot honour", async () => {
+    // `resolveConnection` returns early on any existing row, revoked
+    // included, so 开始连接 here would succeed and change nothing.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection({
+              status: "revoked",
+              revokedAt: "2026-09-21T00:02:00.000Z",
+              hasCurrentGrant: false,
+            }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(
+      card.querySelector(
+        '[data-agent-connections-start="artvenn-cursor-readonly"]',
+      ),
+    ).toBeNull();
+    expect(card.textContent).toContain("已断开");
+    expect(card.textContent).toContain("在应用里重新授权");
+  });
+
+  it("treats a revokedAt stamp as a disconnect whatever the status says", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [connection({ revokedAt: "2026-09-21T00:02:00.000Z" })],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    // `lifecycle` would refuse this row with CONNECTION_REVOKED; the page must
+    // not show it as a live connection needing re-authorization.
+    await screen.findByText(/还没有已连接的应用/u);
+    const history = document.querySelector("[data-agent-connections-history]");
+    expect(history?.textContent).toContain("Cursor Desktop");
+    expect(document.querySelector("[data-agent-connection-hint]")).toBeNull();
+  });
+
+  it("withholds the recovery hint where consent would refuse it", async () => {
+    // Two live rows for one client: `findForClient` raises
+    // AMBIGUOUS_CLIENT_CONNECTION and consent fails, so "authorize once more
+    // in the application" is a loop that cannot close.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection({ hasCurrentGrant: false }),
+            connection({
+              id: "conn-ffffffffffffffffffffffffffffffff",
+              hasCurrentGrant: false,
+            }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    expect(await screen.findAllByText("需要重新授权")).not.toHaveLength(0);
+    expect(document.querySelector("[data-agent-connection-hint]")).toBeNull();
+  });
+
+  it("names both rows when a family holds two registrations", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [],
+          clients: [
+            {
+              clientId: "artvenn-cursor-readonly",
+              family: "cursor",
+              label: "Cursor Desktop",
+            },
+            {
+              clientId: "artvenn-cursor-second",
+              family: "cursor",
+              label: "Hostname callback client",
+            },
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    // Dropping a label that repeats the heading is only safe when there is
+    // one row. With two, it leaves an anonymous button beside a named one.
+    const rows = [...card.querySelectorAll("[data-agent-connections-start]")];
+    expect(rows).toHaveLength(2);
+    for (const button of rows)
+      expect(
+        button.parentElement?.firstElementChild?.textContent ?? "",
+      ).not.toBe("");
   });
 
   it("does not promise that two addresses are all it takes", async () => {

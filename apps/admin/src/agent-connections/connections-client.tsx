@@ -106,10 +106,16 @@ const PRESETS: readonly {
  * names appear once, in the technical detail, where somebody reading them
  * wants the database's word rather than the product's.
  */
+const isRevoked = (connection: ListedConnectionView): boolean =>
+  connection.status === "revoked" || connection.revokedAt !== null;
+
 const describeStatus = (
   connection: ListedConnectionView,
 ): { readonly text: string; readonly tone: string } => {
-  if (connection.status === "revoked") return { text: "已断开", tone: "muted" };
+  // `revokedAt` is a revocation whatever the status column says. `lifecycle`
+  // and `admission` both guard on it deliberately, so that a consent cannot
+  // launder a revoked row clean; this page was the one surface that did.
+  if (isRevoked(connection)) return { text: "已断开", tone: "muted" };
   if (connection.status === "awaiting-consent")
     return { text: "等待授权", tone: "pending" };
   if (connection.status === "authorized")
@@ -294,12 +300,8 @@ export const AgentConnectionsClient = () => {
   const othersClients = clients.filter(
     (client) => !presetFamilies.has(client.family),
   );
-  const active = connections.filter(
-    (connection) => connection.status !== "revoked",
-  );
-  const history = connections.filter(
-    (connection) => connection.status === "revoked",
-  );
+  const active = connections.filter((connection) => !isRevoked(connection));
+  const history = connections.filter(isRevoked);
 
   /** Every registration in a family, so a second one is never unreachable. */
   const clientsIn = (family: string) =>
@@ -315,11 +317,20 @@ export const AgentConnectionsClient = () => {
    * action offered anywhere.
    */
   const stateOf = (clientId: string) => {
-    const rows = connections.filter(
-      (connection) =>
-        connection.oauthClientId === clientId &&
-        connection.status !== "revoked",
+    const all = connections.filter(
+      (connection) => connection.oauthClientId === clientId,
     );
+    const rows = all.filter((connection) => !isRevoked(connection));
+    // A disconnected client is NOT available. `resolveConnection` returns
+    // early on any existing row, revoked included -- `findForClient` has no
+    // status filter -- so 开始连接 would POST, succeed, change nothing, and
+    // leave the button sitting there, while the dialog the reader just
+    // dismissed told them reconnecting needs fresh authorization.
+    if (rows.length === 0 && all.length > 0) return "disconnected" as const;
+    // Each registration holds at most one live row today, which is what makes
+    // this fold agree with `describeStatus` row for row. That invariant is
+    // enforced two layers away and NOT by this file; until it is, the
+    // ordering below decides what a client with several rows reports.
     // Strongest state first. Checking `awaiting` first would let a client
     // that holds a live connection AND a half-finished one read
     // 等待应用完成授权 here while its own card read 已授权 -- the same
@@ -333,6 +344,19 @@ export const AgentConnectionsClient = () => {
     if (rows.length > 0) return "unknown" as const;
     return "available" as const;
   };
+
+  /**
+   * Two live rows for one registration is a state the control plane refuses:
+   * `findForClient` raises AMBIGUOUS_CLIENT_CONNECTION and consent then fails
+   * with CONSENT_UNAVAILABLE. Telling that reader to authorize once more in
+   * the application would send them round a loop that cannot close, so the
+   * recovery hint is withheld exactly where it would be false.
+   */
+  const ambiguous = (clientId: string) =>
+    connections.filter(
+      (connection) =>
+        connection.oauthClientId === clientId && !isRevoked(connection),
+    ).length > 1;
 
   /**
    * One registration's action. Named by ITS OWN label, never by a preset's,
@@ -367,6 +391,15 @@ export const AgentConnectionsClient = () => {
       return (
         <span className={styles.badge} data-tone="muted">
           未知 / 暂不可用
+        </span>
+      );
+    if (state === "disconnected")
+      return (
+        <span className={styles.presetAction}>
+          <span className={styles.badge} data-tone="muted">
+            已断开
+          </span>
+          <span className={styles.presetHint}>在应用里重新授权即可恢复</span>
         </span>
       );
     return (
@@ -485,7 +518,8 @@ export const AgentConnectionsClient = () => {
                         授权时间：{whenText(connection.consentedAt)}
                       </span>
                     </div>
-                    {status.text === "需要重新授权" ? (
+                    {status.text === "需要重新授权" &&
+                    !ambiguous(connection.oauthClientId) ? (
                       <p className={styles.cardHint} data-agent-connection-hint>
                         {
                           "在应用里重新登录 ArtVenn、完成一次授权即可恢复。不需要先断开这条连接。"
@@ -576,7 +610,8 @@ export const AgentConnectionsClient = () => {
                           one family are two rows here, each starting the one
                           it names -- the earlier version silently offered
                           only the first and called it by the preset's name. */}
-                      {client.label === preset.name ? null : (
+                      {registered.length === 1 &&
+                      client.label === preset.name ? null : (
                         <span className={styles.presetClient}>
                           {client.label}
                         </span>
@@ -592,7 +627,7 @@ export const AgentConnectionsClient = () => {
             <h4 className={styles.presetName}>其他 MCP 客户端</h4>
             <p className={styles.presetNote}>
               {
-                "任何符合当前 MCP 和 OAuth 接入要求的客户端都可以使用同一套 ArtVenn 工具，但要先由本部署登记这个客户端——这里没有自助注册。登记之后，把下面的两个地址填进它的 MCP 配置，再完成一次浏览器授权。"
+                "客户端要先由本部署登记——这里没有自助注册。登记之后，任何符合当前 MCP 和 OAuth 接入要求的客户端都能用同一套 ArtVenn 工具：把下面的两个地址填进它的 MCP 配置，再完成一次浏览器授权。"
               }
             </p>
             {/* This used to link to the integration guide on `main`, where that
