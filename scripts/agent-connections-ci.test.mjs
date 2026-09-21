@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -225,12 +227,35 @@ describe("the agent-connections acceptance runs in CI", () => {
     // was the defect in the first version of this check, and it let the
     // marker probe's whole catch block be replaced with `catch { }` while
     // every assertion here stayed green. Measured, twice.
+    // Comments stripped FIRST. Neither this sweep nor the anchored catch
+    // below can tell live code from a comment, and a refusal commented out
+    // while debugging and never restored leaves the gate dead with the string
+    // still present -- measured, and the same class as the defect this check
+    // was written to fix, one level down.
+    const live = backend
+      .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+      .replaceAll(/^\s*\/\/.*$/gmu, "");
+    // Each window is the call's OWN argument list, found by balancing
+    // parentheses from `refuse(`. A fixed width, or a window ending at the
+    // next call, collects codes belonging to a neighbour: the call sites sit
+    // as close as 73 characters apart, so deleting a refusal and leaving its
+    // code as a quoted string nearby still registered it as refused.
     const refusals = new Set();
-    for (const call of backend.matchAll(/\brefuse\(/gu))
-      for (const code of backend
-        .slice(call.index, call.index + 400)
+    for (const call of live.matchAll(/\brefuse\(/gu)) {
+      let depth = 0;
+      let end = call.index + call[0].length - 1;
+      for (; end < live.length; end += 1) {
+        if (live[end] === "(") depth += 1;
+        else if (live[end] === ")") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      for (const code of live
+        .slice(call.index, end)
         .matchAll(/"([A-Z][A-Z0-9_]{2,63})"/gu))
         refusals.add(code[1]);
+    }
     for (const code of [
       "DATABASE_REQUIRED",
       "DATABASE_MALFORMED",
@@ -252,7 +277,7 @@ describe("the agent-connections acceptance runs in CI", () => {
     ])
       assert.ok(refusals.has(code), `${code} must be reached through refuse()`);
     assert.doesNotMatch(
-      backend,
+      live,
       /console\.warn|console\.log/u,
       "a refusal is never a warning",
     );
@@ -271,10 +296,10 @@ describe("the agent-connections acceptance runs in CI", () => {
       ["the disposable-marker probe", "guard.assertDisposableTestTarget("],
       ["the acting-role read", '"SELECT current_user AS role"'],
     ]) {
-      const at = backend.indexOf(anchor);
+      const at = live.indexOf(anchor);
       assert.ok(at > 0, `${label} must exist`);
       assert.match(
-        backend.slice(at, at + 400),
+        live.slice(at, at + 400),
         /\}\s*catch[^}]*refuse\(/su,
         `${label} must refuse when it fails`,
       );
@@ -295,6 +320,101 @@ describe("the agent-connections acceptance runs in CI", () => {
     );
     assert.match(production, /assertLocalDevelopmentDatabase/u);
     assert.match(production, /yoyi_dev/u);
+  });
+
+  it("actually refuses, measured by running it", () => {
+    // THE WAY OUT OF TEXT ASSERTIONS. Every check above reads source, and
+    // source-reading cannot tell a live refusal from a commented-out one, a
+    // conditional one, or one whose code merely appears nearby. This runs the
+    // script and reads what it emits.
+    //
+    // Ten of its fifteen refusals are reachable this way, because all ten sit
+    // BEFORE the first `dist` import: no database is contacted, no listener
+    // opens, nothing is built, and each spawn is a bare Node start. That is
+    // what makes a behavioural check affordable in a dependency-free script
+    // test.
+    // No connection string here carries a username or a password, and the
+    // operator value is generated rather than written down. None of the ten
+    // gates below reads userinfo, so nothing is lost -- and the repository's
+    // confidentiality scanner is right to refuse a `user:secret@host` literal
+    // in a source file even when the secret is obviously fake. It blocked an
+    // earlier version of this test, which is the scanner working.
+    const owned = "x_synthetic_test_agent_conn_deadbeef";
+    const at = (authority, database = owned) =>
+      `postgres://${authority}/${database}`;
+    const sound = {
+      NODE_ENV: "development",
+      AGENT_ACCEPTANCE_BACKEND_ENABLED: "true",
+      AGENT_ACCEPTANCE_BACKEND_PORT: "54997",
+      COMMUNITY_OPERATOR_TOKEN: randomBytes(32).toString("hex"),
+      AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: at("127.0.0.1:5432"),
+    };
+    const refusalOf = (overrides) => {
+      const env = { ...sound, ...overrides };
+      for (const [key, value] of Object.entries(env))
+        if (value === undefined) delete env[key];
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/editorial/agent-connections-backend.mjs"],
+        { cwd: root, env, encoding: "utf8", timeout: 20_000 },
+      );
+      const line = /refused:\s*([A-Z][A-Z0-9_]{2,63})/u.exec(
+        result.stderr ?? "",
+      );
+      return { code: line?.[1], status: result.status };
+    };
+
+    for (const [expected, overrides] of [
+      ["NOT_DEVELOPMENT", { NODE_ENV: "production" }],
+      ["NOT_ENABLED", { AGENT_ACCEPTANCE_BACKEND_ENABLED: undefined }],
+      [
+        "DATABASE_REQUIRED",
+        { AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: undefined },
+      ],
+      [
+        "DATABASE_MALFORMED",
+        { AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: "not a url" },
+      ],
+      [
+        "DATABASE_NOT_LOOPBACK",
+        { AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: at("203.0.113.9:5432") },
+      ],
+      [
+        // The query-parameter override: the hostname still reads 127.0.0.1,
+        // and `pg` would connect somewhere else entirely.
+        "DATABASE_URL_CARRIES_OVERRIDES",
+        {
+          AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: `${at("127.0.0.1:5432")}?host=203.0.113.9&port=6543`,
+        },
+      ],
+      [
+        "DATABASE_PORT_REQUIRED",
+        { AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: at("127.0.0.1") },
+      ],
+      [
+        // The retained Development database, by name.
+        "DATABASE_NOT_HARNESS_OWNED",
+        {
+          AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: at(
+            "127.0.0.1:5432",
+            "yoyi_dev",
+          ),
+        },
+      ],
+      [
+        // Below the 32-character minimum. Generated rather than written down:
+        // the scanner treats any literal assigned to a *_TOKEN name as a
+        // credential, and it is right to, however obviously fake the value.
+        "OPERATOR_CREDENTIAL_REQUIRED",
+        { COMMUNITY_OPERATOR_TOKEN: randomBytes(4).toString("hex") },
+      ],
+      ["PORT_INVALID", { AGENT_ACCEPTANCE_BACKEND_PORT: "0" }],
+    ]) {
+      const { code, status } = refusalOf(overrides);
+      assert.equal(code, expected, `expected ${expected}`);
+      // A refusal, not a crash and not a start: 78 is EX_CONFIG.
+      assert.equal(status, 78, `${expected} must exit 78`);
+    }
   });
 
   it("builds every workspace the services it starts depend on", () => {
