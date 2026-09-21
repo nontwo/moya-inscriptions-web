@@ -140,6 +140,7 @@ describe("the AI connections page", () => {
     render(createElement(AgentConnectionsClient));
     await screen.findByText("连接新应用");
     const others = document.querySelector("[data-agent-connections-others]");
+    expect(others).not.toBeNull();
     expect(others?.textContent).toContain("Local verification client");
     expect(
       others?.querySelector("[data-agent-connections-start]"),
@@ -291,6 +292,82 @@ describe("the AI connections page", () => {
     expect(advanced.textContent).toContain("http://localhost:3452/api/mcp");
   });
 
+  it("never calls one client 已连接 and 需要重新授权 on the same screen", async () => {
+    // A connection authorized with no grant behind it. The card says
+    // 需要重新授权; the preset card used to say 已连接 about the same client,
+    // and neither offered a way out.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({ connections: [connection({ hasCurrentGrant: false })] }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).toContain("需要重新授权");
+    expect(card.textContent).not.toContain("已连接");
+    // And the page says what to do about it, without telling anyone to
+    // destroy the connection first.
+    const hint = document.querySelector("[data-agent-connection-hint]");
+    expect(hint?.textContent).toContain("不需要先断开");
+  });
+
+  it("does not promise that two addresses are all it takes", async () => {
+    vi.stubGlobal("fetch", mockFetch(result()));
+    render(createElement(AgentConnectionsClient));
+    const other = await waitFor(() => {
+      const found = document.querySelector("[data-agent-connections-other]");
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    // `resolveConnection` refuses CLIENT_NOT_REGISTERED for a client id this
+    // deployment has not been configured with, and there is no self-service
+    // registration endpoint. The card has to say so.
+    expect(other.textContent).toContain("登记");
+    expect(other.textContent).not.toContain("授权即可");
+  });
+
+  it("names the confirmation dialog for assistive technology", async () => {
+    vi.stubGlobal("fetch", mockFetch(result()));
+    render(createElement(AgentConnectionsClient));
+    fireEvent.click(await screen.findByText("断开"));
+    const dialog = await waitFor(() => {
+      const found = document.querySelector("[data-agent-connections-confirm]");
+      expect(found?.getAttribute("aria-labelledby")).toBeTruthy();
+      return found as Element;
+    });
+    const titleId = dialog.getAttribute("aria-labelledby") ?? "";
+    expect(document.getElementById(titleId)?.textContent).toContain(
+      "Cursor Desktop",
+    );
+  });
+
+  it("stops saying 已复制 once the moment has passed", async () => {
+    vi.stubGlobal("fetch", mockFetch(result()));
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(createElement(AgentConnectionsClient));
+    await waitFor(() =>
+      expect(document.querySelector("[data-agent-connection]")).not.toBeNull(),
+    );
+    fireEvent.click(screen.getByText("查看详情"));
+    fireEvent.click(screen.getAllByText("复制")[0] as Element);
+    await waitFor(() =>
+      expect(screen.queryAllByText("已复制")).toHaveLength(1),
+    );
+    // Real timers: the reset is a 1500ms timeout inside the component, and a
+    // fake-timer run here would pass without the component ever scheduling it.
+    await waitFor(() => expect(screen.queryByText("已复制")).toBeNull(), {
+      timeout: 4000,
+    });
+  });
+
   it("does not call a connection authorized when nothing is behind it", async () => {
     vi.stubGlobal(
       "fetch",
@@ -299,7 +376,7 @@ describe("the AI connections page", () => {
       ),
     );
     render(createElement(AgentConnectionsClient));
-    expect(await screen.findByText("需要重新授权")).toBeTruthy();
+    expect(await screen.findAllByText("需要重新授权")).toHaveLength(2);
     expect(screen.queryByText("已授权")).toBeNull();
   });
 

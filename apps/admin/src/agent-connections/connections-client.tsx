@@ -253,6 +253,11 @@ export const AgentConnectionsClient = () => {
     if (pendingDisconnect === null && dialog.open) dialog.close();
   }, [pendingDisconnect]);
 
+  useEffect(() => {
+    if (!advancedOpen) return;
+    advancedRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [advancedOpen]);
+
   const post = async (path: string, body: unknown) => {
     setBusy(true);
     try {
@@ -300,15 +305,28 @@ export const AgentConnectionsClient = () => {
   const clientsIn = (family: string) =>
     clients.filter((client) => client.family === family);
 
-  /** The live state of one registration, which decides what its card offers. */
+  /**
+   * The live state of one registration, which decides what its card offers.
+   *
+   * It must agree with `describeStatus`, because both describe the same rows
+   * on the same screen. An earlier version treated every non-revoked row as
+   * connected, so a connection the card above called 需要重新授权 was called
+   * 已连接 here -- the page contradicting itself about one client, with no
+   * action offered anywhere.
+   */
   const stateOf = (clientId: string) => {
     const rows = connections.filter(
-      (connection) => connection.oauthClientId === clientId,
+      (connection) =>
+        connection.oauthClientId === clientId &&
+        connection.status !== "revoked",
     );
     if (rows.some((row) => row.status === "awaiting-consent"))
       return "awaiting" as const;
-    if (rows.some((row) => row.status !== "revoked"))
+    if (rows.some((row) => row.status === "authorized" && row.hasCurrentGrant))
       return "connected" as const;
+    if (rows.some((row) => row.status === "authorized"))
+      return "needs-consent" as const;
+    if (rows.length > 0) return "unknown" as const;
     return "available" as const;
   };
 
@@ -333,6 +351,18 @@ export const AgentConnectionsClient = () => {
       return (
         <span className={styles.badge} data-tone="pending">
           等待应用完成授权
+        </span>
+      );
+    if (state === "needs-consent")
+      return (
+        <span className={styles.badge} data-tone="attention">
+          需要重新授权
+        </span>
+      );
+    if (state === "unknown")
+      return (
+        <span className={styles.badge} data-tone="muted">
+          未知 / 暂不可用
         </span>
       );
     return (
@@ -451,6 +481,13 @@ export const AgentConnectionsClient = () => {
                         授权时间：{whenText(connection.consentedAt)}
                       </span>
                     </div>
+                    {status.text === "需要重新授权" ? (
+                      <p className={styles.cardHint} data-agent-connection-hint>
+                        {
+                          "在应用里重新登录 ArtVenn、完成一次授权即可恢复。不需要先断开这条连接。"
+                        }
+                      </p>
+                    ) : null}
                     {open ? (
                       <dl className={styles.detailList}>
                         <dt>连接 ID</dt>
@@ -530,13 +567,16 @@ export const AgentConnectionsClient = () => {
                 ) : (
                   registered.map((client) => (
                     <div className={styles.presetFoot} key={client.clientId}>
-                      {/* The registration's OWN label. Two registrations in
+                      {/* The registration's OWN label, shown when it says
+                          something the heading does not. Two registrations in
                           one family are two rows here, each starting the one
                           it names -- the earlier version silently offered
                           only the first and called it by the preset's name. */}
-                      <span className={styles.presetClient}>
-                        {client.label}
-                      </span>
+                      {client.label === preset.name ? null : (
+                        <span className={styles.presetClient}>
+                          {client.label}
+                        </span>
+                      )}
                       <ClientAction client={client} />
                     </div>
                   ))
@@ -544,27 +584,11 @@ export const AgentConnectionsClient = () => {
               </article>
             );
           })}
-          {othersClients.length === 0 ? null : (
-            <article className={styles.preset} data-agent-connections-others>
-              <h4 className={styles.presetName}>其他已注册客户端</h4>
-              <p className={styles.presetNote}>
-                {
-                  "这些客户端已在本部署注册，可以正常连接；只是 Admin 还没有为它们准备一份设置说明。"
-                }
-              </p>
-              {othersClients.map((client) => (
-                <div className={styles.presetFoot} key={client.clientId}>
-                  <span className={styles.presetClient}>{client.label}</span>
-                  <ClientAction client={client} />
-                </div>
-              ))}
-            </article>
-          )}
           <article className={styles.preset} data-agent-connections-other>
             <h4 className={styles.presetName}>其他 MCP 客户端</h4>
             <p className={styles.presetNote}>
               {
-                "任何符合当前 MCP 和 OAuth 接入要求的客户端都可以使用同一套 ArtVenn 工具。把下面的两个地址填进它的 MCP 配置，再完成一次浏览器授权即可。"
+                "任何符合当前 MCP 和 OAuth 接入要求的客户端都可以使用同一套 ArtVenn 工具，但要先由本部署登记这个客户端——这里没有自助注册。登记之后，把下面的两个地址填进它的 MCP 配置，再完成一次浏览器授权。"
               }
             </p>
             {/* This used to link to the integration guide on `main`, where that
@@ -575,11 +599,10 @@ export const AgentConnectionsClient = () => {
               <div className={styles.presetFoot}>
                 <button
                   className={styles.button}
+                  aria-controls="agent-connections-advanced"
+                  aria-expanded={advancedOpen}
                   data-agent-connections-show-advanced
-                  onClick={() => {
-                    setAdvancedOpen(true);
-                    advancedRef.current?.scrollIntoView?.({ block: "nearest" });
-                  }}
+                  onClick={() => setAdvancedOpen(true)}
                   type="button"
                 >
                   查看接入地址
@@ -594,6 +617,25 @@ export const AgentConnectionsClient = () => {
           }
         </p>
       </section>
+
+      {othersClients.length === 0 ? null : (
+        <details className={styles.disclosure} data-agent-connections-others>
+          <summary>其他已注册客户端（{othersClients.length}）</summary>
+          <div className={styles.disclosureBody}>
+            <p className={styles.sectionNote}>
+              {
+                "这些客户端已在本部署登记，可以正常连接；只是 Admin 还没有为它们准备一份设置说明。"
+              }
+            </p>
+            {othersClients.map((client) => (
+              <div className={styles.presetFoot} key={client.clientId}>
+                <span className={styles.presetClient}>{client.label}</span>
+                <ClientAction client={client} />
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       {history.length === 0 ? null : (
         <details className={styles.disclosure} data-agent-connections-history>
@@ -629,6 +671,7 @@ export const AgentConnectionsClient = () => {
         <details
           className={styles.disclosure}
           data-agent-connections-advanced
+          id="agent-connections-advanced"
           onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
           open={advancedOpen}
           ref={advancedRef}
