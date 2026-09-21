@@ -319,7 +319,8 @@ export async function seedSupport({
   );
   if (draftSteps.some((key) => !journal.steps[key]?.done)) {
     const opened = await once("support-draft:open", async (requestId) => {
-      const draft = await publishing.openEditDraft(
+      // Since work-publishing-v1 the port answers { draft, ... }, not the draft.
+      const { draft } = await publishing.openEditDraft(
         drafts.authorId,
         drafts.workId,
         { requestId, deviceClass: "desktop" },

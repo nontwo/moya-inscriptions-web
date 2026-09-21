@@ -47,7 +47,25 @@ const workPublishingMigrations = [
   "20260914093000",
   "20260914094000",
   "20260915010000",
+  // data-admin-hardening-v1 forward files (indexes, receipt timestamps,
+  // agent administration, agent connections), plus main's profile
+  // background migration, which claimed 20260920020000 first.
+  "20260916010000",
+  "20260916011000",
+  "20260917010000",
+  "20260917020000",
+  "20260918010000",
+  "20260918020000",
+  "20260918030000",
+  "20260918040000",
+  "20260918050000",
+  "20260920010000",
   "20260920020000",
+  "20260920050000",
+  "20260920060000",
+  "20260920070000",
+  "20260920080000",
+  "20260921010000",
 ];
 const backfillMigration = "20260914092000";
 const bridgeMigration = "20260914093000";
@@ -1478,7 +1496,22 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
       expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual([
         "20260914094000",
         "20260915010000",
+        "20260916010000",
+        "20260916011000",
+        "20260917010000",
+        "20260917020000",
+        "20260918010000",
+        "20260918020000",
+        "20260918030000",
+        "20260918040000",
+        "20260918050000",
+        "20260920010000",
         "20260920020000",
+        "20260920050000",
+        "20260920060000",
+        "20260920070000",
+        "20260920080000",
+        "20260921010000",
       ]);
 
       // Declared submissions: stored hashes unchanged and still exactly what

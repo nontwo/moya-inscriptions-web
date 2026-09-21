@@ -30,9 +30,12 @@ const rootEligible = `c.thread_removed_at IS NULL AND community.accounts_can_int
  AND ((${rootPublic}) OR (c.author_id=$3 AND u.status='active'))`;
 const replyAudience = `community.accounts_can_interact($3,r.author_id)
  AND (((${rootPublic}) AND r.moderation='visible' AND (r.body_deleted_at IS NULL OR r.was_public)) OR (r.author_id=$3 AND ru.status='active'))`;
-const replyEligible = `r.root_comment_id=$4 AND ${replyAudience}`;
 const rootFrom = `FROM community.catalog_comments c JOIN community.public_users u ON u.id=c.author_id
  WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}`;
+/** Effective work visibility for `$2`; reads also admit the author's own hidden-from-others work. */
+const workVisible = (lock: boolean) =>
+  `u.status='active' AND community.accounts_can_interact($2,w.author_id)
+ AND (community.work_is_public(w)${lock ? "" : " OR (w.author_id=$2 AND w.deleted_at IS NULL AND w.trashed_at IS NULL AND w.operator_state='visible')"})`;
 const likeCount = (
   alias: string,
 ) => `(SELECT count(*)::integer FROM community.comment_likes l JOIN community.public_users lu ON lu.id=l.user_id
@@ -40,9 +43,14 @@ const likeCount = (
 const rootProjection = `c.id,c.author_id,u.display_name,c.text,c.created_at,c.body_deleted_at,
  CASE WHEN ${rootPublic} AND c.body_deleted_at IS NULL THEN ${likeCount("c")} ELSE 0 END AS like_count,
  EXISTS(SELECT 1 FROM community.comment_likes WHERE comment_id=c.id AND user_id=$3) AS liked`;
-const replyFrom = `FROM community.catalog_comment_replies r JOIN community.catalog_comments c ON c.id=r.root_comment_id
+const replyFromFor = (roots: string) =>
+  `FROM community.catalog_comment_replies r JOIN community.catalog_comments c ON c.id=r.root_comment_id
  JOIN community.public_users u ON u.id=c.author_id JOIN community.public_users ru ON ru.id=r.author_id
- WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible} AND ${replyEligible}`;
+ WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible} AND ${roots} AND ${replyAudience}`;
+const replyFrom = replyFromFor("r.root_comment_id=$4");
+/** The same audience rules over every root of a page (`$4` text[]). */
+const groupedReplyFrom = replyFromFor("r.root_comment_id=ANY($4::text[])");
+const replyVisible = `${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL`;
 const replyProjection = `r.id,r.author_id,ru.display_name,r.text,r.created_at,r.body_deleted_at,
  CASE WHEN ${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL THEN ${likeCount("r")} ELSE 0 END AS like_count,
  EXISTS(SELECT 1 FROM community.comment_likes WHERE comment_id=r.id AND user_id=$3) AS liked,
@@ -112,11 +120,75 @@ export class PostgresDiscussionStore implements DiscussionPort {
   ): Promise<void> {
     if (target.type !== "work") return;
     const r = await db.query(
-      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND u.status='active' AND community.accounts_can_interact($2,w.author_id)
-      AND (community.work_is_public(w)${lock ? "" : " OR (w.author_id=$2 AND w.deleted_at IS NULL AND w.trashed_at IS NULL AND w.operator_state='visible')"})${lock ? " FOR SHARE OF w" : ""}`,
+      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND ${workVisible(lock)}${lock ? " FOR SHARE OF w" : ""}`,
       [target.id, viewer],
     );
     if (r.rowCount !== 1) throw new CommunityNotFoundError();
+  }
+  /** The read-side `workAllowed` answer for every distinct work id in one statement. */
+  private async allowedWorks(
+    db: PoolClient,
+    ids: readonly string[],
+    viewer: string | null,
+  ): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const r = await db.query<{ id: string }>(
+      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=ANY($1::text[]) AND ${workVisible(false)}`,
+      [[...new Set(ids)], viewer],
+    );
+    return new Set(r.rows.map((row) => row.id));
+  }
+  /**
+   * The embedded first page of replies and both reply totals for every root
+   * of a listing: two grouped statements instead of three per root, under the
+   * same audience rules (`groupedReplyFrom`) and the same reply order.
+   */
+  private async replyGroups(
+    db: PoolClient,
+    target: ContentIdentity,
+    roots: readonly string[],
+    viewer: string | null,
+    pageSize: number,
+  ): Promise<
+    Map<
+      string,
+      { items: DiscussionReply[]; total: number; visibleTotal: number }
+    >
+  > {
+    const groups = new Map<
+      string,
+      { items: DiscussionReply[]; total: number; visibleTotal: number }
+    >();
+    if (roots.length === 0) return groups;
+    const args = [target.type, target.id, viewer, [...roots]];
+    const group = (root: string) => {
+      let g = groups.get(root);
+      if (!g) {
+        g = { items: [], total: 0, visibleTotal: 0 };
+        groups.set(root, g);
+      }
+      return g;
+    };
+    const totals = await db.query<{
+      root_id: string;
+      total: string;
+      visible_total: string;
+    }>(
+      `SELECT r.root_comment_id AS root_id,count(*) AS total,count(*) FILTER (WHERE ${replyVisible}) AS visible_total ${groupedReplyFrom} GROUP BY r.root_comment_id`,
+      args,
+    );
+    for (const row of totals.rows) {
+      const g = group(row.root_id);
+      g.total = Number(row.total);
+      g.visibleTotal = Number(row.visible_total);
+    }
+    const rows = await db.query<ItemRow & { root_id: string }>(
+      `SELECT * FROM (SELECT ${replyProjection},r.root_comment_id AS root_id,row_number() OVER (PARTITION BY r.root_comment_id ORDER BY r.created_at,r.id) AS position ${groupedReplyFrom}) x
+   WHERE position<=$5 ORDER BY root_id,created_at,id`,
+      [...args, pageSize],
+    );
+    for (const row of rows.rows) group(row.root_id).items.push(item(row));
+    return groups;
   }
   private async interactionLocks(
     db: PoolClient,
@@ -184,8 +256,10 @@ export class PostgresDiscussionStore implements DiscussionPort {
       return old.result;
     }
     const result = await fn();
+    // Columns are named so the row keeps its default created_at (migration
+    // 20260916011000) and a later column never shifts this positional insert.
     await db.query(
-      "INSERT INTO community.discussion_command_receipts VALUES($1,$2,$3,$4::jsonb)",
+      "INSERT INTO community.discussion_command_receipts(actor_label,request_id,fingerprint,result) VALUES($1,$2,$3,$4::jsonb)",
       [actor, request, fingerprint, JSON.stringify(result ?? null)],
     );
     return result;
@@ -240,7 +314,7 @@ export class PostgresDiscussionStore implements DiscussionPort {
     const visibleTotal = Number(
       (
         await db.query(
-          `SELECT count(*) AS n ${replyFrom} AND ${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL`,
+          `SELECT count(*) AS n ${replyFrom} AND ${replyVisible}`,
           args,
         )
       ).rows[0]?.n ?? 0,
@@ -293,23 +367,25 @@ export class PostgresDiscussionStore implements DiscussionPort {
           [...args, q.pageSize, (q.page - 1) * q.pageSize],
         )
       ).rows;
-      const attach = async (r: ItemRow): Promise<DiscussionComment> => {
-        const replies = await this.replyPage(db, target, r.id, viewer, {
-          page: 1,
-          pageSize: 3,
-        });
+      const replies = await this.replyGroups(
+        db,
+        target,
+        [...hot, ...latest].map((r) => r.id),
+        viewer,
+        3,
+      );
+      const attach = (r: ItemRow): DiscussionComment => {
+        const group = replies.get(r.id);
         return discussionCommentSchema.parse({
           ...item(r),
           target,
-          replies: replies.items,
-          replyTotal: replies.visibleTotal,
-          replyPageTotal: replies.total,
+          replies: group?.items ?? [],
+          replyTotal: group?.visibleTotal ?? 0,
+          replyPageTotal: group?.total ?? 0,
         });
       };
-      const hotItems: DiscussionComment[] = [],
-        items: DiscussionComment[] = [];
-      for (const r of hot) hotItems.push(await attach(r));
-      for (const r of latest) items.push(await attach(r));
+      const hotItems = hot.map(attach),
+        items = latest.map(attach);
       const visibleTotal = Number(
         (
           await db.query(
@@ -671,30 +747,30 @@ export class PostgresDiscussionStore implements DiscussionPort {
           [actor, q.pageSize, (q.page - 1) * q.pageSize],
         )
       ).rows;
-      const items = [];
-      for (const r of rows) {
-        let target: ContentIdentity | null = r.context_available
-          ? { type: r.target_type, id: r.catalog_id }
-          : null;
-        if (target?.type === "work") {
-          try {
-            await this.workAllowed(db, target, actor);
-          } catch (error) {
-            if (error instanceof CommunityNotFoundError) target = null;
-            else throw asCommunityOperationError(error, "query");
-          }
-        }
-        items.push(
-          ownCommentSchema.parse({
-            id: r.id,
-            rootId: r.root_id,
-            text: r.body_deleted_at ? deletedText : r.text,
-            createdAt: r.created_at.toISOString(),
-            deleted: !!r.body_deleted_at,
-            target,
-          }),
-        );
-      }
+      // One statement answers work availability for the whole page; a work
+      // the actor may not read leaves its retained record with a null target.
+      const allowedWorks = await this.allowedWorks(
+        db,
+        rows.flatMap((r) =>
+          r.context_available && r.target_type === "work" ? [r.catalog_id] : [],
+        ),
+        actor,
+      );
+      const items = rows.map((r) => {
+        const target: ContentIdentity | null =
+          r.context_available &&
+          (r.target_type !== "work" || allowedWorks.has(r.catalog_id))
+            ? { type: r.target_type, id: r.catalog_id }
+            : null;
+        return ownCommentSchema.parse({
+          id: r.id,
+          rootId: r.root_id,
+          text: r.body_deleted_at ? deletedText : r.text,
+          createdAt: r.created_at.toISOString(),
+          deleted: !!r.body_deleted_at,
+          target,
+        });
+      });
       return { items, ...pageMeta(total, q) };
     });
   }

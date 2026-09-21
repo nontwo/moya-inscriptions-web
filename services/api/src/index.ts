@@ -28,8 +28,10 @@ export {
 export {
   CommunityInputError,
   CommunityConflictError,
+  ExecutionFenceLostError,
   CommunityNotFoundError,
   isCommunityConflictError,
+  isExecutionFenceLostError,
   isCommunityInputError,
   isCommunityNotFoundError,
 } from "./modules/community/application/errors/community-request-errors.js";
@@ -75,6 +77,8 @@ export type { CatalogPublicationPort } from "./modules/community/application/por
 export type {
   CommentInsert,
   CommentPageQuery,
+  CommandReceipt,
+  ExecutionFence,
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,
@@ -127,7 +131,6 @@ export type {
   AuthorListItem,
   OwnedMediaInput,
   OwnedMediaRead,
-  StoredContentRelation,
 } from "./modules/community/application/ports/author-community-port.js";
 export { AuthorCommunityService } from "./modules/community/application/services/author-community-service.js";
 export type {
@@ -239,3 +242,22 @@ export type {
 export type { PublishingOperatorServiceOptions } from "./modules/community/application/services/publishing-operator-service.js";
 
 export { CommunityContentOperatorService } from "./modules/community/application/services/community-content-operator-service.js";
+
+export {
+  AgentAdministrationService,
+  AgentForbiddenError,
+  isAgentForbiddenError,
+  targetRequestId,
+} from "./modules/community/application/services/agent-administration-service.js";
+export type { AgentAdministrationServiceOptions } from "./modules/community/application/services/agent-administration-service.js";
+export {
+  AgentManifestError,
+  isAgentManifestError,
+} from "./modules/community/application/ports/agent-administration-port.js";
+export type {
+  AgentAdministrationPort,
+  AgentFeaturedState,
+  AgentManifestQuery,
+  AgentManifestSelection,
+  AgentOperationDraft,
+} from "./modules/community/application/ports/agent-administration-port.js";

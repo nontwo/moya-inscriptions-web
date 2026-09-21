@@ -194,9 +194,28 @@ export const revisionMedia = async (
   revisionId: string | null,
 ): Promise<RevisionMediaView> => {
   if (revisionId === null) return { media: [], coverMediaId: null };
+  return (
+    (await revisionsMedia(db, [revisionId])).get(revisionId) ?? {
+      media: [],
+      coverMediaId: null,
+    }
+  );
+};
+
+/**
+ * The ordered media of several revisions in one statement (a page of works):
+ * the same rows and rules as `revisionMedia`, grouped by revision id. A
+ * revision without shown media is absent from the map.
+ */
+export const revisionsMedia = async (
+  db: PublishingDb,
+  revisionIds: readonly string[],
+): Promise<ReadonlyMap<string, RevisionMediaView>> => {
+  const views = new Map<string, RevisionMediaView>();
+  if (revisionIds.length === 0) return views;
   const rows = (
-    await db.query<RevisionMediaRow>(
-      `SELECT ri.item_id,i.kind,i.state,i.legacy_media_id,um.width AS legacy_width,um.height AS legacy_height,
+    await db.query<RevisionMediaRow & { revision_id: string }>(
+      `SELECT ri.revision_id,ri.item_id,i.kind,i.state,i.legacy_media_id,um.width AS legacy_width,um.height AS legacy_height,
         i.presentation,k.display_key,d.width AS display_width,d.height AS display_height,
         ri.item_id IS NOT DISTINCT FROM r.cover_item_id AS is_cover
       FROM community.work_revision_items ri
@@ -205,11 +224,25 @@ export const revisionMedia = async (
       CROSS JOIN LATERAL (SELECT community.media_edit_key(ri.edit,NULL) AS display_key) k
       LEFT JOIN community.user_media um ON um.id=i.legacy_media_id AND um.owner_id=i.owner_id
       LEFT JOIN community.media_derivatives d ON d.item_id=i.id AND d.variant='display' AND d.edit_key=k.display_key
-      WHERE ri.revision_id=$1
-      ORDER BY ri.position`,
-      [revisionId],
+      WHERE ri.revision_id=ANY($1::text[])
+      ORDER BY ri.revision_id,ri.position`,
+      [[...revisionIds]],
     )
   ).rows;
+  const grouped = new Map<string, RevisionMediaRow[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.revision_id);
+    if (list === undefined) grouped.set(row.revision_id, [row]);
+    else list.push(row);
+  }
+  for (const [revisionId, list] of grouped)
+    views.set(revisionId, revisionMediaView(list));
+  return views;
+};
+
+const revisionMediaView = (
+  rows: readonly RevisionMediaRow[],
+): RevisionMediaView => {
   const media: WorkMedia[] = [];
   let chosenCover: string | null = null;
   for (const row of rows) {

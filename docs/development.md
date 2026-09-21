@@ -32,11 +32,19 @@ public role `SELECT` on the six published views and published search table.
 Legacy migrations never run here. It then applies the separate Community V1
 family (`scripts/migrate-community.mjs --development`, using the local
 `APP_MIGRATION_DATABASE_URL` owner role), grants the DML-only `yoyi_dev_app`
-role on the `community` schema and seeds the three Development test accounts
+role on the `community` schema — first the Mission 2A/2B bootstrap
+(`infra/development/grant-community-app.sql`), then the complete Phase 4 and
+work-publishing runtime plan
+(`infra/development/work-publishing/grant-runtime.sql`, applied with
+`-v app_role=yoyi_dev_app`), which revokes the table-level `UPDATE` the
+bootstrap granted before granting its column lists, so the role ends with
+exactly the runtime plan whichever grants it held before — and seeds the three
+Development test accounts
 (`infra/development/community-development-accounts.sql`). The grant commands
 address only this Compose container; do not edit local URLs to target another
 server. Database and Admin startup run no DDL. Run migrations explicitly when
-the code changes them.
+the code changes them; an existing `yoyi_dev` that received only the bootstrap
+before this chain converges the next time `dev:migrate` runs.
 
 `dev:all` runs the existing Turbo watch mode and the standard `tsx` development
 runner; Turbo rebuilds shared dependencies and restarts affected tasks. It

@@ -49,6 +49,9 @@ describe("@moya/api server-only surface", () => {
     });
     expect(manifest.sideEffects).toBe(false);
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
+      "AgentAdministrationService",
+      "AgentForbiddenError",
+      "AgentManifestError",
       "AuthorCommunityService",
       "COMMENT_EMBEDDED_REPLY_LIMIT",
       "COMMENT_HOT_LIMIT",
@@ -66,16 +69,20 @@ describe("@moya/api server-only surface", () => {
       "CommunitySessionService",
       "CommunityStoreUnavailableError",
       "DisabledCommentAnalysisPort",
+      "ExecutionFenceLostError",
       "PublishingOperatorService",
       "PublishingTransferRegistry",
       "WorkPublishingService",
       "deriveCatalogPeriodLabel",
+      "isAgentForbiddenError",
+      "isAgentManifestError",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
       "isCommunityConflictError",
       "isCommunityInputError",
       "isCommunityNotFoundError",
       "isCommunityStoreUnavailableError",
+      "isExecutionFenceLostError",
       "mapCatalogDetail",
       "mapCatalogPage",
       "mapCatalogSummary",
@@ -88,6 +95,7 @@ describe("@moya/api server-only surface", () => {
       "parseCreateReplyRequest",
       "parseWorkPublishingCommand",
       "parseWorkPublishingSegment",
+      "targetRequestId",
     ]);
   });
 

@@ -39,7 +39,7 @@ export const registerPhase4DiscoveryTests = (
     reads.options.options = `-c search_path=${schema},public`;
     const discovery = new PostgresCommunityDiscoveryAdapter(reads),
       operatorPort = new PostgresCommunityContentOperatorAdapter(reads),
-      authors = new PostgresAuthorCommunityAdapter(pool),
+      authors = new PostgresAuthorCommunityAdapter(reads),
       comments = new PostgresCommunityCommentAdapter(pool);
     let author: string,
       visitor: string,
@@ -775,6 +775,137 @@ export const registerPhase4DiscoveryTests = (
       expect(
         (await comments.ownComments(visitor, { page: 1, pageSize: 10 })).items,
       ).toEqual([]);
+    });
+
+    it("bounds expired cleanup by cascaded item rows, not only by parent sequences", async () => {
+      // data-admin-hardening-v1 (C-2): 30 expired sequences of 1,500 items each
+      // exceed the 20,000-item budget; one browse drains the oldest parents
+      // whose items fit (14), the rest go on later browses. Live sequences
+      // and continuation semantics are untouched.
+      const expired = Array.from({ length: 30 }, () => randomUUID());
+      await pool.query(
+        "INSERT INTO community.discovery_sequences(id,query,created_at) SELECT id::uuid,'{}'::jsonb,CURRENT_TIMESTAMP-INTERVAL '25 hours'-(n||' seconds')::interval FROM unnest($1::text[]) WITH ORDINALITY AS t(id,n)",
+        [expired],
+      );
+      await pool.query(
+        "INSERT INTO community.discovery_sequence_items(sequence_id,ordinal,content_type,content_id) SELECT s::uuid,g,'work','audit-'||g FROM unnest($1::text[]) s,generate_series(1,1500) g",
+        [expired],
+      );
+      const remaining = async () =>
+        Number(
+          (
+            await pool.query(
+              "SELECT COUNT(*) AS n FROM community.discovery_sequences WHERE id=ANY($1::uuid[])",
+              [expired],
+            )
+          ).rows[0].n,
+        );
+      await discovery.browse(null, discoveryQuerySchema.parse({}));
+      expect(await remaining()).toBe(16);
+      await discovery.browse(null, discoveryQuerySchema.parse({}));
+      expect(await remaining()).toBe(2);
+      await discovery.browse(null, discoveryQuerySchema.parse({}));
+      expect(await remaining()).toBe(0);
+      expect(
+        Number(
+          (
+            await pool.query(
+              "SELECT COUNT(*) AS n FROM community.discovery_sequence_items WHERE sequence_id=ANY($1::uuid[])",
+              [expired],
+            )
+          ).rows[0].n,
+        ),
+      ).toBe(0);
+    });
+
+    it("serves a page of an existing sequence identically whether or not eligibility is re-checked per item, including live withdrawals", async () => {
+      // data-admin-hardening-v1 (C-1): the page read is driven by the items
+      // index; membership, order, live withdrawal filtering and the viewer's
+      // own-revision title are unchanged.
+      const first = await discovery.browse(
+        visitor,
+        discoveryQuerySchema.parse({ pageSize: 1 }),
+      );
+      expect(first.items).toHaveLength(1);
+      expect(first.hasMore).toBe(true);
+      const second = await discovery.browse(
+        visitor,
+        discoveryQuerySchema.parse({
+          pageSize: 1,
+          sequence: first.sequence,
+          after: first.nextAfter,
+        }),
+      );
+      expect(second.items).toHaveLength(1);
+      expect(second.items[0]?.target.id).not.toBe(first.items[0]?.target.id);
+      expect(
+        new Set([first.items[0]?.target.id, second.items[0]?.target.id]),
+      ).toEqual(new Set([work, catalog]));
+      // Withdrawing the work live removes it from the page without shifting the other item.
+      await pool.query(
+        "UPDATE community.works SET operator_state='hidden',version=version+1 WHERE id=$1",
+        [work],
+      );
+      // The sequence fingerprint includes the page size, so continue with it.
+      const again = await discovery.browse(
+        visitor,
+        discoveryQuerySchema.parse({
+          pageSize: 1,
+          sequence: first.sequence,
+          after: 0,
+        }),
+      );
+      expect(again.items.map((item) => item.target.id)).toEqual([catalog]);
+      expect(again.hasMore).toBe(false);
+    });
+
+    it("treats a work moderation that names the current state as a no-op: no version bump, no audit event, receipt still recorded", async () => {
+      // data-admin-hardening-v1 (I-4): bulk hide/remove could re-apply the
+      // current state, bumping works.version and writing an audit row.
+      const initial = await authors.readWork(work, author);
+      const events = async () =>
+        Number(
+          (
+            await pool.query(
+              "SELECT count(*) AS n FROM community.content_operator_events WHERE operator_label=$1 AND content_id=$2",
+              [operator, work],
+            )
+          ).rows[0].n,
+        );
+      const before = await events();
+      const requestId = randomUUID();
+      const first = await operatorPort.moderateWork(work, operator, {
+        requestId,
+        state: "visible",
+        expectedVersion: initial.version,
+      });
+      expect(first.version).toBe(initial.version);
+      expect(await events()).toBe(before);
+      expect(
+        Number(
+          (
+            await pool.query(
+              "SELECT count(*) AS n FROM community.content_operator_receipts WHERE operator_label=$1 AND request_id=$2",
+              [operator, requestId],
+            )
+          ).rows[0].n,
+        ),
+      ).toBe(1);
+      // The same request replays from the receipt; a real transition still audits.
+      expect(
+        await operatorPort.moderateWork(work, operator, {
+          requestId,
+          state: "visible",
+          expectedVersion: initial.version,
+        }),
+      ).toEqual(first);
+      const hidden = await operatorPort.moderateWork(work, operator, {
+        requestId: randomUUID(),
+        state: "hidden",
+        expectedVersion: initial.version,
+      });
+      expect(hidden.version).toBe(initial.version + 1);
+      expect(await events()).toBe(before + 1);
     });
   });
 };

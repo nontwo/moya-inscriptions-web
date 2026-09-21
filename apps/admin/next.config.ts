@@ -15,9 +15,27 @@ const allowedDevOrigins =
       ]
     : [];
 
+/**
+ * A Development-only, harness-owned build directory.
+ *
+ * `next dev` takes a lock under its dist directory and refuses to start a
+ * second server for the same project — which is correct, and which also means
+ * an acceptance harness cannot run while somebody's ordinary `pnpm dev:admin`
+ * is up. Rather than stop a server this task does not own, the harness points
+ * its own run at its own directory. Absent the variable nothing changes, and
+ * it is ignored outside development so no build artifact can move in
+ * Production.
+ */
+const harnessDistDir =
+  process.env.NODE_ENV === "development" &&
+  /^\.?[a-z][a-z0-9._-]{0,63}$/u.test(process.env.MOYA_ADMIN_DIST_DIR ?? "")
+    ? process.env.MOYA_ADMIN_DIST_DIR
+    : undefined;
+
 const nextConfig: NextConfig = {
   agentRules: false,
   poweredByHeader: false,
+  ...(harnessDistDir ? { distDir: harnessDistDir } : {}),
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
   // One ingress hostname keeps host-only preview cookies; assets need a distinct prefix.
   assetPrefix: process.env.NODE_ENV === "production" ? "/admin-assets" : "",

@@ -14,6 +14,8 @@ import {
   EditorialReceipts,
   editorialEndpoints,
 } from "./src/editorial";
+import { agentConnectionEndpoints } from "./src/agent-connections/endpoints";
+import { agentConnectionAuthenticateHeader } from "./src/agent-connections/discovery";
 import { communityEndpoints } from "./src/community/endpoints";
 import { editorialMcp } from "./src/mcp";
 import { createMediaCollection } from "./src/media/collection";
@@ -78,6 +80,21 @@ export default buildConfig({
           path: "/community-moderation/work-submissions",
           exact: true,
         },
+        // Agent Connections (Development): the Owner's own list of AI
+        // connections, and the review page the consent landing continues to.
+        // The LANDING itself is deliberately not here -- it lives outside
+        // /admin because it must render for a browser that withheld the
+        // SameSite=Strict session on the provider's cross-site redirect.
+        agentConnections: {
+          Component: "/src/agent-connections/View#AgentConnectionsView",
+          path: "/agent-connections",
+          exact: true,
+        },
+        agentConnectionsConsent: {
+          Component: "/src/agent-connections/View#AgentConsentView",
+          path: "/agent-connections/consent",
+          exact: true,
+        },
         communityAccountCapacity: {
           Component: "/src/community/View#AccountCapacityView",
           path: "/community-moderation/account-capacity",
@@ -86,6 +103,13 @@ export default buildConfig({
         communityPublishingJobs: {
           Component: "/src/community/View#PublishingJobsView",
           path: "/community-moderation/publishing-jobs",
+          exact: true,
+        },
+        // Agent Administration V1 (Development): principals, delegations and
+        // prepared operations awaiting the Owner's approval.
+        communityAgentOperations: {
+          Component: "/src/community/View#AgentOperationsView",
+          path: "/community-moderation/agent-operations",
           exact: true,
         },
       },
@@ -175,9 +199,27 @@ export default buildConfig({
   endpoints: [
     ...editorialEndpoints,
     ...communityEndpoints,
+    // Empty unless the connection surface is composed at all; the gate is the
+    // array, not a branch inside a handler.
+    ...agentConnectionEndpoints(),
     editorialPreviewEndpoint,
   ],
   plugins: [createEditorialStoragePlugin(), editorialMcp()],
+  hooks: {
+    // The one header a standards-based MCP client needs before it has a token.
+    //
+    // A 401 from `/api/mcp` used to carry nothing, so a client following the
+    // MCP authorization spec had no way to learn where the authorization
+    // server is — measured against the running service, not inferred. Payload
+    // runs `afterError` before it builds the response and merges
+    // `req.responseHeaders` into it, so this is the supported seam; the
+    // alternative was patching the MCP plugin.
+    //
+    // Only that path, only that status, and only the metadata pointer: no
+    // `error="invalid_token"`, because the boundary answers ONE shape whatever
+    // went wrong and telling a prober which rule refused them would undo that.
+    afterError: [agentConnectionAuthenticateHeader],
+  },
   typescript: {
     autoGenerate: false,
     outputFile: path.resolve(dirname, "src/payload-types.ts"),

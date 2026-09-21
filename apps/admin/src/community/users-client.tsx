@@ -14,12 +14,15 @@ export const CommunityUsers = ({
   onOpen,
   onRecommend,
   onBusy,
+  onPending,
 }: {
   disabled: boolean;
   reload: number;
   onOpen: (user: OperatorUser) => void;
   onRecommend: (user: OperatorUser) => void;
   onBusy: (busy: boolean) => void;
+  /** How many selected-user commands still await confirmation; the owner gates navigation on it. */
+  onPending?: (count: number) => void;
 }) => {
   const [query, setQuery] = useState({ page: 1, search: "" });
   const [search, setSearch] = useState("");
@@ -27,6 +30,7 @@ export const CommunityUsers = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const epoch = useRef(0);
   useEffect(() => {
@@ -54,7 +58,8 @@ export const CommunityUsers = ({
       controller.abort();
     };
   }, [query, refresh, reload]);
-  const blocked = disabled || loading || error !== null;
+  const bulkGate = disabled || loading || error !== null;
+  const blocked = bulkGate || pending > 0;
   const rows = data?.items ?? [];
   return (
     <section aria-label="用户管理" className={styles.workspace}>
@@ -95,9 +100,14 @@ export const CommunityUsers = ({
       {error ? <p role="alert">{error}</p> : null}
       {loading ? <p role="status">读取中…</p> : null}
       <BulkActions
+        view="users"
         count={selected.size}
-        disabled={blocked}
+        disabled={bulkGate}
         onBusy={onBusy}
+        onPending={(count) => {
+          setPending(count);
+          onPending?.(count);
+        }}
         choices={[
           { value: "enable", label: "批量推荐用户" },
           { value: "disable", label: "批量取消推荐用户" },

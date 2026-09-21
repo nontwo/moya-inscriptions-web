@@ -11,6 +11,51 @@
 
 GRANT USAGE ON SCHEMA public, community TO :"app_role";
 
+-- Convergence of an earlier, broader grant path. A role that was first set up by
+-- infra/development/grant-community-app.sql (Mission 2A/2B: table-level UPDATE on
+-- sessions, both comment tables and publication_setting) or by a private Phase 4
+-- plan keeps those table-level privileges, because GRANT only adds and the
+-- column lists below never narrow a table-level grant. Revoke exactly the
+-- table-level privileges this plan grants at column level, then grant the
+-- columns again below in this same run: PostgreSQL drops the column-level
+-- entries together with the table-level one, so the re-grant is required.
+-- Revoking an absent privilege is a no-op, so repeated application converges
+-- to the same effective set. Nothing else is revoked here; any other residue on
+-- a retained role is listed for an Owner decision, never removed blindly.
+REVOKE UPDATE ON TABLE
+  community.public_users,
+  community.sessions,
+  community.catalog_comments,
+  community.catalog_comment_replies,
+  community.publication_setting,
+  community.featured_users,
+  community.featured_content,
+  community.featured_settings,
+  community.works,
+  community.work_revisions,
+  community.work_drafts,
+  community.work_draft_snapshots,
+  community.publishing_sessions,
+  community.work_publishing_settings,
+  community.account_publishing_capacity,
+  community.daily_new_work_submissions,
+  community.media_items,
+  community.media_components,
+  community.media_blobs,
+  community.publishing_jobs,
+  community.agent_principals,
+  community.agent_delegations,
+  community.agent_operations,
+  community.agent_connections,
+  community.agent_connection_grants
+FROM :"app_role";
+REVOKE INSERT ON TABLE
+  community.author_events,
+  community.content_operator_events,
+  community.featured_users,
+  community.featured_content
+FROM :"app_role";
+
 -- Discovery and the featured operator read published Catalog projections only.
 GRANT SELECT ON TABLE public.catalog_discovery, public.catalog_media TO :"app_role";
 GRANT SELECT (catalog_id, province, province_state) ON TABLE public.catalog_entries TO :"app_role";
@@ -138,3 +183,65 @@ GRANT EXECUTE ON FUNCTION
   community.media_required_derivatives(TEXT, JSONB, BOOLEAN, JSONB),
   community.work_content_sha256(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, TEXT, JSONB)
 TO :"app_role";
+
+-- Agent administration (Issue #141 r3/r4): principals, delegations and durable
+-- prepared operations. A prepared operation is frozen: the App role receives no
+-- UPDATE on targets, criteria, kind, action, fingerprint or request_id, so
+-- neither the membership nor the keyword manifest it was built from can be
+-- rewritten after preparation. Only lifecycle columns change, and nothing is
+-- ever deleted.
+GRANT SELECT, INSERT ON TABLE
+  community.agent_principals, community.agent_delegations, community.agent_operations
+TO :"app_role";
+GRANT UPDATE (display_name, scopes, enabled, version, updated_at, revoked_at)
+ON TABLE community.agent_principals TO :"app_role";
+GRANT UPDATE (revoked_at, revoked_by) ON TABLE community.agent_delegations TO :"app_role";
+GRANT UPDATE (
+  state, approval, next_index, results, lease_owner, lease_expires_at, version,
+  approved_at, started_at, finished_at, cancel_requested_at
+) ON TABLE community.agent_operations TO :"app_role";
+
+-- Agent connections (Issue #141 r13): the canonical connection authority.
+--
+-- The App role reads connections, grants and wrappers, and may record that a
+-- request was verified -- but it may NOT move a connection's lifecycle. Opening,
+-- consenting, revoking and reconnecting belong to the connection-management
+-- path, not to the resource server that merely authorizes a request with them.
+-- So no UPDATE on status, generation, preset, principal_label or
+-- current_grant_id, and no INSERT on connections at all.
+--
+-- A grant is an immutable consent snapshot. The App role receives no UPDATE on
+-- generation_at_consent, the client, the subject, the issuer, the resource, the
+-- scopes or the preset: the whole point is that an old grant keeps resolving to
+-- the generation its human consented at, so nothing that would let it be
+-- rewritten is granted. Only the provider-destruction columns move.
+--
+-- Wrappers are written and reaped by the provider path, not by the App role,
+-- which only needs to resolve a presented token. Nothing is ever deleted here
+-- by this role.
+--
+-- DELIBERATELY ABSENT: community.agent_connection_provider_artifacts gets no
+-- grant at all in this file. The r13 review was right that this is a decision
+-- and not an oversight, so it is written down. That table holds the OAuth
+-- protocol's own bookkeeping, and its plaintext columns (grant_id,
+-- consumed_at) sit outside the authenticated payload -- so who may write it
+-- decides how exposed those columns are. The intent is a SECOND SQL role owned
+-- by the authorization service, not this shared App role, which would widen
+-- the blast radius of any injection in the resource-server path to the whole
+-- token store. That role does not exist yet because the service does not, and
+-- the day it lands this file stops being the whole grant plan. Until then the
+-- adapter is exercised only by tests connecting as the database owner.
+--
+-- The same decision covers community.agent_connection_wrappers, which the App
+-- role may SELECT and nothing more. A wrapper row is minted when a token is
+-- issued and reaped when it expires -- both of which happen on the
+-- authorization path, not the resource-server path -- so its writer is that
+-- same future role. This role only has to resolve a token somebody presents.
+GRANT SELECT ON TABLE
+  community.agent_connections,
+  community.agent_connection_grants,
+  community.agent_connection_wrappers
+TO :"app_role";
+GRANT UPDATE (last_verified_at) ON TABLE community.agent_connections TO :"app_role";
+GRANT UPDATE (destroy_status, destroyed_at)
+ON TABLE community.agent_connection_grants TO :"app_role";

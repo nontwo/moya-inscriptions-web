@@ -39,10 +39,6 @@ export interface OwnedMediaRead {
   readonly width: number;
   readonly height: number;
 }
-export interface StoredContentRelation {
-  readonly target: ContentIdentity;
-  readonly createdAt: string;
-}
 /** Backend-owned community data. All writes and their audit/receipt are atomic. */
 export interface AuthorCommunityPort {
   readProfile(id: string, viewerId: string | null): Promise<AuthorProfile>;

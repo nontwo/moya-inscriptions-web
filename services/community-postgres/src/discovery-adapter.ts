@@ -32,20 +32,37 @@ import type { RevisionCoverColumns } from "./publishing/media-read.js";
  * work's author, who sees the author revision (P07: the latest own
  * submission, never a pending label).
  */
-const eligibleFor = (authorBranch: boolean) => `WITH eligible AS (
+/**
+ * The two eligible branches. `item` narrows each branch to one materialized
+ * sequence item (`s.content_type`, `s.content_id`) so a page read can be driven
+ * by the items index instead of re-scanning every eligible row; the
+ * predicates are otherwise identical, so membership and live eligibility have
+ * one definition.
+ */
+const eligibleBranches = (authorBranch: boolean, item = false) => `
  SELECT 'catalog'::text AS content_type,c.catalog_id AS content_id,c.kind,c.title,c.aliases,c.first_published_at,NULL::text AS author_id,c.filter_metadata
- FROM catalog_discovery c
+ FROM catalog_discovery c${item ? " WHERE s.content_type='catalog' AND c.catalog_id=s.content_id" : ""}
  UNION ALL
  SELECT 'work',w.id,NULL,COALESCE(ar.title,w.title),ARRAY[]::varchar[],w.first_published_at,w.author_id,'{}'::jsonb FROM community.works w
  JOIN community.public_users u ON u.id=w.author_id
  LEFT JOIN community.work_revisions ar ON w.author_id=$1 AND ar.id=w.author_revision_id
- WHERE u.status='active' AND community.accounts_can_interact($1,w.author_id) AND (community.work_is_public(w)${
+ WHERE ${item ? "s.content_type='work' AND w.id=s.content_id AND " : ""}u.status='active' AND community.accounts_can_interact($1,w.author_id) AND (community.work_is_public(w)${
    authorBranch
      ? " OR (w.author_id=$1 AND w.deleted_at IS NULL AND w.trashed_at IS NULL)"
      : ""
- })
-)`;
+ })`;
+const eligibleFor = (authorBranch: boolean) =>
+  `WITH eligible AS (${eligibleBranches(authorBranch)}\n)`;
 const eligible = eligibleFor(false);
+/** Per-item live eligibility for one sequence row `s` (LATERAL). */
+const eligibleItem = `LATERAL (${eligibleBranches(false, true)}\n) e`;
+/**
+ * Expired sequences are removed in bounded batches: at most 100 parents per
+ * first-page browse, oldest first, and the batch stops at the first parent
+ * whose items would not fit this budget, so one call cascades at most the
+ * budget plus one sequence (the first parent always goes, however large).
+ */
+export const DISCOVERY_CLEANUP_ITEM_BUDGET = 20_000;
 const filter = `($2='all' OR e.kind=$2) AND ($3='' OR position(lower($3) IN lower(e.title||' '||array_to_string(e.aliases,' ')))>0)
  AND NOT EXISTS(SELECT 1 FROM jsonb_each($4::jsonb) f WHERE jsonb_array_length(f.value)>0 AND NOT (
  (e.filter_metadata->f.key->'values') ?| ARRAY(SELECT jsonb_array_elements_text(f.value))
@@ -201,12 +218,22 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
   async browse(viewer: string | null, q: DiscoveryQuery) {
     // Bounded maintenance in its own READ COMMITTED statement. A concurrent
     // cleanup can wait for deletion without invalidating a browsing snapshot.
+    // Oldest first; the batch stops once the cascaded items would exceed the
+    // budget (the first parent always goes), so a backlog of large sequences
+    // is drained over several browses instead of one long request.
     if (!q.sequence)
-      await this.pool
-        .query(`DELETE FROM community.discovery_sequences WHERE id IN (
-      SELECT id FROM community.discovery_sequences WHERE created_at<CURRENT_TIMESTAMP-INTERVAL '24 hours'
-      ORDER BY created_at,id LIMIT 100
-    )`);
+      await this.pool.query(
+        `DELETE FROM community.discovery_sequences WHERE id IN (
+      SELECT id FROM (
+        SELECT x.id,x.n,sum(x.n) OVER (ORDER BY x.created_at,x.id) AS run FROM (
+          SELECT id,created_at,(SELECT count(*) FROM community.discovery_sequence_items i WHERE i.sequence_id=s.id) AS n
+          FROM community.discovery_sequences s WHERE created_at<CURRENT_TIMESTAMP-INTERVAL '24 hours'
+          ORDER BY created_at,id LIMIT 100
+        ) x
+      ) y WHERE run-n<$1::bigint
+    )`,
+        [DISCOVERY_CLEANUP_ITEM_BUDGET],
+      );
     return this.run(true, async (db) => {
       const sequence = q.sequence ?? randomUUID(),
         fingerprint = JSON.stringify(queryIdentity(q));
@@ -254,10 +281,13 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
           [viewer, q.kind, q.search, JSON.stringify(q.filters), sequence],
         );
       }
-      // Sequence membership and order stay fixed; live eligibility suppresses withdrawals.
+      // Sequence membership and order stay fixed; live eligibility suppresses
+      // withdrawals. The items index drives the read (ordinal order, LIMIT)
+      // and eligibility is re-checked per item, so a page costs its own rows
+      // rather than a scan of every eligible row.
       const rows = (
         await db.query<CardRow>(
-          `${eligible} SELECT e.*,s.ordinal FROM community.discovery_sequence_items s JOIN eligible e USING(content_type,content_id)
+          `SELECT e.*,s.ordinal FROM community.discovery_sequence_items s CROSS JOIN ${eligibleItem}
     WHERE ${filter} AND s.sequence_id=$5 AND s.ordinal>$6 ORDER BY s.ordinal LIMIT $7`,
           [
             viewer,

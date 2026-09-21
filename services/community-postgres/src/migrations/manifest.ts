@@ -92,9 +92,99 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
         "582b4c7f66cd8aec707ccaf89ff1969c567efc80640f89c5d3dcd5924e4143de",
     }),
     Object.freeze({
+      migrationId: "20260916010000",
+      filename: "20260916010000_community_access_indexes.sql",
+      checksum:
+        "3e19ec9a70f771d0207adb316d9c7dc171e073d348c1537f013876621b12d876",
+    }),
+    Object.freeze({
+      migrationId: "20260916011000",
+      filename: "20260916011000_receipt_timestamps.sql",
+      checksum:
+        "87555ee7e65f4537174bfb78dd1fb63a3cb738cf51a66658cb23791ebdb2f79d",
+    }),
+    Object.freeze({
+      migrationId: "20260917010000",
+      filename: "20260917010000_agent_administration.sql",
+      checksum:
+        "385bf7ca8c83241696d55ce5ba7d4ee53ac842da140a11fe78a00e0608a4c273",
+    }),
+    Object.freeze({
+      migrationId: "20260917020000",
+      filename: "20260917020000_agent_operation_criteria.sql",
+      checksum:
+        "91041dc7622e09169483b99b143a281d1a22518812916476914800e972c69350",
+    }),
+    Object.freeze({
+      migrationId: "20260918010000",
+      filename: "20260918010000_agent_connections.sql",
+      checksum:
+        "4813d376cc3f42430e1ba8cd7cc0af78675438e4fb96bf333d12c8435d7ff636",
+    }),
+    Object.freeze({
+      migrationId: "20260918020000",
+      filename: "20260918020000_agent_connection_provider_artifacts.sql",
+      checksum:
+        "ee7e7f095caf29e8dbee791860ccb355a6089df29132863f3ab1e894090f8320",
+    }),
+    Object.freeze({
+      migrationId: "20260918030000",
+      filename: "20260918030000_agent_connection_invariants.sql",
+      checksum:
+        "0129df8e9fbbbc34bc2b547e9a175439ea86e4028a297a3914373c91d7603202",
+    }),
+    Object.freeze({
+      migrationId: "20260918040000",
+      filename: "20260918040000_agent_connection_ledger_integrity.sql",
+      checksum:
+        "d77c3ec55f486e4fe4a0824a8c66a6fc82a3143eafc2c355985a6e48e0de7a6a",
+    }),
+    Object.freeze({
+      migrationId: "20260918050000",
+      filename: "20260918050000_agent_connection_destroyed_at_terminal.sql",
+      checksum:
+        "2697a0a800117c5e577de54d3c0c404a3118b6fabd4b50acba819c06a81351ea",
+    }),
+    Object.freeze({
+      migrationId: "20260920010000",
+      filename: "20260920010000_agent_connection_principal_identity.sql",
+      checksum:
+        "65584b1a8000ad2879e98daade02e43d0c706ec479036bbb0d5f7378ade84a37",
+    }),
+    Object.freeze({
       migrationId: "20260920020000",
       filename: "20260920020000_profile_background_and_permanent_media.sql",
       checksum:
         "231cfa57b254a7d8ad07246957d4a533018ab671fc1b0291c56b6d0115030d5a",
+    }),
+    Object.freeze({
+      migrationId: "20260920050000",
+      filename: "20260920050000_agent_connection_consent.sql",
+      checksum:
+        "275c00b664f741e509271a3c0eddefb4005b1287906fba121c4383ab56cdab8e",
+    }),
+    Object.freeze({
+      migrationId: "20260920060000",
+      filename: "20260920060000_agent_connection_identity_frozen.sql",
+      checksum:
+        "935dd22ad52adbfd41472a278156cb2c5ea14c778847fafcf2235d9ab9f175d5",
+    }),
+    Object.freeze({
+      migrationId: "20260920070000",
+      filename: "20260920070000_agent_connection_identity_reason.sql",
+      checksum:
+        "cf8c097f58714c7b89973a5963e159bae2e980db39c1b759fee614054f4187f4",
+    }),
+    Object.freeze({
+      migrationId: "20260920080000",
+      filename: "20260920080000_agent_connection_client_slug.sql",
+      checksum:
+        "c028c328bf0d26bcb1d5a4e5614d485957a99d926b52b01735348daa1bf6b6c3",
+    }),
+    Object.freeze({
+      migrationId: "20260921010000",
+      filename: "20260921010000_agent_connection_one_per_client.sql",
+      checksum:
+        "87cb58fb59ed83544fe41379939cca832e50d89a49e80d43f39cfedcd89ec9bd",
     }),
   ]);

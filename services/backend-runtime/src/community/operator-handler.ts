@@ -16,9 +16,11 @@ import {
 import { JsonBodyError, readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
+import { handleAgentRequest } from "./agent-handler.js";
 import { handlePublishingOperatorRequest } from "./work-publishing-handler.js";
 
 import type {
+  AgentAdministrationService,
   CommunityContentOperatorPort,
   DiscussionPort,
   CommunityModerationService,
@@ -32,6 +34,8 @@ export interface OperatorRouteDependencies {
   readonly discussionPort?: DiscussionPort | undefined;
   /** Work publishing operations (Development only); absent leaves publishing/* unrouted. */
   readonly publishingOperatorService?: PublishingOperatorService | undefined;
+  /** Agent administration (Development only); absent leaves agent/* unrouted. */
+  readonly agentAdministrationService?: AgentAdministrationService | undefined;
   /** Shared credential the Owner's Payload Admin holds server-side. */
   readonly operatorCredential: string;
 }
@@ -146,12 +150,23 @@ export const handleOperatorRequest = async (
     contentOperatorPort,
     discussionPort,
     publishingOperatorService,
+    agentAdministrationService,
   }: OperatorRouteDependencies,
 ): Promise<void> => {
   if (!isAuthorizedOperator(request, operatorCredential)) {
     sendOperatorError(response, 401, "OPERATOR_UNAUTHORIZED");
     return;
   }
+  if (
+    agentAdministrationService !== undefined &&
+    (await handleAgentRequest(
+      request,
+      response,
+      pathname,
+      agentAdministrationService,
+    ))
+  )
+    return;
   if (
     publishingOperatorService !== undefined &&
     (await handlePublishingOperatorRequest(

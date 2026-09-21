@@ -43,3 +43,29 @@ export class CommunityConflictError extends Error {
 export const isCommunityConflictError = (
   error: unknown,
 ): error is CommunityConflictError => error instanceof CommunityConflictError;
+
+/**
+ * The mutation was refused because the caller had lost the right to execute,
+ * not because the subject moved on.
+ *
+ * It is a conflict, so every existing caller keeps treating it as one, but it
+ * is a distinguishable conflict, because the two say different things: a
+ * business conflict proves that nothing was written under this identity, while
+ * losing the fence says nothing at all about whether an EARLIER attempt already
+ * committed. A caller that confuses them can send an operation terminal while
+ * its rows are live.
+ */
+export class ExecutionFenceLostError extends CommunityConflictError {
+  // `name` stays the base's literal: it is narrowed there, and every caller
+  // that treats this as a conflict should keep doing so. The distinguishing
+  // signal is the type, which `isExecutionFenceLostError` reads.
+  constructor(
+    message = "Execution right was lost before this mutation could commit",
+  ) {
+    super(message);
+  }
+}
+
+export const isExecutionFenceLostError = (
+  error: unknown,
+): error is ExecutionFenceLostError => error instanceof ExecutionFenceLostError;

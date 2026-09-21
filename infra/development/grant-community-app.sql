@@ -1,5 +1,10 @@
 -- Run only after local community migrations. The App role is DML-only on the
 -- community namespace: no DDL, no Catalog or CMS relation, no default privilege.
+-- Mission 2A/2B bootstrap for the local compose container only. Phase 4 and
+-- work publishing narrow and extend this set in
+-- infra/development/work-publishing/grant-runtime.sql, which `pnpm dev:migrate`
+-- applies right after this file and which revokes the table-level UPDATEs
+-- granted below before granting its column lists.
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'yoyi_dev_app') THEN

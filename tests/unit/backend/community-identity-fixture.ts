@@ -2,6 +2,8 @@ import { CommunityStoreUnavailableError } from "@moya/api";
 
 import type {
   CommunityIdentityPort,
+  ModerationEvent,
+  ModerationEventDraft,
   PublicUserRecord,
   SessionRecordInput,
 } from "@moya/api";
@@ -44,6 +46,8 @@ export class InMemoryCommunityIdentityPort implements CommunityIdentityPort {
   readonly users = new Map<PublicUserId, PublicUserRecord>();
   readonly developmentAccounts = new Set<PublicUserId>();
   unavailable = false;
+  /** The next audited status write fails at the audit insert, changing nothing. */
+  failNextAudit = false;
 
   constructor(
     users: readonly PublicUserRecord[] = Object.values(fixtureUsers),
@@ -52,6 +56,8 @@ export class InMemoryCommunityIdentityPort implements CommunityIdentityPort {
       fixtureUsers.second.id,
       fixtureUsers.suspended.id,
     ],
+    /** Where audited status changes land; share the comment fixture's log to read them back. */
+    readonly events: ModerationEvent[] = [],
   ) {
     for (const user of users) this.users.set(user.id, user);
     for (const id of developmentAccounts) this.developmentAccounts.add(id);
@@ -113,16 +119,16 @@ export class InMemoryCommunityIdentityPort implements CommunityIdentityPort {
     return true;
   }
 
-  async findUserById(id: PublicUserId): Promise<PublicUserRecord | null> {
-    this.assertAvailable();
-    return this.users.get(id) ?? null;
-  }
-
-  /** Mirrors the adapter: status and session revocation move together. */
+  /**
+   * Mirrors the adapter: status, session revocation and the audit row move
+   * together; a repeated transition returns the unchanged user and records
+   * nothing.
+   */
   async setUserStatus(
     id: PublicUserId,
     status: PublicUserRecord["status"],
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<{
     readonly user: PublicUserRecord;
     readonly revokedSessions: number;
@@ -130,7 +136,15 @@ export class InMemoryCommunityIdentityPort implements CommunityIdentityPort {
     this.assertAvailable();
     const user = this.users.get(id);
     if (user === undefined) return null;
-    const updated = { ...user, status };
+    const changed = user.status !== status;
+    if (changed && audit !== undefined) {
+      if (this.failNextAudit) {
+        this.failNextAudit = false;
+        throw new Error("Simulated audit insert failure");
+      }
+      this.events.push({ ...audit, subjectKind: "user", subjectId: id });
+    }
+    const updated = changed ? { ...user, status } : user;
     this.users.set(id, updated);
     let revokedSessions = 0;
     if (status === "suspended") {

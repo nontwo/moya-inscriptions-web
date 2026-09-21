@@ -142,6 +142,7 @@ export const WorkSubmissionsQueueClient = () => {
   const lock = useRef(false);
   const listSequence = useRef(0);
   const detailSequence = useRef(0);
+  const panel = useRef<HTMLElement | null>(null);
   // The latest URL state: a reload after a decision lists and details what is
   // on screen now, never the tab, page or item the decision started from.
   const queryRef = useRef(query);
@@ -215,6 +216,13 @@ export const WorkSubmissionsQueueClient = () => {
     }
     void loadDetail(query.item);
   }, [query.item, loadDetail]);
+
+  useEffect(() => {
+    if (query.item === null) return;
+    // Below the two-column width the panel follows the whole list.
+    panel.current?.focus();
+    panel.current?.scrollIntoView({ block: "start" });
+  }, [query.item]);
 
   useEffect(() => {
     void call<WorkPublishingSettings>("read-work-publishing-settings")
@@ -569,6 +577,8 @@ export const WorkSubmissionsQueueClient = () => {
             aria-labelledby="community-work-submission-title"
             className={styles.panel}
             data-work-submission-detail=""
+            ref={panel}
+            tabIndex={-1}
           >
             <div className={styles.panelHeader}>
               <h2 id="community-work-submission-title">提交详情</h2>

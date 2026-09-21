@@ -886,7 +886,24 @@ export const isAuthorizedCmsServerFile = (
     // Backend operator client; the browser modules are listed with the
     // type-only exceptions below.
     /^src\/community\/(?:View|DashboardCard)\.tsx$/.test(relative) ||
-    /^src\/community\/(?:backend|endpoints)\.ts$/.test(relative) ||
+    /^src\/community\/(?:backend|endpoints|agent-operations)\.ts$/.test(
+      relative,
+    ) ||
+    // Agent Administration V1: the MCP tool adapter is a server module.
+    relative === "src/agent-admin/mcp-tools.ts" ||
+    // Agent Connections V1: the connection authentication boundary. These are
+    // server modules by construction — they read request headers, resolve a
+    // restricted principal and answer the Payload MCP plugin — and they are
+    // named one by one rather than by directory, so a browser module added
+    // under the same folder later does not inherit the allowance.
+    /^src\/agent-connections\/(?:admission|authority|authorization|composition|consent|contracts|decide|discovery|endpoints|index|lifecycle|principal|resolve|resource|runtime)\.ts$/.test(
+      relative,
+    ) ||
+    // The Owner-only consent and connection views. Server components: they
+    // authenticate the Payload session, arm an interaction and render from
+    // the row the provider wrote. The browser halves are separate files with
+    // their own "use client" directive and no server import.
+    relative === "src/agent-connections/View.tsx" ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
@@ -917,6 +934,7 @@ const isOwnerWorkflowTypes = (
         "src/community/users-client.tsx",
         "src/community/settings-client.tsx",
         "src/community/history-client.tsx",
+        "src/community/agent-operations-client.tsx",
       ].includes(relative) &&
         reference.specifier ===
           "@moya/contracts/internal/community-operator") ||
@@ -925,7 +943,13 @@ const isOwnerWorkflowTypes = (
         "src/media/CatalogOwnershipField.tsx",
         "src/media/OriginalMediaMetadataField.tsx",
       ].includes(relative) &&
-        reference.specifier === "payload"))
+        reference.specifier === "payload") ||
+      // The consent form renders what the server decided the human should
+      // see, as a type only. Every value reaches it as props from the server
+      // component, and its one write crosses the same-origin Payload
+      // endpoint; it imports no consent RULE and can enforce none.
+      (relative === "src/agent-connections/consent-client.tsx" &&
+        reference.specifier === "./consent"))
   );
 };
 

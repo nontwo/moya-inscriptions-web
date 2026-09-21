@@ -50,7 +50,7 @@ export const CommunityDashboardCard = async ({ user }: ServerProps) => {
       className={styles.card}
       data-community-card=""
     >
-      <h2 id="community-card-title">社区评论</h2>
+      <h2 id="community-card-title">社区</h2>
       {summary === null ? (
         <p className={styles.notice} data-tone="error" role="status">
           {problem}

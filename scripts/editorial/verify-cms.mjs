@@ -585,6 +585,20 @@ async function main() {
           "packages/image/tsconfig.json",
         ],
       ],
+      // r15: `payload.config.ts` reaches @moya/community-postgres through the
+      // agent-connection endpoints, and that package resolves to its BUILD
+      // output. Without this stage the very next step -- loading the config to
+      // migrate -- fails on a missing dist, which is exactly how CI failed at
+      // 27f1893 while every local run passed on an already-built tree.
+      [
+        "community-postgres-build",
+        ".",
+        [
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "services/community-postgres/tsconfig.json",
+        ],
+      ],
       ["migrations", "apps/admin", ["node_modules/payload/bin.js", "migrate"]],
       [
         "integration",

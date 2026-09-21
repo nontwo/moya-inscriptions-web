@@ -39,6 +39,10 @@ import { z } from "zod";
 
 import { isOwner } from "../editorial/access";
 import {
+  agentAdminOperationNames,
+  agentAdminOperations,
+} from "./agent-operations";
+import {
   callCommunityOperator,
   CommunityOperatorError,
   openCommunityOperatorMedia,
@@ -475,6 +479,8 @@ const phase4Operations = new Set([
   "read-publishing-jobs",
   "retry-publishing-job",
   "abandon-publishing-job",
+  // Agent administration (Issue #141 r3, Phase B) is Development-only too.
+  ...agentAdminOperationNames,
 ]);
 
 /** A single well-formed byte range is relayed; anything else reads the whole derivative. */
@@ -585,9 +591,10 @@ export const createCommunityEndpoints = (
   call: OperatorCall = callCommunityOperator,
   openMedia: OperatorMediaCall = openCommunityOperatorMedia,
 ): Endpoint[] => [
-  ...Object.entries(communityOperations(call)).map(([name, operation]) =>
-    endpoint(name, operation),
-  ),
+  ...Object.entries({
+    ...communityOperations(call),
+    ...agentAdminOperations(call),
+  }).map(([name, operation]) => endpoint(name, operation)),
   workSubmissionMediaEndpoint(openMedia),
 ];
 

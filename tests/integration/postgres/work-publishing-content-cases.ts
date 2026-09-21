@@ -186,7 +186,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       );
     };
     const operators = new PostgresPublishingOperatorAdapter(pool);
-    const authors = new PostgresAuthorCommunityAdapter(pool);
+    const authors = new PostgresAuthorCommunityAdapter(reads);
     const comments = new PostgresCommunityCommentAdapter(pool);
     const discovery = new PostgresCommunityDiscoveryAdapter(reads);
     const contentOperator = new PostgresCommunityContentOperatorAdapter(reads);
@@ -4544,6 +4544,157 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         {
           status: "tombstoned",
         },
+      );
+    });
+
+    it("re-parents unresolved conflict copies of a new work's draft on submission so a recycle-bin purge releases their media references", async () => {
+      // data-admin-hardening-v1 (E-1): before the fix the copy kept work_id
+      // NULL, purgeTrashedWork deleted it with the primary's copies but never
+      // treated it as a holder, and its media_item_refs row outlived it.
+      const now = at("2026-07-16T08:00:00.000Z");
+      const kept = await mediaItem(a);
+      const stale = await mediaItem(a);
+      const draft = await holdDraft(a, null, null, [kept.itemId]);
+      const copy = id("work-draft");
+      await pool.query(
+        `INSERT INTO community.work_drafts(id,owner_id,work_id,base_revision_id,state,conflict_of,revision,content,content_sha256)
+        VALUES($1,$2,NULL,NULL,'active',$3,3,$4::jsonb,encode(sha256(convert_to($4::jsonb::text,'UTF8')),'hex'))`,
+        [
+          copy,
+          a,
+          draft,
+          JSON.stringify(
+            contentOf({ title: "设备副本", items: [entry(stale.itemId)] }),
+          ),
+        ],
+      );
+      await pool.query(
+        "INSERT INTO community.media_item_refs(item_id,holder_kind,holder_id) VALUES($1,'draft',$2)",
+        [stale.itemId, copy],
+      );
+      const work = confirmed(
+        await adapter.submit(
+          a,
+          command(
+            { draftId: draft },
+            { title: "提交", items: [entry(kept.itemId)] },
+          ),
+          now,
+        ),
+      );
+      expect(
+        (
+          await pool.query<{ work_id: string | null; state: string }>(
+            "SELECT work_id,state FROM community.work_drafts WHERE id=$1",
+            [copy],
+          )
+        ).rows,
+      ).toEqual([{ work_id: work.workId, state: "active" }]);
+      // Merge resolution, not a behaviour change: main removed
+      // `adapter.trashWork` and replaced every call with this fixture helper
+      // (three other sites in this file already use it). This one call site
+      // survived the merge because the two sides edited different regions.
+      await legacyTrashFixture(
+        a,
+        work.workId,
+        { requestId: randomUUID() },
+        now,
+      );
+      const due = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
+      expect(await adapter.purgeTrashedWork(work.workId, due)).toBe("purged");
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM community.media_item_refs r WHERE r.holder_kind='draft' AND NOT EXISTS (SELECT 1 FROM community.work_drafts d WHERE d.id=r.holder_id)",
+          [],
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM community.media_item_refs WHERE item_id=$1",
+          [stale.itemId],
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM community.work_drafts WHERE id=$1",
+          [copy],
+        ),
+      ).toBe(0);
+    });
+
+    it("reads an author's works page with a bounded number of statements whatever the page size", async () => {
+      // data-admin-hardening-v1 (D3): revisions and media of a page are read
+      // in two statements instead of two per work; DTOs are unchanged.
+      const now = at("2026-07-17T08:00:00.000Z");
+      const works = [];
+      for (const title of ["作品一", "作品二", "作品三"]) {
+        const item = await mediaItem(a);
+        const draft = await holdDraft(a, null, null, [item.itemId]);
+        works.push(
+          confirmed(
+            await adapter.submit(
+              a,
+              command(
+                { draftId: draft },
+                { title, items: [entry(item.itemId)] },
+              ),
+              now,
+            ),
+          ),
+        );
+      }
+      let statements = 0;
+      const patched = Symbol("counted");
+      const counting = new Proxy(reads, {
+        get(target, prop, receiver) {
+          if (prop === "connect")
+            return async () => {
+              const client = await target.connect();
+              const record = client as unknown as Record<symbol, boolean>;
+              if (!record[patched]) {
+                record[patched] = true;
+                const original = client.query.bind(client);
+                (client as unknown as { query: unknown }).query = (
+                  ...args: unknown[]
+                ) => {
+                  statements += 1;
+                  return (original as (...a: unknown[]) => unknown)(...args);
+                };
+              }
+              return client;
+            };
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as typeof reads;
+      const counted = new PostgresAuthorCommunityAdapter(counting);
+      const page = { search: "", kind: "all" as const };
+      statements = 0;
+      const one = await counted.listWorks(a, null, {
+        ...page,
+        page: 1,
+        pageSize: 1,
+      });
+      const forOne = statements;
+      statements = 0;
+      const all = await counted.listWorks(a, null, {
+        ...page,
+        page: 1,
+        pageSize: 50,
+      });
+      const forAll = statements;
+      expect(one.items).toHaveLength(1);
+      expect(all.items.length).toBeGreaterThanOrEqual(3);
+      expect(forAll).toBe(forOne);
+      expect(all.items).toEqual(
+        (await authors.listWorks(a, null, { ...page, page: 1, pageSize: 50 }))
+          .items,
+      );
+      for (const item of all.items.slice(0, 3)) {
+        expect(item.media).toHaveLength(1);
+        expect(item.coverMediaId).toBe(item.media[0]?.id ?? null);
+      }
+      expect(works.map((w) => w.workId)).toEqual(
+        expect.arrayContaining(all.items.slice(0, 3).map((w) => w.id)),
       );
     });
   });

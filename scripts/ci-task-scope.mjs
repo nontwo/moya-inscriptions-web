@@ -31,6 +31,7 @@ const webRoots = [
   "packages/image/",
   "packages/search/",
   "packages/ui/",
+  "services/agent-authorization/",
   "services/api/",
   "services/backend-production/",
   "services/backend-runtime/",
@@ -80,8 +81,14 @@ const cmsTestTarget = new Set([
 ]);
 // verify-cms.mjs compiles these packages with tsc -p; Payload migrations,
 // tests/cms and its PostgreSQL probe import their dist output.
+//
+// `community-postgres` joined the list in r15, and not by preference: the
+// Admin's agent-connection control plane and resource boundary import it, so
+// the cms job now builds and runs it through `pnpm --filter admin build`. The
+// script test derives this closure from the job itself rather than from this
+// comment, which is what caught the omission.
 const cmsBuiltPackage =
-  /^(?:packages\/(?:contracts|image|search)|services\/(?:api|catalog-postgres))\/(?:src\/|(?:package|tsconfig)\.json$)/u;
+  /^(?:packages\/(?:contracts|image|search)|services\/(?:api|catalog-postgres|community-postgres))\/(?:src\/|(?:package|tsconfig)\.json$)/u;
 const publicBoundary = (file) =>
   (file.startsWith("packages/contracts/") &&
     !file.startsWith("packages/contracts/src/internal/")) ||
@@ -182,6 +189,12 @@ export function classifyTask(paths, event = "pull_request") {
       plan.web = true;
       if (
         file.startsWith("apps/admin/") ||
+        // The authorization runtime carries no checks of its own. The Web jobs
+        // lint, type-check and build it through the root turbo tasks, and its
+        // Admin consent and MCP integration is exercised by the cms job's
+        // Payload and Owner-browser stages, so a change isolated to this
+        // service keeps the integration coverage it needs.
+        file.startsWith("services/agent-authorization/") ||
         file.startsWith("tests/cms/") ||
         file.startsWith("scripts/editorial/") ||
         cmsTestTarget.has(file) ||

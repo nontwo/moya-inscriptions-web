@@ -1236,6 +1236,15 @@ export const openEditDraft = async (
       now,
     },
     async (db) => {
+      // Holder before work, the lock order every other author command and the
+      // recycle-bin purge use (jobs.ts); taking the work row first deadlocked
+      // against purgeTrashedWork, which locks the drafts and then the work.
+      const existing = (
+        await db.query<DraftRow>(
+          `SELECT ${draftColumns} FROM community.work_drafts WHERE owner_id=$1 AND work_id=$2 AND state='active' AND conflict_of IS NULL FOR UPDATE`,
+          [actorId, workId],
+        )
+      ).rows[0];
       const work = (
         await db.query<{
           visibility: "public" | "self";
@@ -1250,12 +1259,6 @@ export const openEditDraft = async (
       if (work === undefined) throw new CommunityNotFoundError();
       if (work.trashed_at !== null || work.operator_state === "removed")
         throw new CommunityInputError("work_unavailable");
-      const existing = (
-        await db.query<DraftRow>(
-          `SELECT ${draftColumns} FROM community.work_drafts WHERE owner_id=$1 AND work_id=$2 AND state='active' AND conflict_of IS NULL FOR UPDATE`,
-          [actorId, workId],
-        )
-      ).rows[0];
       if (existing !== undefined) return answer(db, existing, false);
       if (work.author_revision_id === null)
         throw new CommunityInputError("work_unavailable");
