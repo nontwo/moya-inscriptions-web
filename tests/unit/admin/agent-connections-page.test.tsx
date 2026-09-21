@@ -146,6 +146,44 @@ describe("the AI connections page", () => {
     ).not.toBeNull();
   });
 
+  it("shows every registered client exactly once, whatever its family", async () => {
+    // The invariant behind the whole grouping change: the preset cards and the
+    // overflow card PARTITION the registry. Nothing is listed twice, and
+    // nothing falls through the gap between them.
+    const families = [
+      "cursor",
+      "claude",
+      "codex",
+      "acme-agent",
+      "verification",
+    ];
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [],
+          clients: families.map((family, index) => ({
+            clientId: `client-${index}`,
+            family,
+            label: `Client ${index}`,
+          })),
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    await screen.findByText("连接新应用");
+    const started = [
+      ...document.querySelectorAll("[data-agent-connections-start]"),
+    ].map((node) => node.getAttribute("data-agent-connections-start"));
+    expect([...started].sort()).toEqual(
+      families.map((_, index) => `client-${index}`).sort(),
+    );
+    for (const family of families)
+      expect(
+        screen.getAllByText(`Client ${families.indexOf(family)}`),
+      ).toHaveLength(1);
+  });
+
   it("gives a second registration in one family its own named button", async () => {
     vi.stubGlobal(
       "fetch",
