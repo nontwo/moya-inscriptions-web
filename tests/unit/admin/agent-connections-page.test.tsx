@@ -220,9 +220,9 @@ describe("the AI connections page", () => {
     // Scoped to the rows, not the card: `Cursor Desktop` is also the card's
     // own heading, so asserting on the card's text passes even when the row
     // has no label at all.
-    const labels = [...card.querySelectorAll("div")].map(
-      (row) => row.firstElementChild?.textContent ?? "",
-    );
+    const labels = [
+      ...card.querySelectorAll("[data-agent-connections-client-label]"),
+    ].map((label) => label.textContent ?? "");
     expect(labels).toContain("Cursor Desktop");
     expect(labels).toContain("Hostname callback client");
 
@@ -466,8 +466,73 @@ describe("the AI connections page", () => {
     expect(rows).toHaveLength(2);
     for (const button of rows)
       expect(
-        button.parentElement?.firstElementChild?.textContent ?? "",
-      ).not.toBe("");
+        button.parentElement?.querySelector(
+          "[data-agent-connections-client-label]",
+        ),
+      ).not.toBeNull();
+  });
+
+  it("does not offer recovery for a row neither consent branch accepts", async () => {
+    // `authorized` with `revokedAt` set: `authorizeConnection` refuses it on
+    // `revokedAt`, `reconnectConnection` refuses it on the status column.
+    // Nothing can restore it, so the page must not say otherwise.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [connection({ revokedAt: "2026-09-21T00:02:00.000Z" })],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).toContain("已断开");
+    expect(card.textContent).toContain("暂时无法在这里重新连上");
+    // And the raw status is reachable, because a history row has no 查看详情.
+    const history = document.querySelector("[data-agent-connections-history]");
+    expect(history?.textContent).toContain("authorized");
+  });
+
+  it("counts revoked rows when deciding a pair is ambiguous", async () => {
+    // `findForClient` has no status filter: it raises on any two rows for the
+    // pair. An Owner who disconnects both halves of a duplicated pair must
+    // not be told that re-authorizing brings it back.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection({
+              status: "revoked",
+              revokedAt: "2026-09-21T00:02:00.000Z",
+              hasCurrentGrant: false,
+            }),
+            connection({
+              id: "conn-ffffffffffffffffffffffffffffffff",
+              status: "revoked",
+              revokedAt: "2026-09-21T00:03:00.000Z",
+              hasCurrentGrant: false,
+            }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).toContain("暂时无法在这里重新连上");
+    expect(card.textContent).not.toContain("重新授权即可");
   });
 
   it("does not promise that two addresses are all it takes", async () => {

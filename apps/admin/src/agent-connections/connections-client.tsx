@@ -353,10 +353,22 @@ export const AgentConnectionsClient = () => {
    * recovery hint is withheld exactly where it would be false.
    */
   const ambiguous = (clientId: string) =>
-    connections.filter(
-      (connection) =>
-        connection.oauthClientId === clientId && !isRevoked(connection),
-    ).length > 1;
+    connections.filter((connection) => connection.oauthClientId === clientId)
+      .length > 1;
+
+  /**
+   * Whether re-authorizing in the application can actually restore a
+   * disconnected client. `reconnectConnection` accepts only a row whose
+   * status column reads `revoked`; `authorizeConnection` refuses any row
+   * carrying `revokedAt`. A row that is `authorized` WITH `revokedAt` set
+   * satisfies neither and cannot be recovered from here, so the page does
+   * not offer to.
+   */
+  const reconnectable = (clientId: string) =>
+    !ambiguous(clientId) &&
+    connections
+      .filter((connection) => connection.oauthClientId === clientId)
+      .every((connection) => connection.status === "revoked");
 
   /**
    * One registration's action. Named by ITS OWN label, never by a preset's,
@@ -399,7 +411,11 @@ export const AgentConnectionsClient = () => {
           <span className={styles.badge} data-tone="muted">
             已断开
           </span>
-          <span className={styles.presetHint}>在应用里重新授权即可恢复</span>
+          <span className={styles.presetHint}>
+            {reconnectable(client.clientId)
+              ? "在应用里重新授权即可重新连上"
+              : "暂时无法在这里重新连上"}
+          </span>
         </span>
       );
     return (
@@ -522,7 +538,7 @@ export const AgentConnectionsClient = () => {
                     !ambiguous(connection.oauthClientId) ? (
                       <p className={styles.cardHint} data-agent-connection-hint>
                         {
-                          "在应用里重新登录 ArtVenn、完成一次授权即可恢复。不需要先断开这条连接。"
+                          "在应用里重新登录 ArtVenn、完成一次授权即可重新连上。不需要先断开这条连接。"
                         }
                       </p>
                     ) : null}
@@ -612,7 +628,10 @@ export const AgentConnectionsClient = () => {
                           only the first and called it by the preset's name. */}
                       {registered.length === 1 &&
                       client.label === preset.name ? null : (
-                        <span className={styles.presetClient}>
+                        <span
+                          className={styles.presetClient}
+                          data-agent-connections-client-label
+                        >
                           {client.label}
                         </span>
                       )}
@@ -668,7 +687,12 @@ export const AgentConnectionsClient = () => {
             </p>
             {othersClients.map((client) => (
               <div className={styles.presetFoot} key={client.clientId}>
-                <span className={styles.presetClient}>{client.label}</span>
+                <span
+                  className={styles.presetClient}
+                  data-agent-connections-client-label
+                >
+                  {client.label}
+                </span>
                 <ClientAction client={client} />
               </div>
             ))}
@@ -700,6 +724,13 @@ export const AgentConnectionsClient = () => {
                 >
                   {whenText(connection.revokedAt)}
                 </span>
+                {/* History rows carry no 查看详情, so the one row whose raw
+                    status a reader would actually want -- the one where the
+                    status column disagrees with this page -- would otherwise
+                    have it nowhere on screen. */}
+                {connection.status === "revoked" ? null : (
+                  <span className={styles.mono}>{connection.status}</span>
+                )}
               </div>
             ))}
           </div>
