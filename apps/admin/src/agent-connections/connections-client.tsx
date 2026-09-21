@@ -6,6 +6,7 @@ interface ListedConnectionView {
   readonly id: string;
   readonly client: string;
   readonly clientLabel: string | null;
+  readonly principalLabel: string;
   readonly oauthClientId: string;
   readonly environment: string;
   readonly preset: string;
@@ -22,6 +23,18 @@ interface RegisteredClientView {
   readonly family: string;
   readonly label: string;
 }
+
+/** What this deployment is, so a reader never has to assume. */
+interface SurfaceView {
+  readonly environment: string;
+  readonly issuer: string;
+  readonly resource: string;
+  readonly authMethod: string;
+}
+
+const AUTH_METHOD_LABEL: Readonly<Record<string, string>> = {
+  "oauth-browser-consent": "OAuth（浏览器授权）",
+};
 
 const STATUS_LABEL: Readonly<Record<string, string>> = {
   "awaiting-consent": "等待授权",
@@ -46,6 +59,7 @@ const STATUS_LABEL: Readonly<Record<string, string>> = {
 export const AgentConnectionsClient = () => {
   const [connections, setConnections] = useState<ListedConnectionView[]>([]);
   const [clients, setClients] = useState<RegisteredClientView[]>([]);
+  const [surface, setSurface] = useState<SurfaceView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,9 +80,23 @@ export const AgentConnectionsClient = () => {
       const result = body.result as {
         connections?: ListedConnectionView[];
         clients?: RegisteredClientView[];
+        environment?: string;
+        issuer?: string;
+        resource?: string;
+        authMethod?: string;
       };
       setConnections(result.connections ?? []);
       setClients(result.clients ?? []);
+      setSurface(
+        result.environment === undefined
+          ? null
+          : {
+              environment: result.environment,
+              issuer: result.issuer ?? "",
+              resource: result.resource ?? "",
+              authMethod: result.authMethod ?? "",
+            },
+      );
       setError(null);
     } catch {
       setError("NETWORK");
@@ -147,6 +175,24 @@ export const AgentConnectionsClient = () => {
         随后在应用里发起连接，浏览器会带你回到这里确认。
       </p>
 
+      {surface === null ? null : (
+        <dl data-agent-connections-surface={surface.environment}>
+          <dt>环境</dt>
+          <dd data-agent-connections-environment>{surface.environment}</dd>
+          <dt>认证方式</dt>
+          <dd data-agent-connections-auth-method={surface.authMethod}>
+            {AUTH_METHOD_LABEL[surface.authMethod] ?? surface.authMethod}
+          </dd>
+          <dt>MCP 地址</dt>
+          <dd>
+            <code>{surface.resource}</code>
+          </dd>
+          <dt>授权服务</dt>
+          <dd>
+            <code>{surface.issuer}</code>
+          </dd>
+        </dl>
+      )}
       <h3>已有连接</h3>
       {connections.length === 0 ? (
         <p data-agent-connections-empty>还没有任何连接。</p>
@@ -155,6 +201,7 @@ export const AgentConnectionsClient = () => {
           <thead>
             <tr>
               <th>应用</th>
+              <th>连接标识</th>
               <th>状态</th>
               <th>权限</th>
               <th>代数</th>
@@ -168,6 +215,15 @@ export const AgentConnectionsClient = () => {
               <tr data-agent-connection={connection.id} key={connection.id}>
                 <td data-agent-connection-client>
                   {connection.clientLabel ?? connection.client}
+                </td>
+                {/* The exact identity this connection acts as. The label
+                    above is descriptive and two clients may share it; these
+                    two values are what authorization is actually decided on
+                    and what the Backend sees. */}
+                <td data-agent-connection-identity={connection.id}>
+                  <code>{connection.oauthClientId}</code>
+                  <br />
+                  <code>{connection.principalLabel}</code>
                 </td>
                 <td data-agent-connection-status={connection.status}>
                   {STATUS_LABEL[connection.status] ?? connection.status}

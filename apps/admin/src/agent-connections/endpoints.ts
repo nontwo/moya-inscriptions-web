@@ -115,10 +115,30 @@ const listEndpoint: Endpoint = {
       const connections =
         await runtime.connections.listForHuman(humanAccountId);
       return ok({
-        clients: [...runtime.clients.values()],
+        // Narrowed on purpose. The registry entry also carries the callback
+        // policy and the redirect URIs, and the page has no use for either;
+        // shipping deployment configuration to a browser because it happened
+        // to be in the same object is how it ends up somewhere else.
+        clients: [...runtime.clients.values()].map((client) => ({
+          clientId: client.clientId,
+          family: client.family,
+          label: client.label,
+        })),
+        // What this deployment IS, so the page can say so rather than let a
+        // reader assume which environment they are looking at.
+        environment: runtime.environment,
+        issuer: runtime.issuer,
+        resource: runtime.resource,
+        // One method exists in this milestone. Named rather than implied.
+        authMethod: "oauth-browser-consent",
         connections: connections.map((entry) => ({
           id: entry.connection.id,
           client: entry.connection.client,
+          // The EXACT identity this connection acts as: the registered OAuth
+          // client the Owner approved, and the machine principal the Backend
+          // authorizes. Shown because "which connection is this" must be
+          // answerable without a database.
+          principalLabel: entry.connection.principalLabel,
           clientLabel:
             runtime.clients.get(entry.connection.oauthClientId)?.label ?? null,
           oauthClientId: entry.connection.oauthClientId,
