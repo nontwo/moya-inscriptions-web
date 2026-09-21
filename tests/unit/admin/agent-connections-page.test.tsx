@@ -18,9 +18,16 @@ import { AgentConnectionsClient } from "admin/agent-connections-client";
  * Everything else about this page is rendering, and rendering is what the
  * screenshots are for. What is worth a test is the behaviour a reader cannot
  * check by looking: that a destructive action does not fire on the first
- * click, that a test identity is not offered as a normal connection option,
- * and that "authorized" is not printed for a connection with nothing behind
- * it.
+ * click, that every registered client is reachable and starts the one it
+ * names, and that "authorized" is not printed for a connection with nothing
+ * behind it.
+ *
+ * Three of these tests exist because an independent review found the earlier
+ * page deciding, from a registration's `family`, which clients were "real".
+ * The integration guide tells integrators that `family` is any value, and the
+ * acceptance harness registers a test identity under `family: "cursor"`, so
+ * that rule was wrong in both directions. These pin the replacement: the
+ * family selects setup copy, and nothing else.
  */
 
 const connection = (overrides: Record<string, unknown> = {}) => ({
@@ -125,29 +132,125 @@ describe("the AI connections page", () => {
     expect(posted).toEqual([]);
   });
 
-  it("keeps test identities out of the normal connect list", async () => {
-    vi.stubGlobal("fetch", mockFetch(result()));
-    render(createElement(AgentConnectionsClient));
-    await screen.findByText("连接新应用");
-    const utilities = document.querySelector(
-      "[data-agent-connections-utilities]",
-    );
-    expect(utilities?.textContent).toContain("Local verification client");
-    const presets = document.querySelectorAll(
-      "[data-agent-connections-preset]",
-    );
-    expect(presets.length).toBeGreaterThan(0);
-    for (const preset of presets)
-      expect(preset.textContent).not.toContain("Local verification client");
-  });
-
-  it("hides the test section outside Development", async () => {
+  it("leaves no registered client without a way to connect it", async () => {
+    // `verification` is a family this page has no setup copy for. The earlier
+    // rule hid such a client outside Development, which left a legitimately
+    // registered client with no button anywhere on the page.
     vi.stubGlobal("fetch", mockFetch(result({ environment: "production" })));
     render(createElement(AgentConnectionsClient));
     await screen.findByText("连接新应用");
+    const others = document.querySelector("[data-agent-connections-others]");
+    expect(others?.textContent).toContain("Local verification client");
     expect(
-      document.querySelector("[data-agent-connections-utilities]"),
+      others?.querySelector("[data-agent-connections-start]"),
+    ).not.toBeNull();
+  });
+
+  it("gives a second registration in one family its own named button", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [],
+          clients: [
+            {
+              clientId: "artvenn-cursor-readonly",
+              family: "cursor",
+              label: "Cursor Desktop",
+            },
+            {
+              clientId: "artvenn-cursor-second",
+              family: "cursor",
+              // The harness registers a test identity under `family: "cursor"`
+              // exactly like this, so a card that shows only the first one
+              // makes the second unreachable and mislabels what it starts.
+              label: "Hostname callback client",
+            },
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).toContain("Cursor Desktop");
+    expect(card.textContent).toContain("Hostname callback client");
+
+    const second = card.querySelector(
+      '[data-agent-connections-start="artvenn-cursor-second"]',
+    );
+    expect(second).not.toBeNull();
+    fireEvent.click(second as Element);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    // THE PROPERTY. The button starts the registration it is named after.
+    expect(posted[0]?.body).toEqual({ clientId: "artvenn-cursor-second" });
+  });
+
+  it("does not offer to start a client that is already connected", async () => {
+    vi.stubGlobal("fetch", mockFetch(result()));
+    render(createElement(AgentConnectionsClient));
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-agent-connections-preset="cursor"]',
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(card.textContent).toContain("已连接");
+    expect(
+      card.querySelector(
+        '[data-agent-connections-start="artvenn-cursor-readonly"]',
+      ),
     ).toBeNull();
+  });
+
+  it("names the connection in the confirmation, not a fixed product", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        result({
+          connections: [
+            connection({ client: "acme", clientLabel: "ACME agent" }),
+          ],
+        }),
+      ),
+    );
+    render(createElement(AgentConnectionsClient));
+    fireEvent.click(await screen.findByText("断开"));
+    const dialog = await waitFor(() => {
+      const found = document.querySelector("[data-agent-connections-confirm]");
+      expect(found?.textContent).toContain("ACME agent");
+      return found as Element;
+    });
+    expect(dialog.textContent).not.toContain("Cursor");
+    expect(dialog.textContent).toContain("还没过期的令牌");
+  });
+
+  it("opens the addresses in place instead of linking off the page", async () => {
+    vi.stubGlobal("fetch", mockFetch(result()));
+    render(createElement(AgentConnectionsClient));
+    const other = await waitFor(() => {
+      const found = document.querySelector("[data-agent-connections-other]");
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    // The guide this used to link to does not exist on `main`.
+    expect(other.querySelector("a")).toBeNull();
+
+    const advanced = document.querySelector(
+      "[data-agent-connections-advanced]",
+    ) as HTMLDetailsElement;
+    expect(advanced.open).toBe(false);
+    fireEvent.click(
+      other.querySelector("[data-agent-connections-show-advanced]") as Element,
+    );
+    await waitFor(() => expect(advanced.open).toBe(true));
+    expect(advanced.textContent).toContain("http://localhost:3452/api/mcp");
   });
 
   it("does not call a connection authorized when nothing is behind it", async () => {

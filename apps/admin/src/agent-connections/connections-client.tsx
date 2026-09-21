@@ -51,21 +51,31 @@ interface SurfaceView {
  * flow, and a human never carries one.
  *
  * THE SHAPE. Four levels, in the order a daily user needs them: what is
- * connected, how to connect something new, the deployment's own technical
- * detail, and — in Development only — the identities this task uses to test
- * itself. Identifiers live in the detail level and never in a primary row,
- * because "which of my applications is this" is answered by a name.
+ * connected, how to connect something new, past connections, and the
+ * deployment's own technical detail. Identifiers live in the detail level and
+ * never in a primary row, because "which of my applications is this" is
+ * answered by a name.
  */
 
 const PRESET_FAMILIES = ["cursor", "claude", "codex"] as const;
 
 /**
- * The three clients the Admin offers a one-click setup for.
+ * Setup copy for the three families the Admin knows how to describe.
  *
- * PRESENTATION ONLY. The backend authorizes any registered client whatever
- * its family, and these three are cards and copy — not the support boundary.
- * A fourth vendor needs a registration, not an entry here; that is the whole
- * point of the generic registry, and `其他 MCP 客户端` below says so.
+ * PRESENTATION ONLY, and it classifies nothing. An earlier version of this
+ * page used family membership to decide which registrations were "real" and
+ * which were this task's test identities. An independent review showed that
+ * rule is wrong in both directions, and this repository contains an example
+ * of each: the integration guide tells an integrator that `family` is "any
+ * value" and registers `example-agent`, which the rule would have badged as a
+ * test utility and, outside Development, hidden entirely — leaving a
+ * legitimately registered client with no button anywhere. Meanwhile the
+ * acceptance harness registers a test identity under `family: "cursor"`,
+ * which the rule would have offered as "Cursor Desktop".
+ *
+ * So the family now selects DESCRIPTION and nothing else. Every registration
+ * is listed, under its own label, and the page makes no claim about which
+ * ones are "real".
  */
 const PRESETS: readonly {
   readonly family: (typeof PRESET_FAMILIES)[number];
@@ -141,6 +151,13 @@ const CopyValue = ({
   readonly value: string;
 }) => {
   const [copied, setCopied] = useState(false);
+  // The confirmation is a moment, not a state. Without this the button says
+  // 已复制 for the rest of the session and a second copy looks like a no-op.
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
   return (
     <>
       <span className={styles.mono}>{value}</span>
@@ -171,6 +188,8 @@ export const AgentConnectionsClient = () => {
   const [pendingDisconnect, setPendingDisconnect] =
     useState<ListedConnectionView | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const advancedRef = useRef<HTMLDetailsElement | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -262,19 +281,12 @@ export const AgentConnectionsClient = () => {
   const nameOf = (connection: ListedConnectionView): string =>
     connection.clientLabel ?? connection.client;
 
-  // Development-only surface. `Synthetic` is the environment this task runs,
-  // and the test identities below must never reach a production-facing page.
-  const isDevelopment =
-    surface !== null && surface.environment !== "production";
   const presetFamilies = new Set<string>(PRESET_FAMILIES);
-  const ordinaryClients = clients.filter((client) =>
-    presetFamilies.has(client.family),
-  );
-  // Anything registered under a family the Admin offers no preset for. In this
-  // deployment that is exactly the two identities this task uses to test
-  // itself, and they belong behind a disclosure rather than in the list an
-  // Owner reads every day.
-  const utilityClients = clients.filter(
+  // Grouped for DESCRIPTION, never filtered for legitimacy: every registered
+  // client appears somewhere on this page, under the label its registration
+  // gave it. A family the Admin has no setup copy for is listed plainly
+  // rather than hidden or renamed.
+  const othersClients = clients.filter(
     (client) => !presetFamilies.has(client.family),
   );
   const active = connections.filter(
@@ -284,8 +296,61 @@ export const AgentConnectionsClient = () => {
     (connection) => connection.status === "revoked",
   );
 
-  const startFor = (family: string) =>
-    ordinaryClients.find((client) => client.family === family);
+  /** Every registration in a family, so a second one is never unreachable. */
+  const clientsIn = (family: string) =>
+    clients.filter((client) => client.family === family);
+
+  /** The live state of one registration, which decides what its card offers. */
+  const stateOf = (clientId: string) => {
+    const rows = connections.filter(
+      (connection) => connection.oauthClientId === clientId,
+    );
+    if (rows.some((row) => row.status === "awaiting-consent"))
+      return "awaiting" as const;
+    if (rows.some((row) => row.status !== "revoked"))
+      return "connected" as const;
+    return "available" as const;
+  };
+
+  /**
+   * One registration's action. Named by ITS OWN label, never by a preset's,
+   * so two registrations in one family are told apart and a card can never
+   * start something other than what it says.
+   */
+  const ClientAction = ({
+    client,
+  }: {
+    readonly client: RegisteredClientView;
+  }) => {
+    const state = stateOf(client.clientId);
+    if (state === "connected")
+      return (
+        <span className={styles.badge} data-tone="neutral">
+          已连接
+        </span>
+      );
+    if (state === "awaiting")
+      return (
+        <span className={styles.badge} data-tone="pending">
+          等待应用完成授权
+        </span>
+      );
+    return (
+      <button
+        className={`${styles.button} ${styles.buttonPrimary}`}
+        data-agent-connections-start={client.clientId}
+        disabled={busy}
+        onClick={() =>
+          void post("/api/agent-connections/start", {
+            clientId: client.clientId,
+          })
+        }
+        type="button"
+      >
+        开始连接
+      </button>
+    );
+  };
 
   return (
     <section className={styles.page} data-agent-connections>
@@ -311,8 +376,9 @@ export const AgentConnectionsClient = () => {
           </span>
         </div>
         <p className={styles.lead}>
-          连接 AI 应用访问 ArtVenn。当前仅提供只读连接：可以查询内容，
-          不能修改、发布、删除或代你审批。
+          {
+            "连接 AI 应用访问 ArtVenn。当前仅提供只读连接：可以查询内容，不能修改、发布、删除或代你审批。"
+          }
         </p>
       </header>
 
@@ -424,7 +490,7 @@ export const AgentConnectionsClient = () => {
                       {open ? "收起详情" : "查看详情"}
                     </button>
                     <button
-                      className={`${styles.button} ${styles.buttonDanger}`}
+                      className={`${styles.button} ${styles.buttonQuietDanger}`}
                       data-agent-connection-disconnect={connection.id}
                       disabled={busy}
                       onClick={() => setPendingDisconnect(connection)}
@@ -446,12 +512,7 @@ export const AgentConnectionsClient = () => {
         </div>
         <div className={styles.presetGrid}>
           {PRESETS.map((preset) => {
-            const registered = startFor(preset.family);
-            const pending = connections.find(
-              (connection) =>
-                connection.oauthClientId === registered?.clientId &&
-                connection.status === "awaiting-consent",
-            );
+            const registered = clientsIn(preset.family);
             return (
               <article
                 className={styles.preset}
@@ -460,55 +521,77 @@ export const AgentConnectionsClient = () => {
               >
                 <h4 className={styles.presetName}>{preset.name}</h4>
                 <p className={styles.presetNote}>{preset.note}</p>
-                <div className={styles.presetFoot}>
-                  {registered === undefined ? (
+                {registered.length === 0 ? (
+                  <div className={styles.presetFoot}>
                     <span className={styles.badge} data-tone="muted">
                       未配置
                     </span>
-                  ) : pending !== undefined ? (
-                    <span className={styles.badge} data-tone="pending">
-                      等待应用完成授权
-                    </span>
-                  ) : (
-                    <button
-                      className={`${styles.button} ${styles.buttonPrimary}`}
-                      data-agent-connections-start={registered.clientId}
-                      disabled={busy}
-                      onClick={() =>
-                        void post("/api/agent-connections/start", {
-                          clientId: registered.clientId,
-                        })
-                      }
-                      type="button"
-                    >
-                      开始连接
-                    </button>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  registered.map((client) => (
+                    <div className={styles.presetFoot} key={client.clientId}>
+                      {/* The registration's OWN label. Two registrations in
+                          one family are two rows here, each starting the one
+                          it names -- the earlier version silently offered
+                          only the first and called it by the preset's name. */}
+                      <span className={styles.presetClient}>
+                        {client.label}
+                      </span>
+                      <ClientAction client={client} />
+                    </div>
+                  ))
+                )}
               </article>
             );
           })}
+          {othersClients.length === 0 ? null : (
+            <article className={styles.preset} data-agent-connections-others>
+              <h4 className={styles.presetName}>其他已注册客户端</h4>
+              <p className={styles.presetNote}>
+                {
+                  "这些客户端已在本部署注册，可以正常连接；只是 Admin 还没有为它们准备一份设置说明。"
+                }
+              </p>
+              {othersClients.map((client) => (
+                <div className={styles.presetFoot} key={client.clientId}>
+                  <span className={styles.presetClient}>{client.label}</span>
+                  <ClientAction client={client} />
+                </div>
+              ))}
+            </article>
+          )}
+          <article className={styles.preset} data-agent-connections-other>
+            <h4 className={styles.presetName}>其他 MCP 客户端</h4>
+            <p className={styles.presetNote}>
+              {
+                "任何符合当前 MCP 和 OAuth 接入要求的客户端都可以使用同一套 ArtVenn 工具。把下面的两个地址填进它的 MCP 配置，再完成一次浏览器授权即可。"
+              }
+            </p>
+            {/* This used to link to the integration guide on `main`, where that
+                file does not exist: every reader got a 404. The addresses an
+                integrator needs are already on this page, so the card opens
+                them rather than promising a document. */}
+            {surface === null ? null : (
+              <div className={styles.presetFoot}>
+                <button
+                  className={styles.button}
+                  data-agent-connections-show-advanced
+                  onClick={() => {
+                    setAdvancedOpen(true);
+                    advancedRef.current?.scrollIntoView?.({ block: "nearest" });
+                  }}
+                  type="button"
+                >
+                  查看接入地址
+                </button>
+              </div>
+            )}
+          </article>
         </div>
-        <article className={styles.preset} data-agent-connections-other>
-          <h4 className={styles.presetName}>其他 MCP 客户端</h4>
-          <p className={styles.presetNote}>
-            任何符合当前 MCP 和 OAuth 接入要求的客户端都可以使用同一套 ArtVenn
-            工具。
-          </p>
-          <div className={styles.presetFoot}>
-            <a
-              className={styles.button}
-              href="https://github.com/nontwo/moya-inscriptions-web/blob/main/docs/community/agent-connections-v1/integration.md"
-              rel="noreferrer"
-              target="_blank"
-            >
-              查看连接方式
-            </a>
-          </div>
-        </article>
-        <p className={styles.sectionNote}>
-          「开始连接」只创建一条尚未授权的记录，本身不授予任何权限。
-          随后在应用里完成授权，浏览器会带你回到这里确认。
+        <p className={styles.presetGridNote}>
+          {
+            "「开始连接」只创建一条尚未授权的记录，本身不授予任何权限。随后在应用里完成授权，浏览器会带你回到这里确认。"
+          }
         </p>
       </section>
 
@@ -542,41 +625,14 @@ export const AgentConnectionsClient = () => {
         </details>
       )}
 
-      {isDevelopment && utilityClients.length > 0 ? (
-        <details className={styles.disclosure} data-agent-connections-utilities>
-          <summary>开发测试工具</summary>
-          <div className={styles.disclosureBody}>
-            <p className={styles.sectionNote}>
-              这些是本任务用来自测的客户端身份，不是日常使用的连接方式。 仅在
-              Development / Synthetic 环境显示。
-            </p>
-            {utilityClients.map((client) => (
-              <div className={styles.cardTitleRow} key={client.clientId}>
-                <span className={styles.cardTitle}>{client.label}</span>
-                <span className={styles.badge} data-tone="muted">
-                  测试工具
-                </span>
-                <button
-                  className={styles.button}
-                  data-agent-connections-start={client.clientId}
-                  disabled={busy}
-                  onClick={() =>
-                    void post("/api/agent-connections/start", {
-                      clientId: client.clientId,
-                    })
-                  }
-                  type="button"
-                >
-                  开始连接
-                </button>
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
-
       {surface === null ? null : (
-        <details className={styles.disclosure} data-agent-connections-advanced>
+        <details
+          className={styles.disclosure}
+          data-agent-connections-advanced
+          onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+          open={advancedOpen}
+          ref={advancedRef}
+        >
           <summary>高级信息</summary>
           <div className={styles.disclosureBody}>
             <dl className={styles.detailList}>
@@ -603,14 +659,16 @@ export const AgentConnectionsClient = () => {
               </dd>
             </dl>
             <p className={styles.sectionNote}>
-              这里不会显示任何令牌、密钥或凭据：客户端通过浏览器授权自行获取，
-              不需要你复制任何东西。
+              {
+                "这里不会显示任何令牌、密钥或凭据：客户端通过浏览器授权自行获取，不需要你复制任何东西。"
+              }
             </p>
           </div>
         </details>
       )}
 
       <dialog
+        aria-labelledby="agent-connections-confirm-title"
         className={styles.dialog}
         data-agent-connections-confirm
         onCancel={() => setPendingDisconnect(null)}
@@ -619,13 +677,17 @@ export const AgentConnectionsClient = () => {
       >
         {pendingDisconnect === null ? null : (
           <div className={styles.dialogBody}>
-            <h3 className={styles.dialogTitle}>
+            <h3
+              className={styles.dialogTitle}
+              id="agent-connections-confirm-title"
+            >
               断开 {nameOf(pendingDisconnect)}？
             </h3>
+            {/* Named by the connection, not by a product. The earlier copy said
+                "Cursor" for every row, including ones another client had
+                registered. */}
             <p className={styles.dialogText}>
-              断开后，这个连接会立即失去 ArtVenn 访问权限。Cursor
-              中保存的本地配置不会被删除，之前已经读取到的信息也不会被撤回。
-              重新连接需要重新授权。
+              {`断开会立即拒绝这条连接上的访问，包括还没过期的令牌和已经打开的会话。${nameOf(pendingDisconnect)} 本地保存的配置不会被删除，之前已经读取到的信息也不会被撤回。重新连接需要重新授权。`}
             </p>
             <div className={styles.dialogActions}>
               <button

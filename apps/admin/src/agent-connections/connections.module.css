@@ -198,15 +198,34 @@
   background: #000;
 }
 
-/* Destructive, and deliberately not the same shape as anything else on the
-   page. A disconnect is the one action here that takes something away. */
-.buttonDanger {
-  border-color: #a33;
+/* Destructive, in two weights, because a review found the outlined red button
+   on a connection card reading as that card's primary action — the loudest
+   thing on a row whose point is the connection, not its removal.
+
+   On the card it is quiet: red text, no box. It is still the only red on the
+   row, so it is never mistaken for a neutral control, but it no longer
+   outranks the name and status beside it. In the confirmation dialog, where
+   the reader has already chosen to destroy something and the only question
+   left is which button does it, it is solid. */
+.buttonQuietDanger {
+  border-color: transparent;
+  background: transparent;
   color: #8a2b2b;
 }
 
-.buttonDanger:hover:not(:disabled) {
+.buttonQuietDanger:hover:not(:disabled) {
+  border-color: #a33;
   background: #fdeeee;
+}
+
+.buttonDanger {
+  border-color: #8a2b2b;
+  background: #8a2b2b;
+  color: #fff;
+}
+
+.buttonDanger:hover:not(:disabled) {
+  background: #741f1f;
 }
 
 .empty {
@@ -261,6 +280,14 @@
   min-height: 2.4em;
 }
 
+.presetClient {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .presetFoot {
   display: flex;
   flex-wrap: wrap;
@@ -268,7 +295,15 @@
   gap: 8px;
 }
 
-/* Collapsible sections: advanced information, test utilities, history. */
+/* Belongs to the grid above it, not to the page's section rhythm. */
+.presetGridNote {
+  margin: -4px 0 0;
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Collapsible sections: past connections and advanced information. */
 .disclosure {
   border: 1px solid var(--theme-elevation-200, #ddd);
   border-radius: 8px;
