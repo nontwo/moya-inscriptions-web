@@ -19,19 +19,27 @@ import { z } from "zod";
  */
 export {
   CLIENT_ID_MAX_BYTES,
-  CONNECTION_CLIENTS,
+  CONNECTION_CLIENT_PRESETS,
   isCimdClientId,
   isPreregisteredClientId,
 } from "@moya/community-postgres";
-export type { ConnectionClient } from "@moya/community-postgres";
+export type { ConnectionClientPreset } from "@moya/community-postgres";
 
-import { CONNECTION_CLIENTS, isOauthClientId } from "@moya/community-postgres";
+import {
+  CONNECTION_CLIENT_PATTERN,
+  isOauthClientId,
+} from "@moya/community-postgres";
 
 /**
  * The zod spellings the Admin's schemas compose with, built FROM the shared
  * predicates rather than beside them. One rule, two shapes.
+ *
+ * A bounded slug, not an enum of vendor names: adding a client is a
+ * registration, and an enum would make it a schema change.
  */
-export const connectionClientSchema = z.enum(CONNECTION_CLIENTS);
+export const connectionClientSchema = z
+  .string()
+  .regex(CONNECTION_CLIENT_PATTERN);
 export const oauthClientIdSchema = z.string().refine(isOauthClientId, {
   message:
     "a client id is a bounded opaque identifier or a canonical HTTPS CIMD URL",

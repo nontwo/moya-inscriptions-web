@@ -183,6 +183,57 @@ export const createAuthorizationProvider = async (options: {
       devInteractions: { enabled: false },
     },
     ttl: { AccessToken: 300, AuthorizationCode: 60, Grant: 2592000 },
+    /**
+     * A refresh token for a client that never asked for `offline_access`.
+     *
+     * WHY THIS IS NEEDED AT ALL. `oidc-provider` splices `offline_access` out
+     * of the requested scope unless the authorize request carries
+     * `prompt=consent` (`lib/actions/authorization/check_scope.js`), and the
+     * default `issueRefreshToken` then declines because the granted scopes no
+     * longer contain it. The acceptance harness sends `prompt=consent` and so
+     * never saw this; a real native client does not, and MCP's authorization
+     * profile does not tell it to. The measured consequence for such a client
+     * is a 300-second access token and no way to renew it — a connection that
+     * has to re-run a browser consent every five minutes, which is not a
+     * connection.
+     *
+     * WHY IT IS NOT A CONSENT BYPASS. A refresh token is only ever issued
+     * against a GRANT, and the only thing that builds a grant here is
+     * `resume.ts`, after a human approved this exact connection in the Admin
+     * and after the connection has actually reached the generation that
+     * consent recorded. This changes what a client must remember to ASK for.
+     * It does not change who approved, what they approved, or the fact that a
+     * disconnect bumps the generation and kills the refreshed token on its
+     * next request — which the acceptance harness proves, unchanged.
+     *
+     * Bounded to this deployment's own capability scope, so it is not a blanket
+     * "always refresh": a grant that somehow carried neither `artvenn:read`
+     * nor `offline_access` still gets nothing.
+     */
+    issueRefreshToken: async (
+      _ctx: unknown,
+      client: { grantTypeAllowed: (type: string) => boolean },
+      source: { scopes: Set<string> },
+    ) =>
+      client.grantTypeAllowed("refresh_token") &&
+      (source.scopes.has("offline_access") ||
+        source.scopes.has("artvenn:read")),
+    /**
+     * And the refresh token must outlive the provider's own session.
+     *
+     * `expiresWithSession` defaults to `!scopes.has('offline_access')`, so
+     * issuing a refresh token above without this would have produced one that
+     * dies with the browser session that created it — a renewal path that
+     * works in a test and expires overnight in use. Traced in the installed
+     * package rather than assumed; overriding `issueRefreshToken` alone is NOT
+     * sufficient, and finding that out later would have cost a full cycle.
+     */
+    expiresWithSession: async (
+      _ctx: unknown,
+      source: { scopes: Set<string> },
+    ) =>
+      !source.scopes.has("offline_access") &&
+      !source.scopes.has("artvenn:read"),
     findAccount: async (_ctx: unknown, id: string) => ({
       accountId: id,
       claims: async () => ({ sub: id }),

@@ -4,6 +4,7 @@ import {
   providerResumeUrl,
 } from "./consent";
 import { authorizeConnection, reconnectConnection } from "./lifecycle";
+import { provisionPrincipal } from "./principal";
 
 import type { ConsentDecisionRequest } from "./consent";
 import type { ConsentRuntime } from "./runtime";
@@ -100,6 +101,22 @@ export const decideConsent = async (
     grantedGeneration: next.generation,
   });
   if (decided === null) throw new ConsentError("CONSENT_NOT_DECIDABLE");
+
+  // The machine principal, BETWEEN the decision and the connection write, and
+  // the position is the safety argument again.
+  //
+  // By here the ticket, the human and the deadline have all been checked by
+  // `decide`'s WHERE clause, so the consent is genuine and durable — this is
+  // not provisioning on an unapproved request. And the connection has not yet
+  // reached `next.generation`, so if this throws, the provider's resume finds
+  // a connection that never moved and refuses the grant with CONNECTION_MOVED.
+  // That is the same fail-closed direction the ordering above already argues
+  // for: an approval that grants nothing, never a grant nobody approved.
+  //
+  // Doing it AFTER the connection write would produce the exact bug this
+  // closes — an authorized connection whose every tool answers
+  // AGENT_FORBIDDEN — with extra steps.
+  await provisionPrincipal(runtime.principals, stored.connection, "read-only");
 
   const written = await runtime.connections.compareAndSet(
     consent.connectionId,

@@ -250,8 +250,48 @@ describe("consent rules", () => {
     };
     const one = JSON.stringify([entry]);
 
-    it("reads exactly what it is given", () => {
-      expect([...parseRegisteredClients(one).values()]).toEqual([entry]);
+    it("reads exactly what it is given, and defaults to the strict callback policy", () => {
+      // The policy is OPTIONAL in the setting and STRICT when absent, so a
+      // registration written before policies existed keeps exactly the rule it
+      // was written under, and a wider rule is something an entry has to ask
+      // for in writing.
+      expect([...parseRegisteredClients(one).values()]).toEqual([
+        { ...entry, callbackPolicy: "loopback-ip" },
+      ]);
+    });
+
+    it("registers a client whose family is not one of the three presets", () => {
+      // THE POINT OF THE GENERIC CHANGE. ArtVenn is a tool service, not a
+      // client directory: a new approved client is a registration, not a
+      // schema change. The family is a label; the identity is the client id.
+      const generic = {
+        ...entry,
+        clientId: "artvenn-generic-01",
+        family: "some-new-agent",
+        label: "Some new agent",
+      };
+      expect(
+        parseRegisteredClients(JSON.stringify([generic])).get(
+          "artvenn-generic-01",
+        )?.family,
+      ).toBe("some-new-agent");
+    });
+
+    it("still bounds the family, because it is templated into the principal label", () => {
+      // `principal_label` is `agent-<family>-<12 hex>` and its CHECK is
+      // ^agent-[a-z0-9-]{2,57}$. A family that broke that shape would produce
+      // a connection the database refuses, or worse, a label that collides.
+      for (const family of [
+        "",
+        "-leading-dash",
+        "Upper",
+        "with_underscore",
+        "with space",
+        "a".repeat(33),
+      ])
+        expect(() =>
+          parseRegisteredClients(JSON.stringify([{ ...entry, family }])),
+        ).toThrow(RegisteredClientError);
     });
 
     it("refuses a redirect target that is not loopback", () => {
@@ -264,6 +304,16 @@ describe("consent rules", () => {
         "http://127.0.0.1:34699/callback#fragment",
         "http://user@127.0.0.1:34699/callback",
         "not a url",
+        // The default policy does not admit the NAME, only the addresses.
+        "http://localhost:8787/callback",
+        // Never a bare root: it is the closest thing a URL path has to a
+        // wildcard, and it accepts every deep link built under it later.
+        "http://127.0.0.1:34699/",
+        // Never a query: the provider appends its own, and a registration
+        // carrying one is a registration that will not match.
+        "http://127.0.0.1:34699/callback?x=1",
+        // Always an explicit port, so the entry says what it means.
+        "http://127.0.0.1/callback",
       ])
         expect(() =>
           parseRegisteredClients(
@@ -277,6 +327,60 @@ describe("consent rules", () => {
       ).toThrow(RegisteredClientError);
     });
 
+    it("admits the localhost spelling only for a registration that asks for it", () => {
+      // Cursor Desktop publishes exactly this callback, so refusing the
+      // spelling refuses the client. It is a POLICY ON THE REGISTRATION, never
+      // a branch on the family: a rule that reads `family === "cursor"` has to
+      // be edited for the next client and makes a label decide a security
+      // question.
+      const cursor = {
+        clientId: "artvenn-cursor-01",
+        family: "cursor",
+        label: "Cursor",
+        callbackPolicy: "loopback-host",
+        redirectUris: ["http://localhost:8787/callback"],
+      };
+      expect(
+        parseRegisteredClients(JSON.stringify([cursor])).get(
+          "artvenn-cursor-01",
+        )?.redirectUris,
+      ).toEqual(["http://localhost:8787/callback"]);
+
+      // The wider policy widens the HOST and nothing else.
+      for (const redirect of [
+        "https://localhost:8787/callback",
+        "http://localhost.evil.invalid:8787/callback",
+        "http://notlocalhost:8787/callback",
+        "http://localhost:8787/callback#f",
+        "http://localhost/callback",
+        "http://localhost:8787/",
+      ])
+        expect(() =>
+          parseRegisteredClients(
+            JSON.stringify([{ ...cursor, redirectUris: [redirect] }]),
+          ),
+        ).toThrow(RegisteredClientError);
+
+      // And a spelling is never rewritten into the other one: the stored form
+      // is byte-identical to what was registered.
+      expect(
+        parseRegisteredClients(
+          JSON.stringify([
+            { ...cursor, redirectUris: ["http://127.0.0.1:8787/callback"] },
+          ]),
+        ).get("artvenn-cursor-01")?.redirectUris,
+      ).toEqual(["http://127.0.0.1:8787/callback"]);
+    });
+
+    it("refuses an unknown callback policy rather than falling back to one", () => {
+      for (const callbackPolicy of ["", "anything", "loopback", 1, null])
+        expect(() =>
+          parseRegisteredClients(
+            JSON.stringify([{ ...entry, callbackPolicy }]),
+          ),
+        ).toThrow(RegisteredClientError);
+    });
+
     it("refuses rather than skipping, because a dropped client is a blank screen the provider will still authorize", () => {
       for (const value of [
         "",
@@ -284,7 +388,6 @@ describe("consent rules", () => {
         "{}",
         JSON.stringify([{ clientId: "a", family: "claude" }]),
         JSON.stringify([{ ...entry, extra: 1 }]),
-        JSON.stringify([{ ...entry, family: "nokia" }]),
         JSON.stringify([{ ...entry, label: " x" }]),
         JSON.stringify([{ ...entry, clientId: "" }]),
       ])

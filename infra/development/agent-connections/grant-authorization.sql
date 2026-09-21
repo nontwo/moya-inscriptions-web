@@ -221,6 +221,39 @@ BEGIN
   EXECUTE format(
     'GRANT SELECT ON TABLE community.schema_migrations TO %I', consent_role);
 
+  -- The machine principal a consent provisions.
+  --
+  -- WHY THIS PRIVILEGE EXISTS AT ALL. Until now nothing wrote
+  -- `community.agent_principals` outside a harness that pre-seeded it through
+  -- the database owner, so a connection a human actually approved
+  -- authenticated and was then refused by the Backend on every business tool.
+  -- Onboarding was only ever completable by hand.
+  --
+  -- WHAT IT IS BOUNDED TO, and what stays out of reach:
+  --   * a COLUMN LIST, not a table-level grant, so this role writes the
+  --     registry's own fields and cannot touch `revoked_at`. A principal an
+  --     Owner revoked stays revoked; a consent cannot revive an identity that
+  --     was taken away, which is why `provisionPrincipal` refuses instead of
+  --     working around it.
+  --   * SELECT so it can be idempotent — read, compare, and write only when
+  --     the row is not already what this consent wanted.
+  --   * nothing on `agent_delegations` or `agent_operations`: this role
+  --     provisions a READ-ONLY identity and has no business near delegation,
+  --     approval or execution.
+  --
+  -- The label it writes is not its own to choose: it is `principal_label` off
+  -- the connection row, minted at creation and frozen by the trigger in
+  -- 20260920060000, so this privilege cannot be used to adopt another
+  -- connection's identity.
+  EXECUTE format(
+    'GRANT SELECT ON TABLE community.agent_principals TO %I', consent_role);
+  EXECUTE format(
+    'GRANT INSERT (label, display_name, scopes, enabled, created_at, updated_at)
+       ON TABLE community.agent_principals TO %I', consent_role);
+  EXECUTE format(
+    'GRANT UPDATE (display_name, scopes, enabled, version, updated_at)
+       ON TABLE community.agent_principals TO %I', consent_role);
+
   -- ------------------------------------------------------------- resource --
   --
   -- The Admin's MCP boundary. It authenticates requests and decides nothing
@@ -279,6 +312,12 @@ BEGIN
   END IF;
 
   -- DELIBERATELY ABSENT for the consent role:
+  --   * agent_principals.revoked_at -- a revoked machine identity is an
+  --                         Owner's decision, and a consent must not be able
+  --                         to set it or clear it.
+  --   * agent_delegations, agent_operations -- this role provisions a
+  --                         read-only identity; delegation, approval and
+  --                         execution are not its business.
   --   * current_grant_id -- the provider's column. The control plane must not
   --                         be able to re-point a connection at a grant it did
   --                         not create.

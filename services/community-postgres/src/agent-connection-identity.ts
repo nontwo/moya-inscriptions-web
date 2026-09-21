@@ -35,17 +35,37 @@ export class RegisteredClientError extends Error {
   }
 }
 
-/** Client surfaces the Owner connects from. Descriptive, never authenticated. */
-export const CONNECTION_CLIENTS = Object.freeze([
+/**
+ * Onboarding PRESETS, not a vocabulary. These three are the surfaces the Admin
+ * offers a one-click setup for; they are a convenience and an icon, and they
+ * have never been an authorization input.
+ *
+ * WHY THIS IS NO LONGER AN ALLOWLIST. ArtVenn is a tool service, not a client
+ * directory: an approved client must be registrable through configuration, and
+ * one enum value per vendor is a schema change per vendor. What decides
+ * authority is the exact registered `oauth_client_id`, the human's identity,
+ * the resource, the consent, the frozen scopes and the generation — none of
+ * which this label touches. `admitGrant` never reads it, the grant table has
+ * no column for it, and `findForClient` matches on the client id.
+ *
+ * So the family is now a bounded SLUG with a display `label` beside it. The
+ * bound is real: it is templated into `principal_label`
+ * (`agent-<family>-<12 hex>`), whose own CHECK is `^agent-[a-z0-9-]{2,57}$`,
+ * so 32 characters of slug plus the fixed 19 stays inside it with room to
+ * spare.
+ */
+export const CONNECTION_CLIENT_PRESETS = Object.freeze([
   "claude",
   "codex",
   "cursor",
 ] as const);
-export type ConnectionClient = (typeof CONNECTION_CLIENTS)[number];
+export type ConnectionClientPreset = (typeof CONNECTION_CLIENT_PRESETS)[number];
 
-export const isConnectionClient = (value: unknown): value is ConnectionClient =>
-  typeof value === "string" &&
-  (CONNECTION_CLIENTS as readonly string[]).includes(value);
+/** Lower-case, no underscores, no leading dash: safe inside a principal label. */
+export const CONNECTION_CLIENT_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/u;
+
+export const isConnectionClientSlug = (value: unknown): value is string =>
+  typeof value === "string" && CONNECTION_CLIENT_PATTERN.test(value);
 
 /**
  * A client id is bounded because it is carried in a bearer claim, compared
@@ -99,11 +119,40 @@ export const isOauthClientId = (value: unknown): value is string =>
   typeof value === "string" &&
   (isPreregisteredClientId(value) || isCimdClientId(value));
 
+/**
+ * How a registration's callback URIs are judged. A POLICY NAME on the
+ * registration, never a branch on the client's family: a rule that reads
+ * `if (family === "cursor")` is a rule that has to be edited for the next
+ * client, and it makes a descriptive label decide a security question.
+ *
+ *   `loopback-ip`     http:// on 127.0.0.1 or [::1] only. The strictest, and
+ *                     the default for anything that does not say otherwise.
+ *   `loopback-host`   additionally admits the literal host `localhost`, and
+ *                     then requires an explicit port and a real path.
+ *
+ * `loopback-host` exists because real native clients publish a `localhost`
+ * callback — Cursor Desktop's is exactly `http://localhost:8787/callback` —
+ * and refusing the spelling refuses the client. The honest statement of the
+ * tradeoff is in `parseRedirectUris` below; it is a tradeoff, not a free win.
+ */
+export const CALLBACK_POLICIES = Object.freeze([
+  "loopback-ip",
+  "loopback-host",
+] as const);
+export type CallbackPolicy = (typeof CALLBACK_POLICIES)[number];
+
+export const isCallbackPolicy = (value: unknown): value is CallbackPolicy =>
+  typeof value === "string" &&
+  (CALLBACK_POLICIES as readonly string[]).includes(value);
+
 /** One registered client, as BOTH sides read it from one setting. */
 export interface RegisteredClient {
   readonly clientId: string;
-  readonly family: ConnectionClient;
+  /** A bounded slug. Descriptive, never authenticated. */
+  readonly family: string;
   readonly label: string;
+  /** Which callback shapes this registration may use. */
+  readonly callbackPolicy: CallbackPolicy;
   /**
    * Where the provider may send this client back. The Admin never redirects
    * anywhere near it — it is validated here because this is ONE setting read
@@ -113,6 +162,12 @@ export interface RegisteredClient {
   readonly redirectUris: readonly string[];
 }
 
+/** Hosts each policy will accept. Never a wildcard, never a suffix match. */
+const POLICY_HOSTS: Readonly<Record<CallbackPolicy, readonly string[]>> = {
+  "loopback-ip": ["127.0.0.1", "[::1]"],
+  "loopback-host": ["127.0.0.1", "[::1]", "localhost"],
+};
+
 /**
  * A client's redirect URIs, exactly as the provider will have to match them.
  *
@@ -120,10 +175,36 @@ export interface RegisteredClient {
  * use for, and anything else is refused rather than passed through: a redirect
  * target is where an authorization code is delivered, so a registry that
  * accepted a remote host would be the whole flow's weakest link.
+ *
+ * WHAT EACH REGISTRATION BUYS BY CHOOSING `loopback-host`, stated as a
+ * tradeoff rather than as a reassurance:
+ *
+ *   * `127.0.0.1` and `[::1]` are addresses; the kernel decides what they mean
+ *     and nothing in userspace can move them. `localhost` is a NAME, and a
+ *     name is resolved — a hosts file, a resolver or an mDNS responder can
+ *     point it somewhere else. That is the whole of the difference, and it is
+ *     why `loopback-ip` stays the default.
+ *   * What still holds either way: the scheme must be `http:`, the path must
+ *     be a real path, there is no userinfo, no fragment and no query, and the
+ *     stored form must be byte-identical to what was written — so a
+ *     `localhost` registration is never quietly rewritten to an IP, and an IP
+ *     registration never quietly accepts the name.
+ *   * What does NOT hold, and must not be claimed: the PORT is not pinned at
+ *     match time. `oidc-provider` matches a native client's loopback redirect
+ *     with the RFC 8252 §7.3 ephemeral-port exception (`stripLoopbackPort` in
+ *     its `models/client.js`, over the same three hosts), so any port on the
+ *     registered host and path is accepted by the provider whatever this
+ *     registry stores. Requiring an explicit port here is defence in depth and
+ *     a readability rule — it is not a guarantee, and reading it as one would
+ *     be the kind of comment this task has had to retract before.
  */
-const parseRedirectUris = (value: unknown): readonly string[] => {
+const parseRedirectUris = (
+  value: unknown,
+  policy: CallbackPolicy,
+): readonly string[] => {
   if (!Array.isArray(value) || value.length === 0)
     throw new RegisteredClientError("CLIENTS_MALFORMED");
+  const hosts = POLICY_HOSTS[policy];
   return value.map((entry) => {
     if (typeof entry !== "string")
       throw new RegisteredClientError("CLIENTS_MALFORMED");
@@ -135,10 +216,20 @@ const parseRedirectUris = (value: unknown): readonly string[] => {
     }
     if (
       url.protocol !== "http:" ||
-      !["127.0.0.1", "[::1]"].includes(url.hostname) ||
+      !hosts.includes(url.hostname) ||
       url.hash !== "" ||
+      url.search !== "" ||
       url.username !== "" ||
       url.password !== "" ||
+      // A real path. `/` is the closest thing a URL has to a wildcard here,
+      // and a registration that accepts the root accepts every deep link a
+      // future bug might build under it.
+      url.pathname === "/" ||
+      url.pathname === "" ||
+      // An explicit port, so the registration says what it means even though
+      // the provider will not enforce it (see the note above).
+      url.port === "" ||
+      // The guarantee that no spelling is normalized on the way in.
       url.href !== entry
     )
       throw new RegisteredClientError("CLIENTS_REDIRECT_NOT_LOOPBACK");
@@ -170,17 +261,33 @@ export const parseRegisteredClients = (
     if (typeof entry !== "object" || entry === null || Array.isArray(entry))
       throw new RegisteredClientError("CLIENTS_MALFORMED");
     const record = entry as Record<string, unknown>;
+    // `callbackPolicy` is OPTIONAL and defaults to the strict policy, so an
+    // existing registration keeps exactly the rule it was written under and a
+    // wider rule is something a registration has to ASK for in writing.
+    const keys = Object.keys(record).sort().join(",");
     if (
-      Object.keys(record).sort().join(",") !==
-        "clientId,family,label,redirectUris" ||
+      (keys !== "clientId,family,label,redirectUris" &&
+        keys !== "callbackPolicy,clientId,family,label,redirectUris") ||
       typeof record.label !== "string" ||
       record.label.trim() !== record.label ||
       record.label.length === 0 ||
       record.label.length > 64
     )
       throw new RegisteredClientError("CLIENTS_MALFORMED");
-    const redirectUris = parseRedirectUris(record.redirectUris);
-    if (!isOauthClientId(record.clientId) || !isConnectionClient(record.family))
+    // KEY PRESENCE, not `??`. A nullish coalesce reads an explicit
+    // `"callbackPolicy": null` as "use the default", which is a malformed
+    // entry silently upgraded into a valid one. Absent means default; present
+    // means it must be a policy this code knows.
+    const callbackPolicy = Object.hasOwn(record, "callbackPolicy")
+      ? record.callbackPolicy
+      : "loopback-ip";
+    if (!isCallbackPolicy(callbackPolicy))
+      throw new RegisteredClientError("CLIENTS_MALFORMED");
+    const redirectUris = parseRedirectUris(record.redirectUris, callbackPolicy);
+    if (
+      !isOauthClientId(record.clientId) ||
+      !isConnectionClientSlug(record.family)
+    )
       throw new RegisteredClientError("CLIENTS_MALFORMED");
     // Two entries for one client id is an ambiguity, not a later-wins rule.
     if (clients.has(record.clientId))
@@ -189,6 +296,7 @@ export const parseRegisteredClients = (
       clientId: record.clientId,
       family: record.family,
       label: record.label,
+      callbackPolicy,
       redirectUris,
     });
   }

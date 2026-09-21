@@ -30,7 +30,7 @@ export type {
   ConsentSnapshot,
   CapabilityScope,
   ScopeAdmission,
-  ConnectionClient,
+  ConnectionClientPreset,
   ConnectionPreset,
   ConnectionStatus,
   VerifiedGrant,

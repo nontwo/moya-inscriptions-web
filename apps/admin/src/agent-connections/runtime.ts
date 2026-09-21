@@ -4,6 +4,7 @@ import {
   parsePostgresConfig,
 } from "@moya/catalog-postgres";
 import {
+  PostgresAgentAdministrationAdapter,
   createAgentConnectionStore,
   createConsentStore,
 } from "@moya/community-postgres";
@@ -13,6 +14,8 @@ import { connectionsEnabled } from "./composition";
 import { parseRegisteredClients } from "./consent";
 
 import type { RegisteredClient } from "./consent";
+
+import type { PrincipalRegistry } from "./principal";
 
 import type { ConsentStore } from "@moya/community-postgres";
 
@@ -51,6 +54,24 @@ export interface ConsentRuntime {
   readonly clients: ReadonlyMap<string, RegisteredClient>;
   readonly authority: ConnectionAuthority;
   readonly connections: ReturnType<typeof createAgentConnectionStore>;
+  /**
+   * The machine-principal registry a consent provisions into.
+   *
+   * REQUIRED, and a consent FAILS when the control-plane role cannot write it.
+   * An earlier version of this comment called it optional and claimed a
+   * deployment without the grant would keep today's behaviour; that was wrong
+   * in two ways, and running it proved both. The adapter is always
+   * constructed, so it was never actually absent — and degrading would be the
+   * wrong choice anyway: it would hand back a connection that authenticates
+   * and can read nothing, which is the exact defect this closes, now with a
+   * success message on top. The grant in
+   * The runtime grant plan is a prerequisite (named in prose rather than by
+   * filename: an Admin source file carrying a direct data-file reference is
+   * itself a boundary violation, and the architecture test is right to say
+   * so). A deployment missing it gets a loud 500 at consent rather than a
+   * quiet 403 at every later tool call.
+   */
+  readonly principals: PrincipalRegistry;
   /** The frozen issuer origin. Never derived from a request. */
   readonly issuer: string;
   /** The frozen resource this Admin is the resource server for. */
@@ -157,6 +178,10 @@ export const createConsentRuntime = (
     consents: createConsentStore({ pool }),
     clients,
     connections,
+    // The same control-plane pool, so provisioning authenticates as the
+    // consent role and is bounded by the grant that role holds — not by a
+    // second, wider connection opened for convenience.
+    principals: new PostgresAgentAdministrationAdapter(pool),
     authority: new ConnectionAuthority({ store: connections }),
     issuer,
     resource,

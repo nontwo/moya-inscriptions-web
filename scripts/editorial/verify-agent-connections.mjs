@@ -442,7 +442,6 @@ async function main() {
     const seededHandle = `acc-${randomBytes(6).toString("hex")}`;
     const seededUserId = `user-${randomBytes(16).toString("hex")}`;
     const seededDisplayName = `Acceptance ${seededHandle}`;
-    const principalLabel = `agent-acceptance-${randomBytes(6).toString("hex")}`;
     const operatorToken = randomBytes(32).toString("hex");
 
     const distDir = `.next-acceptance-${randomBytes(4).toString("hex")}`;
@@ -494,53 +493,27 @@ async function main() {
     const seedPool = createPostgresPool(
       parsePostgresConfig({ DATABASE_URL: target.href }),
     );
-    let connectionId;
     try {
-      const { PostgresAgentAdministrationAdapter } = await import(
-        path.join(root, "services/community-postgres/dist/index.js")
-      );
       // One synthetic public user, by an exact handle nothing else uses.
       await seedPool.query(
         `INSERT INTO community.public_users (id, handle, display_name, status)
          VALUES ($1,$2,$3,'active')`,
         [seededUserId, seededHandle, seededDisplayName],
       );
-      // The principal the agent boundary checks scopes against, written
-      // through the real adapter rather than by hand. READ-ONLY scopes only:
-      // this milestone grants no management anywhere, including here.
-      await new PostgresAgentAdministrationAdapter(seedPool).writePrincipal(
-        {
-          label: principalLabel,
-          displayName: "Acceptance read-only agent",
-          scopes: ["users:read", "content:read", "comments:read"],
-          enabled: true,
-          expectedVersion: 0,
-        },
-        new Date(),
-      );
-      // The connection the consent will attach to, created up front so its
-      // principal label is KNOWN and can be registered above. `resolveConnection`
-      // finds this row for the same Owner and client and reuses it, label and
-      // all, instead of generating a new one the Backend would not recognise.
-      const owner = (
-        await seedPool.query("SELECT id FROM users WHERE email=$1 LIMIT 1", [
-          "owner@editorial.example.invalid",
-        ])
-      ).rows[0];
-      if (!owner) throw new Error("HARNESS_OWNER_NOT_BOOTSTRAPPED");
-      connectionId = `conn-${randomBytes(16).toString("hex")}`;
-      await seedPool.query(
-        `INSERT INTO community.agent_connections
-           (id, human_account_id, client_family, oauth_client_id, environment,
-            principal_label, preset, status)
-         VALUES ($1,$2,'claude',$3,'synthetic',$4,'read-only','awaiting-consent')`,
-        [
-          connectionId,
-          `payload-user-${String(owner.id)}`,
-          clientId,
-          principalLabel,
-        ],
-      );
+      // NOTHING ELSE IS SEEDED, and the absence is the test.
+      //
+      // This block used to write the machine principal through the database
+      // owner and pre-create the connection row carrying its label, because
+      // consent registered no principal and a connection it created would
+      // have been refused by the Backend on every tool. That made the harness
+      // pass over a product that could not onboard anybody: the only working
+      // first connection was one a developer had built by hand.
+      //
+      // Consent now provisions the principal itself, so the harness creates
+      // NO principal and NO connection. What the acceptance exercises is the
+      // real first-connection path — `resolveConnection` opens the row,
+      // `decideConsent` provisions its identity, and the Backend authorizes
+      // against a registry row nobody seeded.
     } finally {
       await closePostgresPool(seedPool);
     }

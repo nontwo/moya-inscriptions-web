@@ -30,6 +30,11 @@
  * here by `readForAuthorization` returning the grant alongside the connection.
  */
 
+// The family pattern, imported rather than respelled. A sibling module in this
+// same package, so there is no dependency to invert — unlike the client-id
+// FORMS, which live in `apps/admin` and are deliberately not duplicated here.
+import { CONNECTION_CLIENT_PATTERN } from "./agent-connection-identity.js";
+
 /** The three states a connection is ever in. */
 export type StoredConnectionStatus =
   "awaiting-consent" | "authorized" | "revoked";
@@ -37,8 +42,14 @@ export type StoredConnectionStatus =
 /** The two consent presets, spelled exactly as the CHECK constraint spells them. */
 export type StoredConnectionPreset = "read-only" | "management";
 
-/** Descriptive vendor family. Never identity. */
-export type StoredConnectionClient = "claude" | "codex" | "cursor";
+/**
+ * Descriptive vendor family. Never identity.
+ *
+ * A bounded slug rather than a three-value union. The union here used to be
+ * hand-copied from `agent-connection-identity.ts` — two spellings of one rule,
+ * which agree until one is edited — so it is now the same pattern, imported.
+ */
+export type StoredConnectionClient = string;
 
 /**
  * The connection as the consented shape sees it. Field names match
@@ -177,7 +188,6 @@ const CONNECTION_SELECT = CONNECTION_COLUMNS.join(", ");
 
 const STATUSES = new Set(["awaiting-consent", "authorized", "revoked"]);
 const PRESETS = new Set(["read-only", "management"]);
-const CLIENTS = new Set(["claude", "codex", "cursor"]);
 const DESTROY_STATUSES = new Set([
   "not-requested",
   "pending",
@@ -308,9 +318,13 @@ export const parseConnectionRow = (
       "principal_label",
     ),
     humanAccountId: text(row.human_account_id, "human_account_id"),
-    client: member<StoredConnectionClient>(
+    // Pattern, not membership. THIS IS ON THE AUTHORIZATION READ PATH —
+    // `readForAuthorization` parses every connection through here — so it has
+    // to widen in lockstep with the column's CHECK, or a row the database
+    // accepts becomes a row no request can authenticate against.
+    client: shaped(
       row.client_family,
-      CLIENTS,
+      CONNECTION_CLIENT_PATTERN,
       "client_family",
     ),
     oauthClientId: boundedBytes(

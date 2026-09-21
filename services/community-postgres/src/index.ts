@@ -41,17 +41,21 @@ export {
   parseGrantRow,
 } from "./agent-connection-store.js";
 export {
+  CALLBACK_POLICIES,
   CLIENT_ID_MAX_BYTES,
-  CONNECTION_CLIENTS,
+  CONNECTION_CLIENT_PATTERN,
+  CONNECTION_CLIENT_PRESETS,
   RegisteredClientError,
+  isCallbackPolicy,
   isCimdClientId,
-  isConnectionClient,
+  isConnectionClientSlug,
   isOauthClientId,
   isPreregisteredClientId,
   parseRegisteredClients,
 } from "./agent-connection-identity.js";
 export type {
-  ConnectionClient,
+  CallbackPolicy,
+  ConnectionClientPreset,
   RegisteredClient,
 } from "./agent-connection-identity.js";
 export {

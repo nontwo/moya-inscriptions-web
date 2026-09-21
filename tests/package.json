@@ -12,6 +12,7 @@
     "test:cms": "vitest run cms --no-file-parallelism --testTimeout=30000 --hookTimeout=60000"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@moya/agent-authorization": "workspace:*",
     "@moya/api": "workspace:*",
     "@moya/backend-production": "workspace:*",

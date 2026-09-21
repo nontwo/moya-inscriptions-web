@@ -15,6 +15,7 @@ import {
   editorialEndpoints,
 } from "./src/editorial";
 import { agentConnectionEndpoints } from "./src/agent-connections/endpoints";
+import { agentConnectionAuthenticateHeader } from "./src/agent-connections/discovery";
 import { communityEndpoints } from "./src/community/endpoints";
 import { editorialMcp } from "./src/mcp";
 import { createMediaCollection } from "./src/media/collection";
@@ -204,6 +205,21 @@ export default buildConfig({
     editorialPreviewEndpoint,
   ],
   plugins: [createEditorialStoragePlugin(), editorialMcp()],
+  hooks: {
+    // The one header a standards-based MCP client needs before it has a token.
+    //
+    // A 401 from `/api/mcp` used to carry nothing, so a client following the
+    // MCP authorization spec had no way to learn where the authorization
+    // server is — measured against the running service, not inferred. Payload
+    // runs `afterError` before it builds the response and merges
+    // `req.responseHeaders` into it, so this is the supported seam; the
+    // alternative was patching the MCP plugin.
+    //
+    // Only that path, only that status, and only the metadata pointer: no
+    // `error="invalid_token"`, because the boundary answers ONE shape whatever
+    // went wrong and telling a prober which rule refused them would undo that.
+    afterError: [agentConnectionAuthenticateHeader],
+  },
   typescript: {
     autoGenerate: false,
     outputFile: path.resolve(dirname, "src/payload-types.ts"),
