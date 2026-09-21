@@ -186,6 +186,24 @@ describe("the agent-connections acceptance runs in CI", () => {
       "backend-read-restored-by-fresh-consent",
     ])
       assert.ok(harness.includes(`"${stage}"`), stage);
+
+    // The two children that carry the generic-interoperability evidence are
+    // started by the harness and their failure is a hard failure. Named here
+    // so deleting either is caught by a dependency-free script test rather
+    // than by noticing the stage count dropped.
+    for (const [child, code] of [
+      [
+        "tests/cms/agent-connections-callback-policy.mjs",
+        "CALLBACK_POLICY_CHECK_FAILED",
+      ],
+      [
+        "tests/cms/agent-connections-generic-client.mjs",
+        "GENERIC_CLIENT_CHECK_FAILED",
+      ],
+    ]) {
+      assert.ok(harness.includes(child), child);
+      assert.ok(harness.includes(`throw new Error("${code}")`), code);
+    }
   });
 
   it("refuses to start a Backend that is not a disposable target this harness owns", () => {

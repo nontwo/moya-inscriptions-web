@@ -70,6 +70,31 @@ const MODELS = [
 ] as const;
 export type ProviderModel = (typeof MODELS)[number];
 
+/**
+ * Models this provider KNOWS about and deliberately does not store.
+ *
+ * `Client` is the one that matters. Dynamic client registration is off by
+ * design — every client is preregistered in one setting read by both sides —
+ * so there is no dynamically-registered client to find, ever. But
+ * `oidc-provider` still constructs `new Adapter("Client")` while resolving an
+ * unknown `client_id`, and this adapter used to THROW there, which surfaced
+ * as `server_error: oops! something went wrong` with a 500.
+ *
+ * Measured against the running provider: a mistyped or unregistered client id
+ * — the single most likely setup mistake an Owner or a client author will
+ * make — produced an opaque server error instead of `invalid_client`. It
+ * failed closed, so it was never a way in; it was a way to be unable to tell
+ * what was wrong.
+ *
+ * So this is NOT a hole in the allowlist. An unknown model still throws,
+ * because an unexpected model still means a provider feature was enabled
+ * without the migration that bounds its storage. This says something
+ * different and narrower: we know what a Client is, we store none, a lookup
+ * finds nothing, and every write is refused.
+ */
+const UNSTORED_MODELS = ["Client"] as const;
+export type UnstoredProviderModel = (typeof UNSTORED_MODELS)[number];
+
 const FORMAT_VERSION = 1;
 
 export class ProviderAdapterKeyError extends Error {
@@ -236,11 +261,21 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
      * anonymous exported class. */
     readonly model: ProviderModel;
 
+    /** True for a model we know and deliberately keep no rows for. */
+    readonly unstored: boolean;
+
     constructor(name: string) {
+      if ((UNSTORED_MODELS as readonly string[]).includes(name)) {
+        this.unstored = true;
+        // Never read or written; the branches below return before using it.
+        this.model = "Session";
+        return;
+      }
       if (!(MODELS as readonly string[]).includes(name))
         // Refusing is the point: an unexpected model means a provider feature
         // was enabled without the migration that bounds its storage.
         throw new Error(`unsupported provider model ${name}`);
+      this.unstored = false;
       this.model = name as ProviderModel;
     }
 
@@ -249,6 +284,12 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
       payload: Record<string, unknown>,
       expiresIn: number,
     ): Promise<void> {
+      // A write for a model we deliberately store none of is a REFUSAL, not a
+      // quiet no-op: reaching here would mean dynamic client registration had
+      // been switched on somewhere, and this adapter must not be the thing
+      // that silently makes that work.
+      if (this.unstored)
+        throw new Error(`refusing to store provider model ${"Client"}`);
       const expiresAt = new Date(now().getTime() + expiresIn * 1000);
       const uid = typeof payload.uid === "string" ? payload.uid : undefined;
       await pool.query(
@@ -285,6 +326,9 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
      * failing closed is what keeps a tampered row from becoming authority.
      */
     async find(id: string): Promise<Record<string, unknown> | undefined> {
+      // No Client is ever stored: a lookup finds nothing, and the provider
+      // answers `invalid_client` instead of a server error.
+      if (this.unstored) return undefined;
       const digest = digestOf(keys, this.model, id);
       const { rows } = await pool.query(
         `SELECT sealed_payload, consumed_at, grant_id FROM ${TABLE}
@@ -312,6 +356,9 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
 
     /** Session only. The uid is a second identifier the provider looks up by. */
     async findByUid(uid: string): Promise<Record<string, unknown> | undefined> {
+      // No Client is ever stored: a lookup finds nothing, and the provider
+      // answers `invalid_client` instead of a server error.
+      if (this.unstored) return undefined;
       const { rows } = await pool.query(
         `SELECT lookup_digest, sealed_payload, consumed_at, grant_id
            FROM ${TABLE} WHERE uid_digest=$1 AND model='Session'`,
@@ -339,6 +386,7 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
 
     /** Atomic: the row is marked consumed in one statement, never read-modify-write. */
     async consume(id: string): Promise<void> {
+      if (this.unstored) return;
       await pool.query(
         `UPDATE ${TABLE} SET consumed_at=$3
           WHERE lookup_digest=$1 AND model=$2 AND consumed_at IS NULL`,
@@ -348,6 +396,7 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
 
     /** Tolerates an id that is already gone: session rotation destroys first. */
     async destroy(id: string): Promise<void> {
+      if (this.unstored) return;
       await pool.query(
         `DELETE FROM ${TABLE} WHERE lookup_digest=$1 AND model=$2`,
         [digestOf(keys, this.model, id), this.model],
@@ -359,6 +408,7 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
      * construction — a second sweep deletes nothing and creates no authority.
      */
     async revokeByGrantId(grantId: string): Promise<void> {
+      if (this.unstored) return;
       await pool.query(`DELETE FROM ${TABLE} WHERE grant_id=$1 AND model=$2`, [
         grantId,
         this.model,

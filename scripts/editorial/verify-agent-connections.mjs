@@ -452,7 +452,16 @@ async function main() {
     // verbatim and put back, whatever happens after this line.
     nextEnvPath = path.join(adminRoot, "next-env.d.ts");
     nextEnvBefore = await readSource(nextEnvPath, "utf8");
-    const [authPort, adminPort, redirectPort, backendPort] = await Promise.all([
+    const [
+      authPort,
+      adminPort,
+      redirectPort,
+      backendPort,
+      hostRedirectPort,
+      genericRedirectPort,
+    ] = await Promise.all([
+      freePort(),
+      freePort(),
       freePort(),
       freePort(),
       freePort(),
@@ -472,12 +481,36 @@ async function main() {
     // this and nothing else reaches it at all.
     const backendOrigin = `http://127.0.0.1:${backendPort}`;
     const clientId = "artvenn-acceptance-client";
+    // A client whose family is in NONE of the three onboarding presets, and
+    // whose registration required no code change to exist. This is what the
+    // generic-SDK stage authorizes as, so "any authorized client" is a thing
+    // the acceptance actually does rather than a sentence in a document.
+    const genericClientId = "artvenn-acceptance-generic";
+    const genericRedirectUri = `http://127.0.0.1:${genericRedirectPort}/callback`;
+    // And one registered under the permissive callback policy, so the policy
+    // is exercised against the real provider rather than only against the
+    // registry parser.
+    const hostClientId = "artvenn-acceptance-hostname";
+    const hostRedirectUri = `http://localhost:${hostRedirectPort}/callback`;
     const clients = JSON.stringify([
       {
         clientId,
         family: "claude",
         label: "Acceptance client",
         redirectUris: [redirectUri],
+      },
+      {
+        clientId: genericClientId,
+        family: "acme-agent",
+        label: "ACME agent",
+        redirectUris: [genericRedirectUri],
+      },
+      {
+        clientId: hostClientId,
+        family: "cursor",
+        label: "Hostname callback client",
+        callbackPolicy: "loopback-host",
+        redirectUris: [hostRedirectUri],
       },
     ]);
     // Task-private synthetic keys, generated per run, never printed and never
@@ -678,6 +711,101 @@ async function main() {
     // passing is exactly the situation this refuses to accept as evidence.
     if (summary.backendToolRead !== "VERIFIED")
       throw new Error("BACKEND_TOOL_READ_NOT_VERIFIED");
+    session.assertActive();
+
+    // What the REAL provider does with a callback, against the policy this
+    // repository records. A separate child because it drives the
+    // authorization service directly and completes no flow — the registry's
+    // unit tests decide what may be REGISTERED, and only this can say what
+    // the provider will REDEEM.
+    const policy = session.start(
+      ["tests/cms/agent-connections-callback-policy.mjs"],
+      root,
+      {
+        ...shared,
+        AGENT_ACCEPTANCE_ISSUER: issuer,
+        AGENT_ACCEPTANCE_RESOURCE: resource,
+        AGENT_ACCEPTANCE_CLIENT_ID: clientId,
+        AGENT_ACCEPTANCE_REDIRECT_URI: redirectUri,
+        AGENT_ACCEPTANCE_HOST_CLIENT_ID: hostClientId,
+        AGENT_ACCEPTANCE_HOST_REDIRECT: hostRedirectUri,
+      },
+    );
+    const policyCode = await policy.closed;
+    const policyResult = policy
+      .output()
+      .trim()
+      .split("\n")
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter((item) => item && typeof item.ok === "boolean")
+      .at(-1);
+    if (policyCode !== 0 || policyResult?.ok !== true) {
+      console.log(
+        JSON.stringify({
+          syntheticAgentConnections: "FAIL",
+          check: "callback-policy",
+          stage: /^[a-z][a-z-]{0,95}$/.test(policyResult?.stage ?? "")
+            ? policyResult.stage
+            : "unrecognized-policy-result",
+        }),
+      );
+      throw new Error("CALLBACK_POLICY_CHECK_FAILED");
+    }
+    summary.completed.push(...(policyResult.completed ?? []));
+    session.assertActive();
+
+    // An UNFAMILIAR client, using the official MCP SDK, told nothing but the
+    // server URL and its own registration. The browser acceptance above
+    // proves the product works; only this proves it is DISCOVERABLE, because
+    // only this has to discover anything.
+    const generic = session.start(
+      ["tests/cms/agent-connections-generic-client.mjs"],
+      root,
+      {
+        ...shared,
+        AGENT_ACCEPTANCE_ADMIN_ORIGIN: adminOrigin,
+        AGENT_ACCEPTANCE_RESOURCE: resource,
+        AGENT_ACCEPTANCE_ISSUER: issuer,
+        AGENT_ACCEPTANCE_GENERIC_CLIENT_ID: genericClientId,
+        AGENT_ACCEPTANCE_GENERIC_REDIRECT: genericRedirectUri,
+        AGENT_ACCEPTANCE_SEEDED_HANDLE: seededHandle,
+        AGENT_ACCEPTANCE_SEEDED_USER_ID: seededUserId,
+        AGENT_ACCEPTANCE_SEEDED_DISPLAY_NAME: seededDisplayName,
+      },
+    );
+    const genericCode = await generic.closed;
+    const genericResult = generic
+      .output()
+      .trim()
+      .split("\n")
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter((item) => item && typeof item.ok === "boolean")
+      .at(-1);
+    if (genericCode !== 0 || genericResult?.ok !== true) {
+      console.log(
+        JSON.stringify({
+          syntheticAgentConnections: "FAIL",
+          check: "generic-client",
+          stage: /^[a-z][a-z-]{0,95}$/.test(genericResult?.stage ?? "")
+            ? genericResult.stage
+            : "unrecognized-generic-result",
+        }),
+      );
+      throw new Error("GENERIC_CLIENT_CHECK_FAILED");
+    }
+    summary.completed.push(...(genericResult.completed ?? []));
     session.assertActive();
 
     // Restart both services against the SAME stores and the SAME keys. The
