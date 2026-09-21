@@ -29,6 +29,7 @@ export interface ProductApplicationProps extends Pick<
   | "initialHomeFeed"
   | "initialPlatform"
   | "initialTopicId"
+  | "developmentDiscussion"
   | "navigationAction"
   | "productUtility"
   | "states"
@@ -103,10 +104,6 @@ const AuthorProduct = ({
             <T02pProductPreview
               {...preview}
               detailScopeKey={author.viewer?.id ?? "guest"}
-              developmentDiscussion={
-                process.env.NODE_ENV === "development" &&
-                process.env.NEXT_PUBLIC_MOYA_DISCUSSION_PREVIEW === "true"
-              }
               // Publishing takes the one dock action; Search moves to the headers.
               navigationAction={<CreateWorkAction />}
               renderEditorOverlay={renderEditorOverlay}
@@ -131,7 +128,14 @@ const AuthorProduct = ({
               )}
               userPage={<UserPage />}
               headerStart={<CatalogSearchHeaderAction />}
-              headerEnd={<MessageTrigger unreadCount={unreadCount} />}
+              headerEnd={
+                <MessageTrigger
+                  developmentPreview={
+                    preview.developmentDiscussion ?? false
+                  }
+                  unreadCount={unreadCount}
+                />
+              }
             />
           </PublishingEntryProvider>
         </LiveCatalogCards>

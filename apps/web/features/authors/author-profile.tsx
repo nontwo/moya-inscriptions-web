@@ -734,8 +734,7 @@ export const AuthorProfileOverlay = (
   props: ProductShellProfileOverlayRenderProps & AuthorProfilePresentationProps,
 ) => {
   const author = useAuthors();
-  const preview =
-    process.env.NODE_ENV === "development" ? props.preview : undefined;
+  const preview = props.preview;
   return (
     <ScopedAuthorProfile
       key={`${preview ? "preview" : (author.viewer?.id ?? "guest")}:${props.state.entryId}`}

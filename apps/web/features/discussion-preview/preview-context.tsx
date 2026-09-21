@@ -291,7 +291,7 @@ export function DiscussionPreviewProvider({
   enabled: boolean;
   children: ReactNode;
 }) {
-  return enabled && process.env.NODE_ENV === "development" ? (
+  return enabled ? (
     <PreviewState>{children}</PreviewState>
   ) : (
     children

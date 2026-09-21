@@ -8,6 +8,7 @@ import { requestIdentity } from "../shell/request-identity";
 import { AuthorProfileOverlay } from "./author-profile";
 
 interface PreviewAuthorProfileProps {
+  readonly enabled?: boolean;
   readonly name: string;
   readonly onClose: () => void;
   readonly followed?: boolean | undefined;
@@ -16,8 +17,11 @@ interface PreviewAuthorProfileProps {
 }
 
 /** Local presentation data in the existing author page; the caller owns Back. */
-export function PreviewAuthorProfile(props: PreviewAuthorProfileProps) {
-  if (process.env.NODE_ENV !== "development") return null;
+export function PreviewAuthorProfile({
+  enabled = false,
+  ...props
+}: PreviewAuthorProfileProps) {
+  if (!enabled) return null;
   return <ScopedPreviewAuthorProfile key={props.name} {...props} />;
 }
 

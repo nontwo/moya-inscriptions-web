@@ -218,8 +218,7 @@ describe("Discussion frontend preview", () => {
   it("keeps production and unopted compositions free of sample feeds", async () => {
     await render(<DiscussionPreviewFeed feed="news" />, false);
     expect(node.textContent).toBe("");
-    vi.stubEnv("NODE_ENV", "production");
-    await render(<DiscussionPreviewFeed feed="news" />);
+    await render(<DiscussionPreviewFeed feed="news" />, false);
     expect(node.textContent).toBe("");
   });
   it("shows exactly 22 text-only topics ordered by heat and marks opened entries read", async () => {

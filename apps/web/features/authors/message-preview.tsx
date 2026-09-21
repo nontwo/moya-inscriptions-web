@@ -1166,6 +1166,7 @@ export function MessagePreview({
       </div>
       {profilePerson !== null && (
         <PreviewAuthorProfile
+          enabled
           insideDialog
           name={profilePerson === "self" ? "我" : people[profilePerson]!.name}
           followed={

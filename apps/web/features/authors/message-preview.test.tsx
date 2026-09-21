@@ -73,7 +73,8 @@ const button = (text: string) => {
   return found;
 };
 const click = (text: string) => act(async () => button(text).click());
-const render = () => act(async () => root.render(<MessageTrigger />));
+const render = () =>
+  act(async () => root.render(<MessageTrigger developmentPreview />));
 const flushFrames = () =>
   act(async () => frames.splice(0).forEach((fn) => fn(0)));
 const pointer = (
@@ -323,7 +324,7 @@ describe("Frontend message preview", () => {
     await act(async () =>
       root.render(
         <DiscussionPreviewProvider enabled>
-          <MessageTrigger />
+          <MessageTrigger developmentPreview />
         </DiscussionPreviewProvider>,
       ),
     );
@@ -356,7 +357,7 @@ describe("Frontend message preview", () => {
     await act(async () =>
       root.render(
         <DiscussionPreviewProvider enabled>
-          <MessageTrigger />
+          <MessageTrigger developmentPreview />
         </DiscussionPreviewProvider>,
       ),
     );
@@ -364,7 +365,7 @@ describe("Frontend message preview", () => {
     await act(async () =>
       root.render(
         <DiscussionPreviewProvider enabled>
-          <MessageTrigger />
+          <MessageTrigger developmentPreview />
         </DiscussionPreviewProvider>,
       ),
     );
@@ -951,8 +952,8 @@ describe("Frontend message preview", () => {
   });
 
   it("never composes synthetic messages in production", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    await open();
+    await act(async () => root.render(<MessageTrigger />));
+    await click("打开消息");
     expect(node.textContent).not.toContain("示例消息");
     expect(node.textContent).not.toContain("秋山");
     expect(node.textContent).toContain("暂无私信");

@@ -545,6 +545,7 @@ export function DiscussionPreviewDetail({
       </section>
       {profileName && (
         <PreviewAuthorProfile
+          enabled
           name={profileName}
           onClose={() => navigation.requestBack()}
         />

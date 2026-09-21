@@ -97,6 +97,7 @@ const render = async (
   act(async () =>
     root.render(
       <PreviewAuthorProfile
+        enabled
         name="秋山"
         onClose={onClose}
         onFollowChange={onFollowChange}
@@ -281,9 +282,8 @@ describe("Official author profile with local preview data", () => {
   });
 
   it("does not expose fixture profiles in production", async () => {
-    vi.stubEnv("NODE_ENV", "production");
     author.viewer = { id: `user-${"3".repeat(32)}` };
-    await render();
+    await render({ enabled: false });
     expect(node.childElementCount).toBe(0);
     expect(onFollowChange).not.toHaveBeenCalled();
     expectLocalOnly();

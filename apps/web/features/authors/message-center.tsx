@@ -24,21 +24,26 @@ const labels = {
 };
 export function MessageTrigger({
   unreadCount = 0,
+  developmentPreview = false,
 }: {
   readonly unreadCount?: number;
+  readonly developmentPreview?: boolean;
 }) {
   const author = useAuthors();
   return (
     <ScopedMessageTrigger
       key={author.viewer?.id ?? "guest"}
       unreadCount={unreadCount}
+      developmentPreview={developmentPreview}
     />
   );
 }
 function ScopedMessageTrigger({
   unreadCount,
+  developmentPreview,
 }: {
   readonly unreadCount: number;
+  readonly developmentPreview: boolean;
 }) {
   const author = useAuthors();
   const shell = useProductShell();
@@ -121,7 +126,7 @@ function ScopedMessageTrigger({
           </span>
         )}
       </button>
-      {open && process.env.NODE_ENV === "development" ? (
+      {open && developmentPreview ? (
         <MessagePreview
           closeRequested={closeRequested}
           initialCommentTab={previewCommentTab ?? "received"}
