@@ -1,0 +1,414 @@
+/* Scoped to the `AI 连接` page. Payload's own pages and buttons are untouched.
+   Tokens and the restrained black/white base follow community.module.css so
+   the two Admin surfaces read as one product. */
+
+.page {
+  display: grid;
+  gap: 24px;
+  /* Payload's own horizontal gutter, so this view lines up with every other
+     Admin page instead of sitting flush against the viewport edge. Captured
+     at 1440px before this was added, where the title started at x=0. */
+  padding: 0 var(--gutter-h, 24px) 32px;
+  color: var(--theme-elevation-900, #1a1a1a);
+}
+
+.header {
+  display: grid;
+  gap: 8px;
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.lead {
+  margin: 0;
+  max-width: 62ch;
+  color: #5c5c5c;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* One badge shape for every small piece of state, so "read-only" and
+   "authorized" cannot drift into two visual languages. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.badge[data-tone="neutral"] {
+  background: var(--theme-elevation-50, #f6f6f6);
+  color: #444;
+}
+
+.badge[data-tone="active"] {
+  border-color: #1a1a1a;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.badge[data-tone="pending"] {
+  border-color: #b4801a;
+  background: #fdf6e7;
+  color: #7a5310;
+}
+
+.badge[data-tone="attention"] {
+  border-color: #a33;
+  background: #fdeeee;
+  color: #8a2b2b;
+}
+
+.badge[data-tone="muted"] {
+  background: transparent;
+  color: #767676;
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.sectionNote {
+  margin: 0;
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cards {
+  display: grid;
+  gap: 12px;
+}
+
+/* Connected applications: one card per connection, primary action on the
+   right at desktop width and stacked under the text when narrow. */
+.card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.cardMain {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 22rem;
+}
+
+.cardTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  /* Never let a long label push the card wide enough to scroll. */
+  overflow-wrap: anywhere;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.button {
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 6px;
+  padding: 6px 14px;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--theme-elevation-50, #f6f6f6);
+}
+
+.button:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.buttonPrimary {
+  border-color: #1a1a1a;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: #000;
+}
+
+/* Destructive, and deliberately not the same shape as anything else on the
+   page. A disconnect is the one action here that takes something away. */
+.buttonDanger {
+  border-color: #a33;
+  color: #8a2b2b;
+}
+
+.buttonDanger:hover:not(:disabled) {
+  background: #fdeeee;
+}
+
+.empty {
+  margin: 0;
+  border: 1px dashed var(--theme-elevation-200, #ddd);
+  border-radius: 8px;
+  padding: 20px 16px;
+  color: #5c5c5c;
+  font-size: 13px;
+  text-align: center;
+}
+
+.notice {
+  margin: 0;
+  border: 1px solid #a33;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fdeeee;
+  color: #8a2b2b;
+  font-size: 13px;
+}
+
+/* Connect a new application: fixed presets, three across at desktop width. */
+.presetGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.preset {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.presetName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.presetNote {
+  margin: 0;
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.6;
+  min-height: 2.4em;
+}
+
+.presetFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Collapsible sections: advanced information, test utilities, history. */
+.disclosure {
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.disclosure > summary {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: revert;
+}
+
+.disclosure > summary:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: -2px;
+}
+
+.disclosureBody {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--theme-elevation-100, #eee);
+  padding: 16px;
+}
+
+/* Technical detail. Monospace lives ONLY in here, and every value in it is
+   non-secret by construction: no token, key, cookie or ticket reaches this
+   component at all. */
+.detailList {
+  display: grid;
+  gap: 8px 16px;
+  margin: 0;
+  grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+}
+
+.detailList dt {
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.detailList dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.mono {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  /* Wraps rather than scrolling the page: a connection id must never be the
+     reason the primary view moves sideways. */
+  overflow-wrap: anywhere;
+}
+
+.copy {
+  flex: none;
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 4px;
+  padding: 1px 8px;
+  background: #fff;
+  color: #444;
+  font-size: 11px;
+  line-height: 1.8;
+  cursor: pointer;
+}
+
+.copy:hover {
+  background: var(--theme-elevation-50, #f6f6f6);
+}
+
+.copy:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 1px;
+}
+
+/* Disconnect confirmation. A native dialog so focus handling, Escape and the
+   backdrop come from the platform rather than from a new dependency. */
+.dialog {
+  max-width: min(32rem, calc(100vw - 32px));
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 10px;
+  padding: 0;
+  color: var(--theme-elevation-900, #1a1a1a);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.dialogBody {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.dialogText {
+  margin: 0;
+  color: #444;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 40rem) {
+  .card {
+    align-items: stretch;
+  }
+
+  .cardActions {
+    width: 100%;
+  }
+
+  .cardActions .button {
+    flex: 1 1 auto;
+  }
+
+  .detailList {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .detailList dt {
+    margin-top: 8px;
+  }
+}

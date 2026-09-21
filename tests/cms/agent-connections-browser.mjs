@@ -433,6 +433,20 @@ try {
   const disconnect = page.locator("[data-agent-connection-disconnect]").first();
   await disconnect.waitFor({ state: "visible" });
   await disconnect.click();
+  // Disconnecting is destructive, so the page asks first. The button above
+  // now opens a confirmation rather than revoking, and this walks the same
+  // path a human does: nothing is revoked until the second click.
+  const confirm = page.locator("[data-agent-connections-confirm]");
+  await confirm.waitFor({ state: "visible" });
+  await page.locator("[data-agent-connections-confirm-accept]").click();
+  await confirm.waitFor({ state: "hidden" });
+  // A revoked connection leaves the primary list and appears under the
+  // collapsed history, which is where a finished connection belongs. Opened
+  // explicitly, because asserting on a row inside a closed disclosure would
+  // be asserting on something the Owner cannot see either.
+  const history = page.locator("[data-agent-connections-history]");
+  await history.waitFor({ state: "visible" });
+  await history.locator("summary").click();
   await page
     .locator('[data-agent-connection-status="revoked"]')
     .first()
