@@ -315,6 +315,14 @@ export const AgentConnectionsClient = () => {
    * connected, so a connection the card above called 需要重新授权 was called
    * 已连接 here -- the page contradicting itself about one client, with no
    * action offered anywhere.
+   *
+   * ONE DELIBERATE EXCEPTION, and it is not here. When a pair is ambiguous,
+   * `ClientAction` overrides the badge to 未知 / 暂不可用 while the row cards
+   * still read 等待授权 or 需要重新授权. Those cards are right about their own
+   * rows; the badge is right that nothing can finish. The override lives
+   * there, not in this function, so the ordering below stays a pure fold --
+   * but do not read the paragraph above as an invariant that holds in every
+   * state, because that one was broken on purpose.
    */
   const stateOf = (clientId: string) => {
     const all = connections.filter(
@@ -387,8 +395,11 @@ export const AgentConnectionsClient = () => {
           已连接
         </span>
       );
-    if (state === "awaiting")
-      return ambiguous(client.clientId) ? (
+    if (
+      (state === "awaiting" || state === "needs-consent") &&
+      ambiguous(client.clientId)
+    )
+      return (
         <span className={styles.presetAction}>
           <span className={styles.badge} data-tone="muted">
             未知 / 暂不可用
@@ -397,7 +408,9 @@ export const AgentConnectionsClient = () => {
             这个客户端有多条记录，授权无法完成
           </span>
         </span>
-      ) : (
+      );
+    if (state === "awaiting")
+      return (
         <span className={styles.badge} data-tone="pending">
           等待应用完成授权
         </span>

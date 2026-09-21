@@ -429,6 +429,14 @@ describe("the AI connections page", () => {
     render(createElement(AgentConnectionsClient));
     expect(await screen.findAllByText("需要重新授权")).not.toHaveLength(0);
     expect(document.querySelector("[data-agent-connection-hint]")).toBeNull();
+    // And the badge does not repeat the instruction the hint just withheld:
+    // suppressing the explanation while leaving 需要重新授权 standing alone
+    // tells the Owner to do the one thing consent will refuse.
+    const card = document.querySelector(
+      '[data-agent-connections-preset="cursor"]',
+    );
+    expect(card?.textContent).toContain("多条记录");
+    expect(card?.textContent).not.toContain("需要重新授权");
   });
 
   it("names both rows when a family holds two registrations", async () => {
