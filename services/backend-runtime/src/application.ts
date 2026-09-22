@@ -19,7 +19,10 @@ import {
   CommunityModerationService,
   CommunityAuthService,
   CommunitySessionService,
+  DirectMessageService,
+  EditorialContentReadService,
   PublishingOperatorService,
+  ThreadService,
   PublishingTransferRegistry,
   WorkPublishingService,
 } from "@moya/api";
@@ -37,6 +40,9 @@ import type {
   CatalogSearchQueryPort,
   CommunityCommentPort,
   CommunityIdentityPort,
+  DirectMessagePort,
+  EditorialContentReadPort,
+  ThreadPort,
   PublishingMediaProcessorPort,
   PublishingMediaStorePort,
   PublishingOperatorPort,
@@ -93,6 +99,12 @@ export interface BackendApplicationOptions {
    * {@link createPublishingTransferRegistry}. A private registry otherwise.
    */
   readonly publishingTransfers?: PublishingTransferRegistry;
+  /** Published editorial content reads; composed only under NODE_ENV=development. */
+  readonly editorialContentPort?: EditorialContentReadPort;
+  /** Threads over Works; composed only under NODE_ENV=development. */
+  readonly threadPort?: ThreadPort;
+  /** Direct messages; composed only under NODE_ENV=development. */
+  readonly directMessagePort?: DirectMessagePort;
   /** Injected clock for publishing commands; defaults to the system clock. */
   readonly publishingClock?: () => Date;
   /** Upload idle timeout and refusal read window; defaults 120 s and 5 s. */
@@ -191,6 +203,14 @@ const resolveCommunity = (
   if (nodeEnv === "production" && options.authService !== undefined)
     throw new Error("Public authentication is not composed in production");
   const sessionService = new CommunitySessionService(communityIdentityPort);
+  const threadService =
+    nodeEnv === "development" && options.threadPort !== undefined
+      ? new ThreadService(options.threadPort)
+      : undefined;
+  const directMessageService =
+    nodeEnv === "development" && options.directMessagePort !== undefined
+      ? new DirectMessageService(options.directMessagePort)
+      : undefined;
   return {
     sessionService,
     ...(nodeEnv === "development" && options.authService !== undefined
@@ -215,9 +235,19 @@ const resolveCommunity = (
             options.discussionPort,
             options.discoveryPort,
             storageUrlResolver,
+            options.editorialContentPort === undefined
+              ? undefined
+              : new EditorialContentReadService(
+                  options.editorialContentPort,
+                  storageUrlResolver,
+                ),
+            threadService,
+            directMessageService,
           ),
         }
       : {}),
+    ...(threadService === undefined ? {} : { threadService }),
+    ...(directMessageService === undefined ? {} : { directMessageService }),
     // Work publishing is Development only, like the Phase 4 author surface.
     ...resolvePublishing(options),
     developmentEntry: nodeEnv === "development",

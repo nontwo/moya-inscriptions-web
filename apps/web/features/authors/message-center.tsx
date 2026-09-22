@@ -15,6 +15,11 @@ import {
 import styles from "./message-center.module.css";
 import { LiveMessageTrigger } from "../notifications/live-message-center";
 import { MessagePreview } from "./message-preview";
+import {
+  DirectMessagePanel,
+  useDirectMessageEntry,
+  useUnreadConversationCount,
+} from "../messages";
 const sections = ["direct", "likes", "favorites", "comments"] as const;
 type Section = (typeof sections)[number];
 const labels = {
@@ -55,6 +60,38 @@ function ScopedMessageTrigger({
   const opener = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<Section>("direct");
+  // content-community-completion-v1: real direct messages in the 私信 tab. The
+  // DM unread unit (unread conversations) joins the supplied activity count
+  // exactly once; a profile's 私信 action opens this center on that pair.
+  const directEntry = useDirectMessageEntry();
+  const unreadConversations = useUnreadConversationCount();
+  const [directDepth, setDirectDepth] = useState(0);
+  const [directBack, setDirectBack] = useState(0);
+  const [directOpenWith, setDirectOpenWith] = useState<{
+    userId: string;
+    displayName: string;
+  } | null>(null);
+  const consumedEntry = useRef<number | null>(null);
+  useEffect(() => {
+    const request = directEntry?.request;
+    if (!request || consumedEntry.current === request.token) return;
+    // The header (and this trigger) is mounted once per primary destination;
+    // only the instance inside the active destination opens the dialog.
+    const host = opener.current?.closest<HTMLElement>(
+      "[data-primary-destination]",
+    );
+    if (host && host.dataset.active !== "true") return;
+    consumedEntry.current = request.token;
+    directEntry.consume(request.token);
+    setDirectOpenWith({
+      userId: request.userId,
+      displayName: request.displayName,
+    });
+    setActive("direct");
+    setCloseRequested(false);
+    setPreviewCommentTab(null);
+    setOpen(true);
+  }, [directEntry]);
   const [closeRequested, setCloseRequested] = useState(false);
   const [previewCommentTab, setPreviewCommentTab] = useState<
     "received" | "sent" | null
@@ -79,7 +116,7 @@ function ScopedMessageTrigger({
       : null;
   const unread =
     confirmedAccount.current && Number.isFinite(unreadCount)
-      ? Math.max(0, Math.floor(unreadCount))
+      ? Math.max(0, Math.floor(unreadCount)) + unreadConversations
       : 0;
   const badge = unread > 99 ? "99+" : String(unread);
   useEffect(
@@ -172,9 +209,13 @@ function ScopedMessageTrigger({
           title="消息"
           className={styles.page}
           closeRequested={closeRequested}
+          navigationDepth={active === "direct" ? directDepth : 0}
+          onBack={() => setDirectBack((value) => value + 1)}
           onClose={() => {
             setOpen(false);
             setCloseRequested(false);
+            setDirectOpenWith(null);
+            setDirectDepth(0);
             const target = pending.current;
             pending.current = null;
             const account = confirmedAccount.current;
@@ -248,28 +289,27 @@ function ScopedMessageTrigger({
                   }}
                 />
               )
+            ) : active === "direct" ? (
+              <DirectMessagePanel
+                key={author.viewer?.id ?? "guest"}
+                openWith={directOpenWith}
+                onDepthChange={setDirectDepth}
+                backRequested={directBack}
+                onOpenProfile={(userId, profileOpener) => {
+                  if (!confirmedAccount.current) return;
+                  shell.openProfile(userId, profileOpener);
+                }}
+              />
             ) : (
               <div className={styles.empty}>
-                {active === "direct" ? (
-                  <Icon name="message" aria-hidden="true" />
-                ) : (
-                  <QuickActionIcon
-                    action={active === "likes" ? "like" : "favorite"}
-                  />
-                )}
-                <h3>
-                  {active === "direct"
-                    ? "暂无私信"
-                    : active === "likes"
-                      ? "暂无点赞消息"
-                      : "暂无收藏消息"}
-                </h3>
+                <QuickActionIcon
+                  action={active === "likes" ? "like" : "favorite"}
+                />
+                <h3>{active === "likes" ? "暂无点赞消息" : "暂无收藏消息"}</h3>
                 <p>
-                  {active === "direct"
-                    ? "与同好交流的消息会在这里展示。"
-                    : active === "likes"
-                      ? "作品收到的点赞会在这里展示。"
-                      : "作品收到的收藏会在这里展示。"}
+                  {active === "likes"
+                    ? "作品收到的点赞会在这里展示。"
+                    : "作品收到的收藏会在这里展示。"}
                 </p>
               </div>
             )}

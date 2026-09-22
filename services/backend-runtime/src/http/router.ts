@@ -35,7 +35,9 @@ import type {
   CommunityAuthService,
   CommunitySessionService,
   AgentAdministrationService,
+  DirectMessageService,
   PublishingOperatorService,
+  ThreadService,
   WorkPublishingService,
 } from "@moya/api";
 import type { HealthReadinessCheck } from "../health/health-handler.js";
@@ -71,6 +73,10 @@ export interface CommunityRouterDependencies {
   readonly agentAdministrationService?: AgentAdministrationService;
   readonly contentOperatorPort?: CommunityContentOperatorPort | undefined;
   readonly discussionPort?: DiscussionPort | undefined;
+  /** content-community-completion-v1 Thread operator routes; Development only. */
+  readonly threadService?: ThreadService | undefined;
+  /** content-community-completion-v1 DM moderation routes; Development only. */
+  readonly directMessageService?: DirectMessageService | undefined;
   /** True only under NODE_ENV=development; Production never composes the entry. */
   readonly developmentEntry: boolean;
   /** Present only when a comment port is composed; identity works without it. */
@@ -270,6 +276,8 @@ export const createRouter =
         discussionPort: community?.discussionPort,
         publishingOperatorService: community?.publishingOperatorService,
         agentAdministrationService: community?.agentAdministrationService,
+        threadService: community?.threadService,
+        directMessageService: community?.directMessageService,
         operatorCredential: community?.operatorCredential ?? "",
       });
       return;

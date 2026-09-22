@@ -108,9 +108,12 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
   });
 
   it("4. keeps the application modules at catalog and community (2A)", async () => {
+    // content-community-completion-v1 (2026-09-22 amendment) adds the
+    // published editorial content read module.
     expect(await visibleEntries("services/api/src/modules")).toEqual([
       "catalog",
       "community",
+      "editorial",
     ]);
   });
 

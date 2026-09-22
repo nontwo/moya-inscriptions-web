@@ -84,7 +84,10 @@ export const PublishingEditorOverlay = ({
 }) => {
   const entry = useContext(PublishingEntryContext);
   const author = useAuthors();
-  const title = editorTitles[target.type];
+  const title =
+    target.type === "new" && target.threadId
+      ? "参与话题"
+      : editorTitles[target.type];
   return (
     <section
       aria-label={title}

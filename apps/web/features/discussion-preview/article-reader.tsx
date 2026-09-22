@@ -51,11 +51,14 @@ export function PreviewComments({
 export function PostReader({
   id,
   children,
+  comments,
   highlightCommentId,
   onOpenProfile,
 }: {
   id: string;
   children: ReactNode;
+  /** A live comment section; omitted, the preview state supplies comments. */
+  comments?: ReactNode;
   highlightCommentId?: string;
   onOpenProfile: (name: string) => void;
 }) {
@@ -65,11 +68,13 @@ export function PostReader({
       <CommentComposerPortalProvider target={outlet}>
         <div className={styles.readerScroll} data-post-reader={id}>
           {children}
-          <PreviewComments
-            contentId={id}
-            {...(highlightCommentId ? { highlightCommentId } : {})}
-            onOpenProfile={onOpenProfile}
-          />
+          {comments ?? (
+            <PreviewComments
+              contentId={id}
+              {...(highlightCommentId ? { highlightCommentId } : {})}
+              onOpenProfile={onOpenProfile}
+            />
+          )}
         </div>
       </CommentComposerPortalProvider>
       <div ref={setOutlet} data-comment-composer-outlet="" data-active="true" />
@@ -81,12 +86,15 @@ type Page = (typeof pages)[number];
 export function ArticleReader({
   id,
   children,
+  comments,
   highlightCommentId,
   renderContent,
   onOpenProfile,
 }: {
   id: string;
   children?: ReactNode;
+  /** A live comment section; omitted, the preview state supplies comments. */
+  comments?: ReactNode;
   highlightCommentId?: string;
   renderContent?: (context: {
     scrollElement: HTMLElement | null;
@@ -222,11 +230,13 @@ export function ArticleReader({
         </div>
         {commentHost &&
           createPortal(
-            <PreviewComments
-              contentId={id}
-              {...(highlightCommentId ? { highlightCommentId } : {})}
-              onOpenProfile={onOpenProfile}
-            />,
+            comments ?? (
+              <PreviewComments
+                contentId={id}
+                {...(highlightCommentId ? { highlightCommentId } : {})}
+                onOpenProfile={onOpenProfile}
+              />
+            ),
             commentHost,
           )}
       </CommentComposerPortalProvider>

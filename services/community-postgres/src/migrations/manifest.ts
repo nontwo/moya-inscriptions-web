@@ -199,4 +199,22 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "fe4f4ce057e3b3d0fc3092ae85b1358ab5a4492be0288cff318135d1caa51656",
     }),
+    Object.freeze({
+      migrationId: "20260922030000",
+      filename: "20260922030000_threads.sql",
+      checksum:
+        "7f55816b0de03f4a13fdc79c8db4d661590646ed1b03c09e19067dbd8b2d9d59",
+    }),
+    Object.freeze({
+      migrationId: "20260922031000",
+      filename: "20260922031000_article_discussion_target.sql",
+      checksum:
+        "b378c94945016f84ef2df82a39159a17bf1db387861d99ff1afdc9577cb1638e",
+    }),
+    Object.freeze({
+      migrationId: "20260922032000",
+      filename: "20260922032000_direct_messages.sql",
+      checksum:
+        "a97b63b085612a883f95bcb14a56d629ac5ff3c75892aed4ab462e9940dd444d",
+    }),
   ]);

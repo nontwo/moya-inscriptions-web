@@ -779,6 +779,41 @@ const allowedClientContractTypes = new Set([
   "InscriptionFilters",
   "InscriptionFilterOptions",
 
+  // content-community-completion-v1 editorial content read DTOs.
+  "ArticleCitation",
+  "ArticleCollectionDetail",
+  "ArticleCollectionId",
+  "ArticleCollectionMember",
+  "ArticleCollectionPage",
+  "ArticleCollectionSummary",
+  "ArticleDetail",
+  "ArticleId",
+  "ArticleListQuery",
+  "ArticlePage",
+  "ArticlePresentation",
+  "ArticleSection",
+  "ArticleSummary",
+  "DiscussionTarget",
+  "ThreadId",
+  "ThreadListQuery",
+  "ThreadPage",
+  "ThreadReadResult",
+  "ThreadStatus",
+  "ThreadSummary",
+  "DirectConversation",
+  "DirectConversationLookup",
+  "DirectConversationPage",
+  "DirectMessage",
+  "DirectMessageFailureCode",
+  "DirectMessagePage",
+  "DirectMessageReadCommand",
+  "DirectMessageUnread",
+  "DmConversationId",
+  "DmMessageId",
+  "DmParticipant",
+  "DmSendRefusal",
+  "SendDirectMessageCommand",
+
   "CatalogDetail",
   "CatalogId",
   "CatalogKind",
@@ -934,7 +969,9 @@ export const isAuthorizedCmsServerFile = (
     // the row the provider wrote. The browser halves are separate files with
     // their own "use client" directive and no server import.
     relative === "src/agent-connections/View.tsx" ||
-    /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
+    // content-community-completion-v1: Articles/Collections editorial modules
+    // are Payload server modules like `src/editorial`.
+    /^src\/(?:editorial|editorial-content|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
     /^src\/(?:users|runtime-settings|mcp|payload-types)\.ts$/.test(relative) ||
@@ -965,6 +1002,9 @@ const isOwnerWorkflowTypes = (
         "src/community/settings-client.tsx",
         "src/community/history-client.tsx",
         "src/community/agent-operations-client.tsx",
+        // content-community-completion-v1: Threads and DM moderation views.
+        "src/community/threads-client.tsx",
+        "src/community/dm-moderation-client.tsx",
       ].includes(relative) &&
         reference.specifier ===
           "@moya/contracts/internal/community-operator") ||

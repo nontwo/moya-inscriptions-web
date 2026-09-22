@@ -13,11 +13,30 @@ import {
   previewFeed,
 } from "../discussion-preview/discussion-preview";
 import { CatalogMasonry } from "./catalog-masonry";
+import {
+  EditorialCollectionsFeed,
+  EditorialNewsFeed,
+} from "../editorial-content/editorial-feed";
+import {
+  isArticleId,
+  isCollectionId,
+} from "../editorial-content/use-editorial-content";
+import { ThreadsFeed } from "../threads/threads-feed";
+import { isThreadId } from "../threads/use-threads";
 import { TopicCard } from "../topics/topic-card";
 import styles from "./home-screen.module.css";
 const feeds = ["news", "threads", "topics"] as const;
 type DiscussionFeed = (typeof feeds)[number];
 const labels = { news: "近闻", threads: "话题", topics: "专题" };
+// Real editorial ids map to their feed; preview fixtures keep their own map.
+const editorialFeed = (id: string | null): DiscussionFeed | null =>
+  isArticleId(id)
+    ? "news"
+    : isCollectionId(id)
+      ? "topics"
+      : isThreadId(id)
+        ? "threads"
+        : null;
 const icons = {
   news: "news",
   threads: "discussion",
@@ -38,12 +57,17 @@ export function DiscussionScreen({
   const preview = useDiscussionPreview();
   const initialFeed =
     (preview && previewFeed(initialTopicId)) ||
+    editorialFeed(initialTopicId) ||
     (initialTopicId ? "topics" : "news");
   const root = useRef<HTMLDivElement>(null);
   const pager = useRef<HorizontalPagerHandle<DiscussionFeed>>(null);
   const [active, setActive] = useState<DiscussionFeed>(initialFeed);
   const [progress, setProgress] = useState(feeds.indexOf(initialFeed));
   const openedInitial = useRef(false);
+  // Guest read memory for Threads (session-local; not synchronized account data).
+  const [localRead, setLocalRead] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const positions = useRef<Record<DiscussionFeed, number>>({
     news: 0,
     threads: 0,
@@ -61,7 +85,9 @@ export function DiscussionScreen({
   );
   useEffect(() => {
     const targetFeed =
-      (preview && previewFeed(shell.activeTopicId)) || "topics";
+      (preview && previewFeed(shell.activeTopicId)) ||
+      editorialFeed(shell.activeTopicId) ||
+      "topics";
     const frame =
       shell.activeTopicId !== null && active !== targetFeed
         ? requestAnimationFrame(() => pager.current?.scrollToKey(targetFeed))
@@ -173,7 +199,25 @@ export function DiscussionScreen({
                 threads: <DiscussionPreviewFeed feed="threads" />,
                 topics: <DiscussionPreviewFeed feed="topics" />,
               }
-            : { news: null, threads: null, topics }
+            : {
+                // Real published editorial reads (content-community-completion-v1).
+                news: <EditorialNewsFeed />,
+                threads: (
+                  <ThreadsFeed
+                    localRead={localRead}
+                    onOpen={(id, opener) => {
+                      setLocalRead((old) => new Set(old).add(id));
+                      shell.openTopic(id, opener, shell.readActiveScrollTop());
+                    }}
+                  />
+                ),
+                topics: (
+                  <>
+                    <EditorialCollectionsFeed />
+                    {data.state === "populated" ? topics : null}
+                  </>
+                ),
+              }
         }
         platform={shell.platform}
         visible={shell.activeDestination === "discussion"}

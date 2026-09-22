@@ -12,6 +12,13 @@ import {
   previewFeed,
 } from "../discussion-preview/discussion-preview";
 import { DiscussionScreen } from "../home/discussion-screen";
+import { EditorialDetail } from "../editorial-content/editorial-detail";
+import { ThreadDetail } from "../threads/thread-detail";
+import { isThreadId } from "../threads/use-threads";
+import {
+  isArticleId,
+  isCollectionId,
+} from "../editorial-content/use-editorial-content";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
 import { ProductShell, useProductShell } from "../product-shell/product-shell";
@@ -23,7 +30,7 @@ import { TopicDetail } from "../topics/topic-detail";
 
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
-import type { ContentIdentity } from "@moya/contracts";
+import type { ArticleId, DiscussionTarget } from "@moya/contracts";
 import type {
   ProductShellEditorOverlayControls,
   ProductShellProfileOverlayRenderProps,
@@ -62,7 +69,7 @@ export interface T02pProductPreviewProps {
     controls: ProductShellEditorOverlayControls,
   ) => ReactNode;
   readonly workDetailLoader?: CatalogDetailPresentationLoader;
-  readonly renderDiscussion?: (target: ContentIdentity) => ReactNode;
+  readonly renderDiscussion?: (target: DiscussionTarget) => ReactNode;
   readonly renderDetailActions?: (
     detail: CatalogDetailPresentation,
     refresh: () => void,
@@ -198,6 +205,7 @@ export const T02pProductPreview = ({
             onClose={onClose}
             topicId={topicId}
             topicsState={states.home.topics}
+            {...(renderDiscussion ? { renderDiscussion } : {})}
           />
         )}
       />
@@ -210,11 +218,13 @@ const PreviewTopicOverlay = ({
   onClose,
   topicId,
   topicsState,
+  renderDiscussion,
 }: {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly onClose: () => void;
   readonly topicId: string;
   readonly topicsState: HomeSurfaceData["topics"];
+  readonly renderDiscussion?: (target: DiscussionTarget) => ReactNode;
 }) => {
   const { feedLayout, platform } = useProductShell();
   const preview = useDiscussionPreview();
@@ -225,6 +235,33 @@ const PreviewTopicOverlay = ({
         id={topicId}
         backButtonRef={backButtonRef}
         onClose={onClose}
+      />
+    );
+  if (isThreadId(topicId))
+    return (
+      <ThreadDetail
+        key={topicId}
+        id={topicId}
+        backButtonRef={backButtonRef}
+        onClose={onClose}
+      />
+    );
+  if (isArticleId(topicId) || isCollectionId(topicId))
+    return (
+      <EditorialDetail
+        key={topicId}
+        id={topicId}
+        backButtonRef={backButtonRef}
+        onClose={onClose}
+        {...(renderDiscussion
+          ? {
+              renderComments: (articleId: string) =>
+                renderDiscussion({
+                  type: "article",
+                  id: articleId as ArticleId,
+                }),
+            }
+          : {})}
       />
     );
   const topics = topicsState.state === "populated" ? topicsState.items : [];

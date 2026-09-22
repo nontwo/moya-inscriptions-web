@@ -291,3 +291,26 @@ GRANT UPDATE (generation,completed_generation,attempts,run_after,lease_owner,lea
   ON community.notification_sources TO :"app_role";
 GRANT UPDATE (revision) ON community.notification_recipient_versions TO :"app_role";
 GRANT UPDATE (read_through) ON community.notification_groups TO :"app_role";
+-- content-community-completion-v1 (track C): Threads over Works. The App role
+-- reads Threads, associates a Work in the submission transaction, keeps the
+-- per-user observed marker, and applies the Owner's operator commands (which
+-- run through the same Backend role). Nothing here deletes.
+GRANT SELECT, INSERT ON TABLE community.threads TO :"app_role";
+GRANT UPDATE (title, description, tags, status, hidden_at, position, version, updated_at)
+ON TABLE community.threads TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.thread_works TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.thread_read_state TO :"app_role";
+GRANT UPDATE (observed_activity_at, updated_at) ON TABLE community.thread_read_state TO :"app_role";
+
+-- content-community-completion-v1 (track C): direct messages. The App role
+-- creates conversations, appends immutable messages, keeps participant state
+-- and receipts, and writes content-free moderation audit rows. Removal is a
+-- column update by the moderation path; nothing is deleted.
+GRANT SELECT, INSERT ON TABLE community.dm_conversations TO :"app_role";
+GRANT UPDATE (state, next_sequence, last_message_at, updated_at) ON TABLE community.dm_conversations TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_participants TO :"app_role";
+GRANT UPDATE (hidden_at, hidden_before_sequence, muted, read_sequence, updated_at) ON TABLE community.dm_participants TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_messages TO :"app_role";
+GRANT UPDATE (removed_at, removed_by) ON TABLE community.dm_messages TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_command_receipts TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_moderation_events TO :"app_role";
