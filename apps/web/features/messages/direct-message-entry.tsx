@@ -9,6 +9,8 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
+import { usePolledUnreadConversationCount } from "./use-direct-messages";
+
 export interface DirectMessageOpenRequest {
   /** Open the conversation with this account (created on the first actual send). */
   readonly userId: string;
@@ -20,6 +22,8 @@ interface DirectMessageEntryValue {
   readonly request: DirectMessageOpenRequest | null;
   readonly openWith: (userId: string, displayName: string) => void;
   readonly consume: (token: number) => void;
+  /** Unread (unhidden) conversations, polled once for every trigger. */
+  readonly unreadConversations: number;
 }
 
 const DirectMessageEntryContext = createContext<DirectMessageEntryValue | null>(
@@ -44,9 +48,12 @@ export const DirectMessageEntryProvider = ({
   const consume = useCallback((token: number) => {
     setRequest((current) => (current?.token === token ? null : current));
   }, []);
+  // The header (and its message trigger) is mounted once per primary
+  // destination; the unread poll runs here once instead of per trigger.
+  const unreadConversations = usePolledUnreadConversationCount();
   const value = useMemo(
-    () => ({ request, openWith, consume }),
-    [request, openWith, consume],
+    () => ({ request, openWith, consume, unreadConversations }),
+    [request, openWith, consume, unreadConversations],
   );
   return (
     <DirectMessageEntryContext.Provider value={value}>
@@ -57,3 +64,7 @@ export const DirectMessageEntryProvider = ({
 
 export const useDirectMessageEntry = () =>
   useContext(DirectMessageEntryContext);
+
+/** The DM badge unit; 0 outside the provider (no DM host, no badge). */
+export const useUnreadConversationCount = (): number =>
+  useContext(DirectMessageEntryContext)?.unreadConversations ?? 0;

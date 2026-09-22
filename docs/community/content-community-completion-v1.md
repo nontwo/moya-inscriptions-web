@@ -9,7 +9,7 @@ labeled QA-integration Draft for combined-head CI. No Ready transition,
 auto-merge, merge to `main`, Issue closure, deployment, release, retained-data
 mutation or paid service. Owner visual/device acceptance stays pending until
 given. Authority: the Owner's coordinated assignment of 2026-09-22 recorded in
-Issue #160; scope extension recorded in
+Issue #160; Draft PR #163; scope extension recorded in
 [`2026-09-22 content, Threads and direct messages`](../governance/amendments/2026-09-22-content-community-completion-scope.md).
 
 ## 1. Coverage ledger at the start checkpoint (C0)
@@ -146,7 +146,8 @@ accepted AuthorProfile, the accepted Discussion/message-center presentation.
   (collection selection only), `src/migrations/**` (one new forward migration +
   index), `payload.config.ts`, `app/(payload)/admin/importMap.ts`,
   `src/payload-types.ts`, `src/community/**` (Thread and DM moderation views,
-  endpoints, NavGroup links).
+  endpoints, NavGroup links), `package.json` (one `./editorial-content` export
+  entry; no dependency change).
 - `services/api/src/modules/community/**` (new ports/services for Threads and
   direct messages, their `application/mappers/*-contract-mapper.ts`;
   `author-community-service.ts` `assertTarget`; `discussion-port.ts` target
@@ -265,3 +266,14 @@ inspected or modified by this task.
 All of the above are composed only under `NODE_ENV=development`
 (`services/backend-production/src/composition.ts`); a Production build composes
 none of these ports and the Web relay answers as before for unknown paths.
+
+## 9. Known gaps recorded by the independent review (Draft #163, head `b3c39d7`)
+
+- A Thread post edited later through the general editor (no `threadId`) is bound
+  by the general editor limits, not the quick-composer limit of three static
+  images; the Thread association itself is unchanged.
+- The operator conversation view shows the latest 200 messages with the total
+  count; a lookup that finds no conversation is not audited because audit rows
+  name a conversation.
+- The send receipt replays the committed message to its sender; moderation
+  removal now redacts that receipt as well as the message row.

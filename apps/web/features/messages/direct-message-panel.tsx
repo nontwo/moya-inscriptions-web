@@ -496,4 +496,4 @@ export const DirectMessagePanel = ({
   );
 };
 
-export { useUnreadConversationCount } from "./use-direct-messages";
+export { useUnreadConversationCount } from "./direct-message-entry";

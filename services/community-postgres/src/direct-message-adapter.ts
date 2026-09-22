@@ -396,15 +396,16 @@ export class PostgresDirectMessageAdapter implements DirectMessagePort {
               activates,
             ],
           );
-          // Own sends are observed; a genuinely new incoming message resurfaces
-          // a conversation the recipient had hidden.
+          // Own sends are observed; a genuinely new message resurfaces the
+          // conversation for a recipient who had hidden it, and for a sender
+          // who writes into a pair they had hidden.
           await db.query(
             "UPDATE community.dm_participants SET read_sequence = GREATEST(read_sequence, $3), updated_at = CURRENT_TIMESTAMP WHERE conversation_id=$1 AND user_id=$2",
             [conversation.id, actor, sequence],
           );
           await db.query(
-            "UPDATE community.dm_participants SET hidden_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE conversation_id=$1 AND user_id=$2 AND hidden_at IS NOT NULL",
-            [conversation.id, other],
+            "UPDATE community.dm_participants SET hidden_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE conversation_id=$1 AND hidden_at IS NOT NULL",
+            [conversation.id],
           );
           return this.messageDto(inserted);
         },
@@ -423,7 +424,7 @@ export class PostgresDirectMessageAdapter implements DirectMessagePort {
       if (query.cursor) {
         const [at, id] = query.cursor.split("|");
         if (!at || !id || Number.isNaN(Date.parse(at)))
-          return fail("dm_text_invalid");
+          throw new CommunityInputError("Malformed conversation cursor");
         cursorAt = new Date(at).toISOString();
         cursorId = id;
       }
@@ -642,11 +643,23 @@ export class PostgresDirectMessageAdapter implements DirectMessagePort {
         [c.user_low, c.user_high],
       )
     ).rows;
+    const total = Number(
+      (
+        await db.query<{ n: string }>(
+          "SELECT COUNT(*) AS n FROM community.dm_messages WHERE conversation_id = $1",
+          [id],
+        )
+      ).rows[0]!.n,
+    );
+    // The latest window of a long conversation, oldest first; the total
+    // count says how much lies before it.
     const messages = (
       await db.query<MessageRow>(
-        `SELECT m.id, m.conversation_id, m.sequence, m.sender_id, u.display_name AS sender_name, m.text, m.created_at, m.removed_at, m.removed_by
-         FROM community.dm_messages m JOIN community.public_users u ON u.id = m.sender_id
-         WHERE m.conversation_id = $1 ORDER BY m.sequence ASC LIMIT 200`,
+        `SELECT * FROM (
+           SELECT m.id, m.conversation_id, m.sequence, m.sender_id, u.display_name AS sender_name, m.text, m.created_at, m.removed_at, m.removed_by
+           FROM community.dm_messages m JOIN community.public_users u ON u.id = m.sender_id
+           WHERE m.conversation_id = $1 ORDER BY m.sequence DESC LIMIT 200
+         ) latest ORDER BY sequence ASC`,
         [id],
       )
     ).rows;
@@ -659,7 +672,7 @@ export class PostgresDirectMessageAdapter implements DirectMessagePort {
       })),
       initiatorId: c.initiator_id,
       state: c.state,
-      messageCount: messages.length,
+      messageCount: total,
       createdAt: c.created_at.toISOString(),
       messages: messages.map((m) => ({
         id: m.id,
@@ -751,11 +764,18 @@ export class PostgresDirectMessageAdapter implements DirectMessagePort {
           throw new CommunityConflictError("Request identity already used");
         return prior.result;
       }
-      if (message.removed_at === null)
+      if (message.removed_at === null) {
         await db.query(
           "UPDATE community.dm_messages SET removed_at=CURRENT_TIMESTAMP, removed_by=$2 WHERE id=$1",
           [id, operator],
         );
+        // The sender's send receipt replays the committed message; it must
+        // not keep a second copy of removed text.
+        await db.query(
+          "UPDATE community.dm_command_receipts SET result = jsonb_set(jsonb_set(result, '{text}', 'null'::jsonb), '{removed}', 'true'::jsonb) WHERE result->>'id' = $1",
+          [id],
+        );
+      }
       const after = (
         await db.query<MessageRow>(
           "SELECT m.*, u.display_name AS sender_name FROM community.dm_messages m JOIN community.public_users u ON u.id=m.sender_id WHERE m.id=$1",

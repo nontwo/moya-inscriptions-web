@@ -455,25 +455,24 @@ Active development tracks (independent of the parked cloud track):
      operations view and the `artvenn-admin` skill; record in
      [agent-admin-v1](community/agent-admin-v1.md).
    - **Content, Threads and Direct Messages
-     (`content-community-completion-v1`)** — Draft PR open (number in the task
-     record), Issue #160 (r1), from `0a55227`; track C of the three-track
-     parallel plan (A `email-auth-v1`, N
-     `messaging-notification-foundation-v1`). Development software, not an
-     audit: Payload `articles` / `article-collections` with the existing
-     exact-revision approval, published-only SQL views read by the Backend
-     (`/v1/community/editorial/**`) and the Web 近闻 / 专题 tabs and readers;
-     operator-created Threads as an association over existing Works (quick
-     composer text + ≤3 static images through the accepted editor, deterministic
-     heat `Σ weight·2^(-age_days/7)`, per-user read state); Article discussion
-     through the existing root/reply tables (`target_type` gains `article`, no
-     renames); real 1:1 plain-text direct messages (canonical pair, immutable
-     per-conversation sequence, one-first-message request gate, per-participant
-     hide/mute/read, 2,000 code points, 20 new pairs per UTC day, 20 messages
-     per minute, 10 s foreground polling) in the message center's 私信 tab with
-     the profile's 私信 action; Owner-only Thread and DM moderation views over
-     the Backend operator boundary with content-free audit. Frozen decisions,
-     Behavior Matrix, path inventory, the A/N interface checkpoint and the
-     retained-environment plan are in
+     (`content-community-completion-v1`)** — Draft PR #163, Issue #160 (r1),
+     from `0a55227`; track C of the three-track parallel plan (A
+     `email-auth-v1`, N `messaging-notification-foundation-v1`). Development
+     software, not an audit: Payload `articles` / `article-collections` with the
+     existing exact-revision approval, published-only SQL views read by the
+     Backend (`/v1/community/editorial/**`) and the Web 近闻 / 专题 tabs and
+     readers; operator-created Threads as an association over existing Works
+     (quick composer text + ≤3 static images through the accepted editor,
+     deterministic heat `Σ weight·2^(-age_days/7)`, per-user read state);
+     Article discussion through the existing root/reply tables (`target_type`
+     gains `article`, no renames); real 1:1 plain-text direct messages
+     (canonical pair, immutable per-conversation sequence, one-first-message
+     request gate, per-participant hide/mute/read, 2,000 code points, 20 new
+     pairs per UTC day, 20 messages per minute, 10 s foreground polling) in the
+     message center's 私信 tab with the profile's 私信 action; Owner-only Thread
+     and DM moderation views over the Backend operator boundary with
+     content-free audit. Frozen decisions, Behavior Matrix, path inventory, the
+     A/N interface checkpoint and the retained-environment plan are in
      [content-community-completion-v1](community/content-community-completion-v1.md).
      Everything is composed under `NODE_ENV=development` only; no retained
      database was inspected or modified; Owner visual and device acceptance, the

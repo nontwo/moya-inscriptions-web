@@ -290,8 +290,12 @@ export const useConversation = (id: string | null, enabled: boolean) => {
   };
 };
 
-/** The DM badge unit: unread (unhidden) conversations for the signed-in account. */
-export const useUnreadConversationCount = (): number => {
+/**
+ * The DM badge unit: unread (unhidden) conversations for the signed-in
+ * account, polled in the foreground. Hosted once by `DirectMessageEntryProvider`;
+ * consumers read `useUnreadConversationCount()`.
+ */
+export const usePolledUnreadConversationCount = (): number => {
   const author = useAuthors();
   const [count, setCount] = useState(0);
   const tick = useCallback(async () => {

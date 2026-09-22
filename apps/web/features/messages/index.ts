@@ -6,11 +6,9 @@
  */
 export { DirectMessagePanel } from "./direct-message-panel";
 export type { DirectMessagePanelProps } from "./direct-message-panel";
-export {
-  useUnreadConversationCount,
-  DM_POLL_INTERVAL_MS,
-} from "./use-direct-messages";
+export { DM_POLL_INTERVAL_MS } from "./use-direct-messages";
 export {
   DirectMessageEntryProvider,
   useDirectMessageEntry,
+  useUnreadConversationCount,
 } from "./direct-message-entry";

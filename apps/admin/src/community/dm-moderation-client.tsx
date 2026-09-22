@@ -175,6 +175,9 @@ export const DmModerationClient = () => {
             {conversation.messageCount} 条消息 · 创建于{" "}
             {formatPreciseTime(conversation.createdAt)}
           </p>
+          {conversation.messages.length < conversation.messageCount && (
+            <p role="status">仅显示最近 {conversation.messages.length} 条。</p>
+          )}
           <ul className={styles.links}>
             {conversation.messages.map((message) => (
               <li
