@@ -95,6 +95,13 @@ const catalogStubs = `
     catalog_id text, media_id text, object_key text,
     width integer, height integer, is_representative boolean
   );
+  -- parallel-community-integration-qa: the notification source query checks
+  -- Article visibility against C's published-only projection, so grant-runtime
+  -- now names it. Development creates it from grant-public-read.sql before the
+  -- runtime grants run; these suites stand it in the same way as the Catalog views.
+  CREATE TABLE IF NOT EXISTS public.article_entries(
+    article_id text PRIMARY KEY, title text
+  );
 `;
 
 const applyGrants = async (database: Pool, role: string) => {
@@ -206,9 +213,17 @@ describe("email-auth PostgreSQL", () => {
     await expect(
       upgrade.query("SELECT 1 FROM community.user_login_identities"),
     ).rejects.toMatchObject({ code: "42P01" });
-    expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual([
-      authMigrationId,
-    ]);
+    // parallel-community-integration-qa: the combined candidate carries A's auth
+    // migration alongside N's notification and C's Thread/Article/DM forward
+    // files, so upgrading from the pre-auth baseline applies every manifest
+    // entry after it — still including A's, which is what this case asserts.
+    const afterBaseline = requiredCommunityMigrations
+      .map((file) => file.migrationId)
+      .filter((id) => id > baselineMigrationId);
+    expect(afterBaseline).toContain(authMigrationId);
+    expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual(
+      afterBaseline,
+    );
     expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual(
       [],
     );
