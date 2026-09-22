@@ -70,6 +70,7 @@ describe("community migration family", () => {
         "20260920070000_agent_connection_identity_reason.sql",
         "20260920080000_agent_connection_client_slug.sql",
         "20260921010000_agent_connection_one_per_client.sql",
+        "20260922010000_email_phone_login_identities.sql",
       ],
     );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);

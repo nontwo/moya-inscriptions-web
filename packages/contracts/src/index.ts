@@ -131,3 +131,10 @@ export type {
   WorkVisibilityCommand,
   WorkVisibilityResult,
 } from "./work-publishing-schemas.js";
+
+export type {
+  AuthAccountSecurity,
+  AuthCapabilities,
+  AuthChallengeAccepted,
+  AuthFactor,
+} from "./auth-schemas.ts";

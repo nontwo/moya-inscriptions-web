@@ -275,7 +275,7 @@ export const EditorOverlay = ({
               <div className={styles.message}>
                 <p>登录后可发布与编辑作品。</p>
                 <div className="phase4-actions">
-                  <a href={author.signInHref}>使用开发测试账户登录</a>
+                  <a href={author.signInHref}>登录</a>
                 </div>
               </div>
             )}

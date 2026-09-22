@@ -441,7 +441,7 @@ const ScopedAuthorProfile = ({
               <>
                 <p>无需登录即可浏览与搜索。登录后可跨设备收藏、喜欢、关注。</p>
                 <div className="phase4-actions">
-                  <a href={author.signInHref}>使用开发测试账户登录</a>
+                  <a href={author.signInHref}>登录</a>
                 </div>
               </>
             ) : null}
