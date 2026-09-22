@@ -13,7 +13,10 @@ import {
   type PreviewCommentLocation,
 } from "../discussion-preview/preview-context";
 import styles from "./message-center.module.css";
-import { LiveMessageTrigger } from "../notifications/live-message-center";
+import {
+  LiveMessageTrigger,
+  type DirectMessagePanelAdapter,
+} from "../notifications/live-message-center";
 import { MessagePreview } from "./message-preview";
 import {
   DirectMessagePanel,
@@ -28,6 +31,51 @@ const labels = {
   favorites: "收藏",
   comments: "我的评论",
 };
+// parallel-community-integration-qa: N owns the live message-center host and C
+// owns direct messages. The host's `directMessages` prop defaults to its own
+// "私信尚未在此环境接入。" placeholder, so without this wiring C's real 私信
+// panel is dark in the combined journey even though every track's own tests
+// pass. This adapter is integration code: neither track's branch is changed.
+const LiveDirectMessages = ({
+  onOpenProfile,
+  onDepthChange,
+  backRequested,
+}: {
+  readonly onOpenProfile: (id: string) => void;
+  readonly onDepthChange: (depth: number) => void;
+  readonly backRequested: number;
+}) => {
+  const directEntry = useDirectMessageEntry();
+  const [openWith, setOpenWith] = useState<{
+    userId: string;
+    displayName: string;
+  } | null>(null);
+  const consumedEntry = useRef<number | null>(null);
+  useEffect(() => {
+    const request = directEntry?.request;
+    if (!request || consumedEntry.current === request.token) return;
+    consumedEntry.current = request.token;
+    directEntry.consume(request.token);
+    setOpenWith({
+      userId: request.userId,
+      displayName: request.displayName,
+    });
+  }, [directEntry]);
+  return (
+    <DirectMessagePanel
+      openWith={openWith}
+      onOpenProfile={(userId) => {
+        onOpenProfile(userId);
+      }}
+      onDepthChange={onDepthChange}
+      backRequested={backRequested}
+    />
+  );
+};
+const liveDirectMessages: DirectMessagePanelAdapter = {
+  render: (props) => <LiveDirectMessages {...props} />,
+  useUnreadConversationCount,
+};
 export function MessageTrigger({
   unreadCount = 0,
   developmentPreview = false,
@@ -38,7 +86,8 @@ export function MessageTrigger({
   readonly liveNotifications?: boolean;
 }) {
   const author = useAuthors();
-  if (liveNotifications) return <LiveMessageTrigger />;
+  if (liveNotifications)
+    return <LiveMessageTrigger directMessages={liveDirectMessages} />;
   return (
     <ScopedMessageTrigger
       key={author.viewer?.id ?? "guest"}
