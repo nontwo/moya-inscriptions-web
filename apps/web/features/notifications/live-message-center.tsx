@@ -163,8 +163,7 @@ function AccountMessages({
     if (!item.available || !item.target || !confirmed) return;
     try {
       const target = item.target;
-      if (item.commentId)
-        await authorClient.locate(target, item.commentId, []);
+      if (item.commentId) await authorClient.locate(target, item.commentId, []);
       else if (target.type === "article")
         // An Article notification is always comment activity, so it always
         // carries a commentId. Without one there is nothing to resolve, and the
