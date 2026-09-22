@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type {
-  ContentIdentity,
+  DiscussionTarget as ContentIdentity,
   DiscussionComment,
   DiscussionReply,
 } from "@moya/contracts";

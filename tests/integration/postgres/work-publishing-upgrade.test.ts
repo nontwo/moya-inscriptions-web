@@ -66,6 +66,11 @@ const workPublishingMigrations = [
   "20260920070000",
   "20260920080000",
   "20260921010000",
+  // content-community-completion-v1 forward files (Threads, the Article
+  // discussion target, direct messages).
+  "20260922030000",
+  "20260922031000",
+  "20260922032000",
 ];
 const backfillMigration = "20260914092000";
 const bridgeMigration = "20260914093000";
@@ -1512,6 +1517,9 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
         "20260920070000",
         "20260920080000",
         "20260921010000",
+        "20260922030000",
+        "20260922031000",
+        "20260922032000",
       ]);
 
       // Declared submissions: stored hashes unchanged and still exactly what

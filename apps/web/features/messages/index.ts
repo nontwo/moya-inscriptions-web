@@ -1,0 +1,16 @@
+/**
+ * content-community-completion-v1: the direct-message feature module. The
+ * message-center host (owned by the notifications track) mounts
+ * `DirectMessagePanel` in its 私信 slot and adds `useUnreadConversationCount()`
+ * to its activity units exactly once.
+ */
+export { DirectMessagePanel } from "./direct-message-panel";
+export type { DirectMessagePanelProps } from "./direct-message-panel";
+export {
+  useUnreadConversationCount,
+  DM_POLL_INTERVAL_MS,
+} from "./use-direct-messages";
+export {
+  DirectMessageEntryProvider,
+  useDirectMessageEntry,
+} from "./direct-message-entry";

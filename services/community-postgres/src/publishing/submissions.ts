@@ -56,6 +56,9 @@ import {
  * revision content identity comes only from community.work_content_sha256.
  */
 
+/** Quick-composer bound for a Thread post; the general editor keeps its own limits. */
+const THREAD_QUICK_COMPOSER_ITEMS = 3;
+
 const fail = (code: WorkPublishingFailureCode): never => {
   throw new CommunityInputError(code);
 };
@@ -663,6 +666,36 @@ const submitInTransaction = async (
 
   const items = normalized.content.items;
   if (items.length > settings.maxItemsPerWork) fail("items_limit");
+  // content-community-completion-v1: a Thread post is this Work, associated in
+  // the same transaction. Only a NEW work may join a Thread (an existing Work
+  // is never reassigned), the quick composer carries at most three static
+  // items, and the Thread is rechecked under lock at commit, not only when the
+  // composer opened.
+  if (command.threadId !== undefined) {
+    if (work !== null) {
+      const existing = await db.query<{ thread_id: string }>(
+        "SELECT thread_id FROM community.thread_works WHERE work_id=$1",
+        [work.id],
+      );
+      if (existing.rows[0]?.thread_id !== command.threadId)
+        fail("thread_conflict");
+    }
+    if (items.length > THREAD_QUICK_COMPOSER_ITEMS) fail("thread_items_limit");
+    if (items.length > 0) {
+      const nonStatic = await db.query<{ total: string }>(
+        "SELECT count(*) AS total FROM community.media_items WHERE id = ANY($1::text[]) AND kind <> 'static'",
+        [items.map((item) => item.itemId)],
+      );
+      if (Number(nonStatic.rows[0]?.total ?? 0) > 0) fail("thread_items_limit");
+    }
+    const thread = await db.query<{ status: string; hidden_at: Date | null }>(
+      "SELECT status, hidden_at FROM community.threads WHERE id=$1 FOR SHARE",
+      [command.threadId],
+    );
+    const row = thread.rows[0];
+    if (!row || row.hidden_at !== null || row.status !== "open")
+      fail("thread_unavailable");
+  }
   const pending = await notReadyKeys(db, actorId, normalized);
   if (pending.length > 0) return { state: "not_ready", itemKeys: pending };
 
@@ -675,6 +708,12 @@ const submitInTransaction = async (
       VALUES($1,$2,'','',NULL,$3::timestamptz,$4,'publishing',$3::timestamptz)`,
       [workId, actorId, at, visibility],
     );
+    // The association commits with the Work; UNIQUE(work_id) keeps one Thread per Work.
+    if (command.threadId !== undefined)
+      await db.query(
+        "INSERT INTO community.thread_works(thread_id, work_id, created_at) VALUES($1,$2,$3::timestamptz)",
+        [command.threadId, workId, at],
+      );
   }
 
   const disposition =

@@ -110,3 +110,7 @@ export type {
   ProviderAdapterOptions,
   ProviderModel,
 } from "./agent-connection-provider-adapter.js";
+// content-community-completion-v1: Threads over Works.
+export { PostgresThreadAdapter } from "./thread-adapter.js";
+// content-community-completion-v1: direct messages.
+export { PostgresDirectMessageAdapter } from "./direct-message-adapter.js";

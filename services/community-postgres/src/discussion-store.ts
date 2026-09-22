@@ -8,7 +8,7 @@ import {
 } from "@moya/contracts/schemas";
 import type { DiscussionPort, DiscussionQuery } from "@moya/api";
 import type {
-  ContentIdentity,
+  DiscussionTarget as ContentIdentity,
   DiscussionComment,
   DiscussionReply,
 } from "@moya/contracts";
@@ -543,7 +543,7 @@ export class PostgresDiscussionStore implements DiscussionPort {
         id: string;
         root_id: string;
         author_id: string;
-        target_type: "catalog" | "work";
+        target_type: "catalog" | "work" | "article";
         catalog_id: string;
         thread_removed_at: Date | null;
       }>(
@@ -572,7 +572,7 @@ export class PostgresDiscussionStore implements DiscussionPort {
   async discussionTarget(id: string): Promise<ContentIdentity> {
     return this.run(false, async (db) => {
       const s = await this.subject(db, id, false);
-      return { type: s.target_type, id: s.catalog_id };
+      return { type: s.target_type, id: s.catalog_id } as ContentIdentity;
     });
   }
   async setDiscussionLike(
@@ -590,7 +590,10 @@ export class PostgresDiscussionStore implements DiscussionPort {
         ["like", id, enabled],
         async () => {
           const s = await this.subject(db, id, false),
-            target: ContentIdentity = { type: s.target_type, id: s.catalog_id };
+            target = {
+              type: s.target_type,
+              id: s.catalog_id,
+            } as ContentIdentity;
           await this.interactionLocks(
             db,
             target,

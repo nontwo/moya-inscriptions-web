@@ -12,6 +12,7 @@ import {
   createPostgresPool,
   parsePostgresConfig,
   PostgresCatalogQueryAdapter,
+  PostgresEditorialContentAdapter,
 } from "@moya/catalog-postgres";
 import {
   PostgresAgentAdministrationAdapter,
@@ -20,6 +21,8 @@ import {
   PostgresCommunityDiscoveryAdapter,
   PostgresCommunityCommentAdapter,
   PostgresCommunityIdentityAdapter,
+  PostgresThreadAdapter,
+  PostgresDirectMessageAdapter,
   PostgresPublishingOperatorAdapter,
   PostgresWorkPublishingAdapter,
   verifyCommunityMigrationLedger,
@@ -286,6 +289,10 @@ export const prepareProductionBackend = async (
               communityPool,
             ),
             discoveryPort: new PostgresCommunityDiscoveryAdapter(communityPool),
+            // Published editorial views through the public read role.
+            editorialContentPort: new PostgresEditorialContentAdapter(pool),
+            threadPort: new PostgresThreadAdapter(communityPool),
+            directMessagePort: new PostgresDirectMessageAdapter(communityPool),
             authorCommunityPort: new PostgresAuthorCommunityAdapter(
               communityPool,
             ),

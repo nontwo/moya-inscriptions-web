@@ -68,10 +68,13 @@ describe("@moya/api server-only surface", () => {
       "CommunityNotFoundError",
       "CommunitySessionService",
       "CommunityStoreUnavailableError",
+      "DirectMessageService",
       "DisabledCommentAnalysisPort",
+      "EditorialContentReadService",
       "ExecutionFenceLostError",
       "PublishingOperatorService",
       "PublishingTransferRegistry",
+      "ThreadService",
       "WorkPublishingService",
       "deriveCatalogPeriodLabel",
       "isAgentForbiddenError",
@@ -95,6 +98,7 @@ describe("@moya/api server-only surface", () => {
       "parseCreateReplyRequest",
       "parseWorkPublishingCommand",
       "parseWorkPublishingSegment",
+      "splitParagraphs",
       "targetRequestId",
     ]);
   });

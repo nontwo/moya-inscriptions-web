@@ -26,6 +26,11 @@ const opaquePathPrefixes: Record<string, string> = {
   itemId: "media-item",
   componentId: "media-component",
   sessionId: "publishing-session",
+  articleId: "article",
+  collectionId: "collection",
+  threadId: "thread",
+  conversationId: "dm",
+  messageId: "dmsg",
 };
 const pathSchema = (name: string) => {
   if (name === "type") return { type: "string", enum: ["catalog", "work"] };
@@ -539,6 +544,295 @@ authorCommunityPaths["/v1/community/media/{mediaId}"] = {
       "503": failure("Service unavailable"),
     },
   },
+};
+
+// content-community-completion-v1: anonymous reads of the exact published
+// editorial revisions. Development only; absent in Production.
+const editorialDescription =
+  "Published editorial content, Development only; absent in Production. Anonymous reads return only the exact currently published revision; drafts, pending replacements and withdrawn documents are absent (404). Collection members that are no longer published are omitted without reordering the rest. Responses are private, no-store.";
+const editorialOperation = (
+  name: string,
+  path: string,
+  output: string,
+  parameters: readonly Record<string, unknown>[],
+) => ({
+  operationId: name,
+  description: editorialDescription,
+  security: [{}],
+  parameters: [
+    ...[...path.matchAll(/\{([^}]+)\}/g)].map((m) => ({
+      name: m[1],
+      in: "path",
+      required: true,
+      schema: pathSchema(m[1]!),
+    })),
+    ...parameters,
+  ],
+  responses: {
+    "200": response(output),
+    "400": failure("Invalid query"),
+    "404": failure("No published revision"),
+    "503": failure("Service unavailable"),
+  },
+});
+const editorialListParameters = [
+  {
+    name: "page",
+    in: "query",
+    schema: { type: "integer", minimum: 1, default: 1 },
+  },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 50, default: 12 },
+  },
+];
+authorCommunityPaths["/v1/community/editorial/articles"] = {
+  get: editorialOperation(
+    "listPublishedArticles",
+    "/v1/community/editorial/articles",
+    "ArticlePage",
+    [
+      ...editorialListParameters,
+      {
+        name: "presentation",
+        in: "query",
+        schema: { type: "string", enum: ["news", "academic"] },
+      },
+    ],
+  ),
+};
+authorCommunityPaths["/v1/community/editorial/articles/{articleId}"] = {
+  get: editorialOperation(
+    "readPublishedArticle",
+    "/v1/community/editorial/articles/{articleId}",
+    "ArticleDetail",
+    [],
+  ),
+};
+authorCommunityPaths["/v1/community/editorial/collections"] = {
+  get: editorialOperation(
+    "listPublishedArticleCollections",
+    "/v1/community/editorial/collections",
+    "ArticleCollectionPage",
+    editorialListParameters,
+  ),
+};
+authorCommunityPaths["/v1/community/editorial/collections/{collectionId}"] = {
+  get: editorialOperation(
+    "readPublishedArticleCollection",
+    "/v1/community/editorial/collections/{collectionId}",
+    "ArticleCollectionDetail",
+    [],
+  ),
+};
+
+// content-community-completion-v1: Threads over Works (Development only).
+const threadDescription =
+  "Threads over Works, Development only; absent in Production. A Thread post is a Work published through the publishing submission with threadId. Lists are ranked at a server anchor instant (heat = Σ weight·2^(-age_days/7); work 1, comment/reply 2, active like 1; ties by latest activity then id) and only count publicly eligible activity; pass the returned anchor back for later pages. `unread` is null for anonymous readers. Responses are private, no-store.";
+const threadOperation = (
+  name: string,
+  path: string,
+  output: string,
+  parameters: readonly Record<string, unknown>[],
+  method: "get" | "post" = "get",
+) => ({
+  operationId: name,
+  description: threadDescription,
+  security: method === "post" ? [{ session: [] }] : [{}, { session: [] }],
+  parameters: [
+    ...[...path.matchAll(/\{([^}]+)\}/g)].map((m) => ({
+      name: m[1],
+      in: "path",
+      required: true,
+      schema: pathSchema(m[1]!),
+    })),
+    ...parameters,
+  ],
+  responses: {
+    "200": response(output),
+    "400": failure("Invalid query"),
+    ...(method === "post"
+      ? { "401": failure("A valid session is required") }
+      : {}),
+    "404": failure("Unavailable Thread"),
+    "503": failure("Service unavailable"),
+  },
+});
+authorCommunityPaths["/v1/community/threads"] = {
+  get: threadOperation("listThreads", "/v1/community/threads", "ThreadPage", [
+    {
+      name: "page",
+      in: "query",
+      schema: { type: "integer", minimum: 1, default: 1 },
+    },
+    {
+      name: "pageSize",
+      in: "query",
+      schema: { type: "integer", minimum: 1, maximum: 50, default: 22 },
+    },
+    {
+      name: "anchor",
+      in: "query",
+      schema: { type: "string", format: "date-time" },
+    },
+  ]),
+};
+authorCommunityPaths["/v1/community/threads/{threadId}"] = {
+  get: threadOperation(
+    "readThread",
+    "/v1/community/threads/{threadId}",
+    "ThreadSummary",
+    [],
+  ),
+};
+authorCommunityPaths["/v1/community/threads/{threadId}/posts"] = {
+  get: threadOperation(
+    "listThreadPosts",
+    "/v1/community/threads/{threadId}/posts",
+    "WorkPage",
+    listParameters,
+  ),
+};
+authorCommunityPaths["/v1/community/threads/{threadId}/read"] = {
+  post: threadOperation(
+    "markThreadRead",
+    "/v1/community/threads/{threadId}/read",
+    "ThreadReadResult",
+    [],
+    "post",
+  ),
+};
+
+// content-community-completion-v1: one-to-one direct messages (Development only).
+const dmDescription =
+  "Direct messages, Development only; absent in Production. Every route requires the session; the sender is the session account. A new pair is a request: the initiator commits exactly one message until the recipient's committed reply activates it (later sends answer INVALID_INPUT dm_request_pending). Limits: 2,000 code points, 20 new conversations per UTC day, 20 accepted messages per minute (dm_daily_limit, dm_rate_limited). Hide is for the viewer only; read markers are monotonic and clamped. Responses are private, no-store.";
+const dmOperation = (
+  name: string,
+  path: string,
+  output: string | null,
+  input: string | null,
+  parameters: readonly Record<string, unknown>[] = [],
+  status: "200" | "201" = "200",
+) => ({
+  operationId: name,
+  description: dmDescription,
+  security: [{ session: [] }],
+  parameters: [
+    ...[...path.matchAll(/\{([^}]+)\}/g)].map((m) => ({
+      name: m[1],
+      in: "path",
+      required: true,
+      schema: pathSchema(m[1]!),
+    })),
+    ...(input
+      ? [
+          {
+            name: "x-author-account",
+            in: "header",
+            required: false,
+            schema: { type: "string" },
+          },
+        ]
+      : []),
+    ...parameters,
+  ],
+  ...(input
+    ? {
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: reference(input) } },
+        },
+      }
+    : {}),
+  responses: {
+    [status]: output ? response(output) : { description: "Committed." },
+    "401": failure("A valid session is required"),
+    "404": failure("Unavailable conversation"),
+    "409": failure("Request identity reused with different content"),
+    "422": failure(
+      "Refused: dm_self, dm_recipient_unavailable, dm_blocked, dm_request_pending, dm_daily_limit, dm_rate_limited or dm_text_invalid",
+    ),
+    "503": failure("Service unavailable"),
+  },
+});
+authorCommunityPaths["/v1/community/messages"] = {
+  get: dmOperation(
+    "listDirectConversations",
+    "/v1/community/messages",
+    "DirectConversationPage",
+    null,
+    [
+      {
+        name: "cursor",
+        in: "query",
+        schema: { type: "string", maxLength: 200 },
+      },
+      {
+        name: "pageSize",
+        in: "query",
+        schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+      },
+    ],
+  ),
+  post: dmOperation(
+    "sendDirectMessage",
+    "/v1/community/messages",
+    "DirectMessage",
+    "SendDirectMessageCommand",
+    [],
+    "201",
+  ),
+};
+authorCommunityPaths["/v1/community/messages/unread"] = {
+  get: dmOperation(
+    "readDirectMessageUnread",
+    "/v1/community/messages/unread",
+    "DirectMessageUnread",
+    null,
+  ),
+};
+authorCommunityPaths["/v1/community/messages/with/{authorId}"] = {
+  get: dmOperation(
+    "findDirectConversationWith",
+    "/v1/community/messages/with/{authorId}",
+    null,
+    null,
+  ),
+};
+authorCommunityPaths["/v1/community/messages/{conversationId}"] = {
+  get: dmOperation(
+    "readDirectConversation",
+    "/v1/community/messages/{conversationId}",
+    "DirectMessagePage",
+    null,
+    [
+      { name: "before", in: "query", schema: { type: "integer", minimum: 1 } },
+      { name: "after", in: "query", schema: { type: "integer", minimum: 0 } },
+      {
+        name: "pageSize",
+        in: "query",
+        schema: { type: "integer", minimum: 1, maximum: 50, default: 30 },
+      },
+    ],
+  ),
+};
+for (const leaf of ["hide", "unhide", "mute", "unmute"] as const)
+  authorCommunityPaths[`/v1/community/messages/{conversationId}/${leaf}`] = {
+    post: dmOperation(
+      `${leaf}DirectConversation`,
+      `/v1/community/messages/{conversationId}/${leaf}`,
+      "DirectConversation",
+      "RequestIdentity",
+    ),
+  };
+authorCommunityPaths["/v1/community/messages/{conversationId}/read"] = {
+  post: dmOperation(
+    "readDirectMessagesUpTo",
+    "/v1/community/messages/{conversationId}/read",
+    "DirectConversation",
+    "DirectMessageReadCommand",
+  ),
 };
 
 const publishingDescription =

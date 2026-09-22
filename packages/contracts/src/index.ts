@@ -131,3 +131,44 @@ export type {
   WorkVisibilityCommand,
   WorkVisibilityResult,
 } from "./work-publishing-schemas.js";
+// content-community-completion-v1: editorial content read DTOs.
+export type {
+  ArticleCitation,
+  ArticleCollectionDetail,
+  ArticleCollectionId,
+  ArticleCollectionListQuery,
+  ArticleCollectionMember,
+  ArticleCollectionPage,
+  ArticleCollectionSummary,
+  ArticleDetail,
+  ArticleId,
+  ArticleListQuery,
+  ArticlePage,
+  ArticlePresentation,
+  ArticleSection,
+  ArticleSummary,
+} from "./schemas.js";
+export type {
+  DiscussionTarget,
+  ThreadId,
+  ThreadListQuery,
+  ThreadPage,
+  ThreadReadResult,
+  ThreadStatus,
+  ThreadSummary,
+} from "./schemas.js";
+export type {
+  DirectConversation,
+  DirectConversationLookup,
+  DirectConversationPage,
+  DirectMessage,
+  DirectMessageFailureCode,
+  DirectMessagePage,
+  DirectMessageReadCommand,
+  DirectMessageUnread,
+  DmConversationId,
+  DmMessageId,
+  DmParticipant,
+  DmSendRefusal,
+  SendDirectMessageCommand,
+} from "./schemas.js";

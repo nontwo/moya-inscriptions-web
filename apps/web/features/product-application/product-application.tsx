@@ -18,6 +18,7 @@ import { PublishingProvider } from "../publishing/publishing-provider";
 import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
 import { EditorSessionProvider } from "../publishing/ui/editor/editor-session-provider";
 import { MessageTrigger } from "../authors/message-center";
+import { DirectMessageEntryProvider } from "../messages";
 import { useProductShell } from "../product-shell/product-shell";
 import { CatalogSearchHeaderAction } from "../search/catalog-search";
 
@@ -79,7 +80,9 @@ export const ProductApplication = ({
     />
   ) : (
     <AuthorProvider signInHref={comments.signInHref}>
-      <AuthorProduct preview={preview} unreadCount={messageUnreadCount} />
+      <DirectMessageEntryProvider>
+        <AuthorProduct preview={preview} unreadCount={messageUnreadCount} />
+      </DirectMessageEntryProvider>
     </AuthorProvider>
   );
 

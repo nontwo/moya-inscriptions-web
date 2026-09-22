@@ -18,13 +18,17 @@ import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
 import { handleAgentRequest } from "./agent-handler.js";
 import { handlePublishingOperatorRequest } from "./work-publishing-handler.js";
+import { handleThreadOperatorRequest } from "./thread-handler.js";
+import { handleDirectMessageOperatorRequest } from "./direct-message-handler.js";
 
 import type {
   AgentAdministrationService,
   CommunityContentOperatorPort,
   DiscussionPort,
   CommunityModerationService,
+  DirectMessageService,
   PublishingOperatorService,
+  ThreadService,
 } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -36,6 +40,10 @@ export interface OperatorRouteDependencies {
   readonly publishingOperatorService?: PublishingOperatorService | undefined;
   /** Agent administration (Development only); absent leaves agent/* unrouted. */
   readonly agentAdministrationService?: AgentAdministrationService | undefined;
+  /** Threads (content-community-completion-v1, Development only); absent leaves threads/* unrouted. */
+  readonly threadService?: ThreadService | undefined;
+  /** DM moderation (content-community-completion-v1, Development only). */
+  readonly directMessageService?: DirectMessageService | undefined;
   /** Shared credential the Owner's Payload Admin holds server-side. */
   readonly operatorCredential: string;
 }
@@ -151,6 +159,8 @@ export const handleOperatorRequest = async (
     discussionPort,
     publishingOperatorService,
     agentAdministrationService,
+    threadService,
+    directMessageService,
   }: OperatorRouteDependencies,
 ): Promise<void> => {
   if (!isAuthorizedOperator(request, operatorCredential)) {
@@ -174,6 +184,28 @@ export const handleOperatorRequest = async (
       response,
       pathname,
       publishingOperatorService,
+    ))
+  )
+    return;
+  if (
+    directMessageService !== undefined &&
+    (await handleDirectMessageOperatorRequest(
+      request,
+      response,
+      pathname,
+      directMessageService,
+      "owner",
+    ))
+  )
+    return;
+  if (
+    threadService !== undefined &&
+    (await handleThreadOperatorRequest(
+      request,
+      response,
+      pathname,
+      threadService,
+      "owner",
     ))
   )
     return;

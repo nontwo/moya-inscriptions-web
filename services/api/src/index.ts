@@ -261,3 +261,29 @@ export type {
   AgentManifestSelection,
   AgentOperationDraft,
 } from "./modules/community/application/ports/agent-administration-port.js";
+// content-community-completion-v1: editorial content reads.
+export {
+  EditorialContentReadService,
+  splitParagraphs,
+} from "./modules/editorial/application/services/editorial-content-read-service.js";
+export type {
+  ArticleCitationRecord,
+  ArticleCollectionDetailRecord,
+  ArticleCollectionMemberRecord,
+  ArticleCollectionSummaryRecord,
+  ArticleDetailRecord,
+  ArticleSectionRecord,
+  ArticleSummaryRecord,
+  EditorialContentReadPort,
+  EditorialMediaRecord,
+  EditorialPageRecord,
+} from "./modules/editorial/application/ports/editorial-content-read-port.js";
+// content-community-completion-v1: Threads over Works.
+export { ThreadService } from "./modules/community/application/services/thread-service.js";
+export type { ThreadPort } from "./modules/community/application/ports/thread-port.js";
+// content-community-completion-v1: direct messages.
+export { DirectMessageService } from "./modules/community/application/services/direct-message-service.js";
+export type {
+  DirectMessagePort,
+  DirectMessageSendInput,
+} from "./modules/community/application/ports/direct-message-port.js";

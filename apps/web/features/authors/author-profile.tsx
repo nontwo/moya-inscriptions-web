@@ -13,6 +13,7 @@ import { HorizontalPager } from "../shell/horizontal-pager";
 import type { HorizontalPagerHandle } from "../shell/horizontal-pager";
 import { authorClient } from "./author-data";
 import { useAuthors } from "./author-context";
+import { useDirectMessageEntry } from "../messages/direct-message-entry";
 import { AvatarEntry } from "./avatar-editor";
 import { ProfileEditor } from "./profile-editor";
 import { ProfileSettings } from "./profile-settings";
@@ -53,6 +54,7 @@ const ScopedAuthorProfile = ({
   headerStart,
 }: ProductShellProfileOverlayRenderProps &
   AuthorProfilePresentationProps & { embedded?: boolean }) => {
+  const directEntry = useDirectMessageEntry();
   const author = useAuthors(),
     shell = useProductShell(),
     isPreview = preview !== undefined,
@@ -431,6 +433,24 @@ const ScopedAuthorProfile = ({
                       >
                         屏蔽
                       </button>
+                      {directEntry && (
+                        <button
+                          type="button"
+                          data-profile-direct-message=""
+                          aria-label={`给 ${profile.displayName} 发私信`}
+                          onClick={() => {
+                            // Opening never sends: the first submit in the
+                            // message center creates the canonical pair.
+                            directEntry.openWith(
+                              profile.id,
+                              profile.displayName,
+                            );
+                            onClose();
+                          }}
+                        >
+                          私信
+                        </button>
+                      )}
                     </>
                   ) : !profile.isOwner ? (
                     <a href={author.signInHref}>登录后关注</a>
@@ -647,9 +667,14 @@ export const MyComments = ({
                       target: item.target,
                       id: item.id,
                     });
-                    if (onOpenContent)
-                      onOpenContent(item.target!, event.currentTarget);
-                    else shell.openContent(item.target!, event.currentTarget);
+                    const target = item.target!;
+                    // content-community-completion-v1: an Article discussion
+                    // opens through the editorial reader (topic overlay).
+                    if (target.type === "article")
+                      shell.openTopic(target.id, event.currentTarget, 0);
+                    else if (onOpenContent)
+                      onOpenContent(target, event.currentTarget);
+                    else shell.openContent(target, event.currentTarget);
                   }}
                 >
                   前往评论位置
