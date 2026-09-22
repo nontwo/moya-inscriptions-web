@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -18,15 +18,27 @@ import {
   runCommunityMigrations,
   verifyCommunityMigrationLedger,
 } from "@moya/community-postgres";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+import {
+  assertSyntheticTestDatabaseUrl,
+  requireSyntheticTestDatabaseUrl,
+} from "./synthetic-test-database.js";
 
 import type { AuthDeliveryPorts } from "@moya/api";
 
 type Pool = ReturnType<typeof createPostgresPool>;
 
-const ownerUrl = requireSyntheticTestDatabaseUrl();
+const sharedUrl = requireSyntheticTestDatabaseUrl();
+const dedicatedName = `email_auth_${randomBytes(6).toString("hex")}_synthetic_test`;
+const ownerUrl = (() => {
+  const url = new URL(sharedUrl);
+  url.pathname = `/${dedicatedName}`;
+  url.search = "";
+  url.hash = "";
+  assertSyntheticTestDatabaseUrl(url.toString());
+  return url.toString();
+})();
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const migrationsDirectory = path.join(root, "database", "community-migrations");
 const baselineMigrationId = "20260921010000";
@@ -56,10 +68,15 @@ const latest = () => {
   return code;
 };
 
+const admin = createPostgresPool(
+  parsePostgresConfig({ DATABASE_URL: sharedUrl }),
+);
 const owner = createPostgresPool(
   parsePostgresConfig({ DATABASE_URL: ownerUrl }),
 );
 const pools = new Set<Pool>([owner]);
+const appRole = `ea_app_${randomBytes(4).toString("hex")}`;
+let upgradeName = "";
 const poolFor = (url: string) => {
   const pool = createPostgresPool(parsePostgresConfig({ DATABASE_URL: url }));
   pools.add(pool);
@@ -161,15 +178,23 @@ const reauthenticate = async (
   return verified.value.reauthToken;
 };
 
+beforeAll(async () => {
+  await admin.query(`CREATE DATABASE ${dedicatedName}`);
+});
+
 afterAll(async () => {
   await Promise.all([...pools].map((pool) => pool.end()));
+  if (upgradeName !== "")
+    await admin.query(`DROP DATABASE IF EXISTS ${upgradeName} WITH (FORCE)`);
+  await admin.query(`DROP DATABASE IF EXISTS ${dedicatedName} WITH (FORCE)`);
+  await admin.query(`DROP ROLE IF EXISTS ${appRole}`);
+  await admin.end();
 });
 
 describe("email-auth PostgreSQL", () => {
   it("upgrades from the pre-auth baseline and a clean install matches the ledger", async () => {
-    const upgradeName = "email_auth_upgrade_synthetic";
-    await owner.query(`DROP DATABASE IF EXISTS ${upgradeName}`);
-    await owner.query(`CREATE DATABASE ${upgradeName}`);
+    upgradeName = `email_auth_up_${randomBytes(6).toString("hex")}_synthetic_test`;
+    await admin.query(`CREATE DATABASE ${upgradeName}`);
     const upgradeUrl = new URL(ownerUrl);
     upgradeUrl.pathname = `/${upgradeName}`;
     const upgrade = poolFor(upgradeUrl.toString());
@@ -214,15 +239,12 @@ describe("email-auth PostgreSQL", () => {
   });
 
   it("converges runtime grants and enforces auth rules as the App role", async () => {
-    const role = "email_auth_app";
+    const role = appRole;
     const password = "synthetic-test-only";
     await owner.query("TRUNCATE TABLE community.public_users CASCADE");
     await owner.query(catalogStubs);
     await owner.query(
       "CREATE TABLE IF NOT EXISTS public.unrelated_acceptance_probe(id integer)",
-    );
-    await owner.query(
-      `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}') THEN EXECUTE 'DROP OWNED BY ${role}'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$`,
     );
     await owner.query(
       `CREATE ROLE ${role} LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
@@ -407,7 +429,7 @@ describe("email-auth PostgreSQL", () => {
       "CREATE TABLE community.qa_forbidden(id int)",
       "UPDATE community.schema_migrations SET checksum=checksum",
       "INSERT INTO community.development_accounts(user_id, label) VALUES ('user-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'x')",
-      "ALTER ROLE email_auth_app SUPERUSER",
+      `ALTER ROLE ${appRole} SUPERUSER`,
       "CREATE ROLE email_auth_escalated LOGIN",
       "SELECT id FROM public.unrelated_acceptance_probe",
     ])
@@ -463,7 +485,7 @@ describe("email-auth PostgreSQL", () => {
 
   it("rejects duplicate, stale, replayed and cross-purpose proofs", async () => {
     const appUrl = new URL(ownerUrl);
-    appUrl.username = "email_auth_app";
+    appUrl.username = appRole;
     appUrl.password = "synthetic-test-only";
     const service = serviceFor(poolFor(appUrl.toString()));
     const sent = await service.sendChallenge({
