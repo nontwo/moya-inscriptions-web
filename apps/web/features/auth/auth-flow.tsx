@@ -283,8 +283,16 @@ export const AuthFlow = ({
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 pattern="[0-9]*"
-                maxLength={6}
                 value={code}
+                onPaste={(event) => {
+                  const digits = event.clipboardData
+                    .getData("text")
+                    .replace(/\D/gu, "")
+                    .slice(0, 6);
+                  if (digits.length === 0) return;
+                  event.preventDefault();
+                  setCode(digits);
+                }}
                 onChange={(event) =>
                   setCode(event.target.value.replace(/\D/gu, "").slice(0, 6))
                 }

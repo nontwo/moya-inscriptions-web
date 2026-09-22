@@ -894,7 +894,11 @@ export const relayServerCommunityAuth = async (
     const payload: unknown = await upstream.json();
     const secure = isSecureRequest(request);
     let setCookie: string | undefined;
-    if (typeof payload === "object" && payload !== null && "session" in payload) {
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      "session" in payload
+    ) {
       const session = payload.session;
       if (
         typeof session === "object" &&

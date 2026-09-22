@@ -4,22 +4,32 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./auth-api", () => ({
-  authRequest: vi.fn(async (path: string) =>
-    path === "capabilities"
-      ? {
-          status: 200,
-          body: {
-            profile: "email-first",
-            email: { available: true, reason: null },
-            phone: {
-              available: false,
-              reason: "Phone sign-in is turned off in this acceptance profile.",
-            },
-            developmentOnly: true,
+  authRequest: vi.fn(async (path: string) => {
+    if (path === "capabilities")
+      return {
+        status: 200,
+        body: {
+          profile: "email-first",
+          email: { available: true, reason: null },
+          phone: {
+            available: false,
+            reason: "Phone sign-in is turned off in this acceptance profile.",
           },
-        }
-      : { status: 503, body: null },
-  ),
+          developmentOnly: true,
+        },
+      };
+    if (path === "challenges")
+      return {
+        status: 200,
+        body: {
+          challengeId: "challenge-0123456789abcdef0123456789abcdef",
+          maskedTarget: "p***@example.com",
+          resendAvailableAt: "2099-01-01T00:01:00.000Z",
+          continuationToken: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ1234567",
+        },
+      };
+    return { status: 503, body: null };
+  }),
   safeReturnPath: (value: string) => value,
 }));
 
@@ -55,6 +65,45 @@ describe("AuthFlow", () => {
     ).not.toBeNull();
     const code = container.querySelector("input[autocomplete='one-time-code']");
     expect(code).toBeNull();
+    root.unmount();
+  });
+
+  it("keeps six digits when a spaced code is entered in the single field", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<AuthFlow mode="sign-in" returnTo="/" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const email = container.querySelector(
+      "input[autocomplete='email']",
+    ) as HTMLInputElement;
+    const setValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    setValue?.call(email, "person@example.com");
+    await act(async () => {
+      email.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const send = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "发送验证码",
+    );
+    await act(async () => {
+      send?.click();
+    });
+    const code = container.querySelector(
+      "input[autocomplete='one-time-code']",
+    ) as HTMLInputElement;
+    expect(code).not.toBeNull();
+    setValue?.call(code, "12 3456");
+    await act(async () => {
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(code.value).toBe("123456");
     root.unmount();
   });
 });

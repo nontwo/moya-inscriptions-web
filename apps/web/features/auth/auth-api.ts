@@ -1,7 +1,4 @@
-export {
-  authRequest,
-  safeReturnPath,
-} from "../../lib/public-api/auth-client";
+export { authRequest, safeReturnPath } from "../../lib/public-api/auth-client";
 export type {
   AuthAccountView,
   AuthCapabilitiesView,
