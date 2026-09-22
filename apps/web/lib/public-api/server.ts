@@ -1,6 +1,11 @@
 import "server-only";
 import { localCatalogFileUrl } from "../../features/detail/local-catalog-media";
-import { readCommunitySessionToken } from "./community-session-cookie";
+import {
+  isSecureRequest,
+  readCommunitySessionToken,
+  serializeClearedCommunitySessionCookie,
+  serializeCommunitySessionCookie,
+} from "./community-session-cookie";
 
 import { fetchCatalogSearchPage } from "./catalog-search";
 import type { CatalogSearchTransportResult } from "./catalog-search";
@@ -816,4 +821,105 @@ export const relayServerPublishingMedia = async (
     return new Response(null, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });
+};
+
+/**
+ * Same-origin authentication relay. A session token returned by the Backend is
+ * stored in the HttpOnly cookie and removed before the body reaches the browser.
+ */
+export const relayServerCommunityAuth = async (
+  request: Request,
+): Promise<Response> => {
+  const headers = {
+    "cache-control": "private, no-store",
+    vary: "Cookie",
+    "x-content-type-options": "nosniff",
+  };
+  const fail = (status: number) => new Response(null, { status, headers });
+  if (!["GET", "POST"].includes(request.method)) return fail(405);
+  const incoming = new URL(request.url);
+  const origin = request.headers.get("origin");
+  const authority = request.headers.get("host") ?? incoming.host;
+  let sameOrigin = origin === null;
+  if (origin !== null) {
+    try {
+      const source = new URL(origin);
+      sameOrigin =
+        source.host === authority && source.protocol === incoming.protocol;
+    } catch {
+      sameOrigin = false;
+    }
+  }
+  if (
+    request.method !== "GET" &&
+    (!sameOrigin || request.headers.get("sec-fetch-site") === "cross-site")
+  )
+    return fail(403);
+  const prefix = "/api/community/auth/";
+  if (!incoming.pathname.startsWith(prefix)) return fail(404);
+  const suffix = incoming.pathname.slice(prefix.length);
+  try {
+    const base = parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL);
+    const target = new URL(`v1/community/auth/${suffix}`, base);
+    const token = readCommunitySessionToken(request.headers.get("cookie"));
+    const outgoing: Record<string, string> = { accept: "application/json" };
+    if (token !== undefined) outgoing.authorization = `Bearer ${token}`;
+    let body: string | undefined;
+    if (request.method === "POST") {
+      outgoing["content-type"] = "application/json";
+      body = await request.text();
+      if (body.length > 16_384) return fail(413);
+    }
+    const upstream = await fetch(target, {
+      method: request.method,
+      headers: outgoing,
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+      ...(body === undefined ? {} : { body }),
+    });
+    if (suffix === "sign-out") {
+      const secure = isSecureRequest(request);
+      return new Response(null, {
+        status: upstream.status,
+        headers: {
+          ...headers,
+          "set-cookie": serializeClearedCommunitySessionCookie(secure),
+        },
+      });
+    }
+    const type = upstream.headers.get("content-type") ?? "";
+    if (!type.includes("application/json"))
+      return fail(upstream.ok ? 502 : upstream.status);
+    const payload: unknown = await upstream.json();
+    const secure = isSecureRequest(request);
+    let setCookie: string | undefined;
+    if (typeof payload === "object" && payload !== null && "session" in payload) {
+      const session = payload.session;
+      if (
+        typeof session === "object" &&
+        session !== null &&
+        "token" in session &&
+        "expiresAt" in session &&
+        typeof session.token === "string" &&
+        typeof session.expiresAt === "string"
+      ) {
+        setCookie = serializeCommunitySessionCookie(
+          session.token,
+          new Date(session.expiresAt),
+          secure,
+        );
+        delete session.token;
+      }
+    }
+    return Response.json(payload, {
+      status: upstream.status,
+      headers: {
+        ...headers,
+        ...(setCookie === undefined ? {} : { "set-cookie": setCookie }),
+      },
+    });
+  } catch {
+    return fail(503);
+  }
 };

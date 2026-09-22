@@ -26,6 +26,8 @@ import {
   catalogSearchTransportQuerySchema,
   catalogSearchItemSchema,
   catalogSearchPageSchema,
+  authAccountSecuritySchema,
+  authCapabilitiesSchema,
   healthResponseSchema,
   mediaIdSchema,
   noQueryTransportSchema,
@@ -219,6 +221,11 @@ import {
 } from "./schemas.js";
 
 /** Work publishing public DTOs, for the Development-only OpenAPI components. */
+export const authJsonSchemas = {
+  AuthCapabilities: toJsonSchema(authCapabilitiesSchema),
+  AuthAccountSecurity: toJsonSchema(authAccountSecuritySchema),
+};
+
 export const workPublishingJsonSchemas = {
   MediaEdit: toJsonSchema(mediaEditSchema),
   WorkAuthorship: toJsonSchema(workAuthorshipSchema),

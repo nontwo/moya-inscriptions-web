@@ -264,6 +264,18 @@ const webCommunityServerImports: ReadonlyMap<string, string> = new Map([
     "{relayServerAuthorCommunity}",
   ],
   [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "community",
+      "auth",
+      "[...path]",
+      "route.ts",
+    ),
+    "{relayServerCommunityAuth}",
+  ],
+  [
     path.join(webRoot, "app", "api", "community", "me", "route.ts"),
     "{fetchServerCurrentUser}",
   ],

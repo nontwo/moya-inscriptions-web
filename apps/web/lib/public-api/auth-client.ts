@@ -1,0 +1,74 @@
+export interface AuthCapabilitiesView {
+  readonly profile: "full-local" | "email-first" | "disabled";
+  readonly email: {
+    readonly available: boolean;
+    readonly reason: string | null;
+  };
+  readonly phone: {
+    readonly available: boolean;
+    readonly reason: string | null;
+  };
+  readonly developmentOnly: boolean;
+}
+
+export interface AuthFactorView {
+  readonly channel: "email" | "phone";
+  readonly state: "unbound" | "verified" | "unavailable" | "pending";
+  readonly masked: string | null;
+  readonly version: number;
+  readonly usable: boolean;
+}
+
+export interface AuthAccountView {
+  readonly userId: string;
+  readonly email: AuthFactorView;
+  readonly phone: AuthFactorView;
+  readonly capabilities: AuthCapabilitiesView;
+}
+
+const read = async (response: Response): Promise<unknown> => {
+  const type = response.headers.get("content-type") ?? "";
+  if (!type.includes("application/json")) return null;
+  return response.json();
+};
+
+export const authRequest = async (
+  path: string,
+  init?: { readonly method?: "GET" | "POST"; readonly body?: unknown },
+): Promise<{ readonly status: number; readonly body: unknown }> => {
+  const response = await fetch(`/api/community/auth/${path}`, {
+    method: init?.method ?? (init?.body === undefined ? "GET" : "POST"),
+    headers: {
+      accept: "application/json",
+      ...(init?.body === undefined
+        ? {}
+        : { "content-type": "application/json" }),
+    },
+    credentials: "same-origin",
+    cache: "no-store",
+    ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+  });
+  return { status: response.status, body: await read(response) };
+};
+
+export const safeReturnPath = (value: string | null | undefined): string => {
+  if (value === null || value === undefined) return "/";
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.startsWith("/\\")
+  )
+    return "/";
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32) return "/";
+  }
+  if (value.includes("\\") || value.includes("://")) return "/";
+  try {
+    const url = new URL(value, "http://return.invalid");
+    if (url.origin !== "http://return.invalid") return "/";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
+};

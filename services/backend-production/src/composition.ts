@@ -1,5 +1,7 @@
 import {
+  assertProductionAuthConfiguration,
   createBackendApplication,
+  createDevelopmentAuthService,
   createPublishingTransferRegistry,
   parseRuntimeConfig,
   startBackendProcess,
@@ -19,6 +21,7 @@ import {
   PostgresAuthorCommunityAdapter,
   PostgresCommunityDiscoveryAdapter,
   PostgresCommunityCommentAdapter,
+  PostgresCommunityAuthAdapter,
   PostgresCommunityIdentityAdapter,
   PostgresPublishingOperatorAdapter,
   PostgresWorkPublishingAdapter,
@@ -147,6 +150,7 @@ export const prepareProductionBackend = async (
   environment: RuntimeEnvironment,
 ): Promise<PreparedProductionBackend> => {
   const runtimeConfig = parseRuntimeConfig(environment);
+  assertProductionAuthConfiguration(environment);
   if (
     runtimeConfig.nodeEnv !== "production" &&
     runtimeConfig.nodeEnv !== "development"
@@ -278,6 +282,14 @@ export const prepareProductionBackend = async (
       storageUrlResolver,
       healthReadinessCheck: readinessCheck,
       communityIdentityPort,
+      ...(() => {
+        if (runtimeConfig.nodeEnv !== "development") return {};
+        const authService = createDevelopmentAuthService(
+          new PostgresCommunityAuthAdapter(communityPool),
+          environment,
+        );
+        return authService === null ? {} : { authService };
+      })(),
       communityCommentPort,
       ...(runtimeConfig.nodeEnv === "development"
         ? {

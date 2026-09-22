@@ -11,6 +11,7 @@ import {
   CatalogCommentService,
   CatalogReadService,
   CommunityModerationService,
+  CommunityAuthService,
   CommunitySessionService,
   PublishingOperatorService,
   PublishingTransferRegistry,
@@ -50,6 +51,11 @@ export interface BackendApplicationOptions {
   readonly healthReadinessCheck?: HealthReadinessCheck;
   /** Backend-owned identity and sessions; without it every credential is unauthenticated. */
   readonly communityIdentityPort?: CommunityIdentityPort;
+  /**
+   * Email and phone authentication. Refused in production: this task does not
+   * expose public registration there.
+   */
+  readonly authService?: CommunityAuthService;
   readonly authorCommunityPort?: AuthorCommunityPort;
   readonly discussionPort?: DiscussionPort;
   readonly contentOperatorPort?: CommunityContentOperatorPort;
@@ -173,8 +179,13 @@ const resolveCommunity = (
 ): CommunityRouterDependencies | undefined => {
   const { nodeEnv, communityIdentityPort, communityCommentPort } = options;
   if (communityIdentityPort === undefined) return undefined;
+  if (nodeEnv === "production" && options.authService !== undefined)
+    throw new Error("Public authentication is not composed in production");
   return {
     sessionService: new CommunitySessionService(communityIdentityPort),
+    ...(nodeEnv === "development" && options.authService !== undefined
+      ? { authService: options.authService }
+      : {}),
     ...(nodeEnv === "development" && options.authorCommunityPort !== undefined
       ? {
           authorService: new AuthorCommunityService(
