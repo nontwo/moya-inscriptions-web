@@ -171,6 +171,20 @@ const fail = <T>(reason: AuthReason): AuthResult<T> => ({
   reason,
 });
 
+/** Check-constraint backstop when an attempt counter would pass five. */
+const attemptsBound = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null) return false;
+  if ("kind" in error && error.kind === "attempts") return true;
+  const code = "code" in error ? String(error.code) : "";
+  const constraint = "constraint" in error ? String(error.constraint) : "";
+  const message = "message" in error ? String(error.message) : "";
+  return (
+    code === "23514" &&
+    (constraint === "auth_challenges_attempts_bounded" ||
+      message.includes("auth_challenges_attempts_bounded"))
+  );
+};
+
 /**
  * Email-first registration, sign-in and factor binding on the existing
  * public-user and session tables. Session tokens are minted only after a
@@ -478,6 +492,16 @@ export class CommunityAuthService {
           value: { session, account: await this.accountView(tx, user.id) },
         };
       }
+      const since = new Date(at.getTime() - WINDOW_MS).toISOString();
+      if (
+        (await tx.failureCount(
+          challenge.targetDigest,
+          challenge.purpose,
+          since,
+        )) >= MAX_ATTEMPTS ||
+        challenge.attempts >= MAX_ATTEMPTS
+      )
+        return fail("AUTH_CODE_EXHAUSTED");
       if (!(await this.codeAccepted(challenge, input.code, providerPassed))) {
         await tx.saveChallenge({
           ...challenge,
@@ -488,11 +512,7 @@ export class CommunityAuthService {
           challenge.purpose,
           at.toISOString(),
         );
-        return fail(
-          challenge.attempts + 1 >= MAX_ATTEMPTS
-            ? "AUTH_CODE_EXHAUSTED"
-            : "AUTH_CODE_INVALID",
-        );
+        return fail("AUTH_CODE_INVALID");
       }
       const reauth = await tx.findHandoff(reauthHash);
       if (
@@ -749,6 +769,10 @@ export class CommunityAuthService {
       );
       return fail("AUTH_CODE_INVALID");
     }
+    // Link and replace are completed only by completeFactor. Verifying them
+    // here must not set completedAt, or that proof can never be used.
+    if (challenge.purpose === "link" || challenge.purpose === "replace")
+      return fail("AUTH_PROOF_REJECTED");
     await tx.saveChallenge({ ...challenge, completedAt: at.toISOString() });
     if (challenge.purpose === "reauthenticate") {
       if (challenge.userId === null || challenge.sessionHash === null)
@@ -1395,6 +1419,7 @@ export class CommunityAuthService {
       return await this.port.transaction(work);
     } catch (error) {
       if (error instanceof AuthRollback) return error.result as AuthResult<T>;
+      if (attemptsBound(error)) return fail("AUTH_CODE_EXHAUSTED");
       throw error;
     }
   }

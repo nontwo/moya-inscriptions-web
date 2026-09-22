@@ -409,6 +409,223 @@ describe("email and phone authentication", () => {
     ).toMatchObject({ ok: false, reason: "AUTH_LAST_FACTOR" });
   });
 
+  it("leaves a link proof usable when the verify route rejects that purpose", async () => {
+    const { service } = harness();
+    const email = await registerEmail(service, "proof@example.com", "证明");
+    const token = email.registered.value.token;
+    const reauthSend = await service.sendChallenge({
+      channel: "email",
+      purpose: "reauthenticate",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+    });
+    if (!reauthSend.ok || reauthSend.value.continuationToken === undefined)
+      throw new Error("reauth");
+    const reauth = await service.verifyChallenge({
+      challengeId: reauthSend.value.challengeId,
+      code: latestCode(),
+      continuationToken: reauthSend.value.continuationToken,
+      idempotencyKey: key(),
+    });
+    if (!reauth.ok || reauth.value.outcome !== "reauthenticated")
+      throw new Error("proof");
+    const link = await service.sendChallenge({
+      channel: "phone",
+      purpose: "link",
+      identifier: "13800138002",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+      reauthToken: reauth.value.reauthToken,
+    });
+    if (!link.ok || link.value.continuationToken === undefined)
+      throw new Error("link");
+    const code = latestCode();
+    expect(
+      await service.verifyChallenge({
+        challengeId: link.value.challengeId,
+        code,
+        continuationToken: link.value.continuationToken,
+        idempotencyKey: key(),
+      }),
+    ).toMatchObject({ ok: false, reason: "AUTH_PROOF_REJECTED" });
+    const bound = await service.completeFactor({
+      challengeId: link.value.challengeId,
+      code,
+      continuationToken: link.value.continuationToken,
+      reauthToken: reauth.value.reauthToken,
+      expectedVersion: 0,
+      idempotencyKey: key(),
+      sessionToken: token,
+    });
+    expect(bound.ok && bound.value.account.userId).toBe(
+      email.registered.value.profile.id,
+    );
+    expect(bound.ok && bound.value.account.phone.state).toBe("verified");
+  });
+
+  it("refuses factor completion after five failures, including the correct code", async () => {
+    const { service } = harness();
+    const email = await registerEmail(service, "exhaust@example.com", "次数");
+    const token = email.registered.value.token;
+    const reauthSend = await service.sendChallenge({
+      channel: "email",
+      purpose: "reauthenticate",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+    });
+    if (!reauthSend.ok || reauthSend.value.continuationToken === undefined)
+      throw new Error("reauth");
+    const reauth = await service.verifyChallenge({
+      challengeId: reauthSend.value.challengeId,
+      code: latestCode(),
+      continuationToken: reauthSend.value.continuationToken,
+      idempotencyKey: key(),
+    });
+    if (!reauth.ok || reauth.value.outcome !== "reauthenticated")
+      throw new Error("proof");
+    const link = await service.sendChallenge({
+      channel: "phone",
+      purpose: "link",
+      identifier: "13800138003",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+      reauthToken: reauth.value.reauthToken,
+    });
+    if (!link.ok || link.value.continuationToken === undefined)
+      throw new Error("link");
+    const code = latestCode();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(
+        await service.completeFactor({
+          challengeId: link.value.challengeId,
+          code: "000000",
+          continuationToken: link.value.continuationToken,
+          reauthToken: reauth.value.reauthToken,
+          expectedVersion: 0,
+          idempotencyKey: key(),
+          sessionToken: token,
+        }),
+      ).toMatchObject({ ok: false, reason: "AUTH_CODE_INVALID" });
+    }
+    expect(
+      await service.completeFactor({
+        challengeId: link.value.challengeId,
+        code,
+        continuationToken: link.value.continuationToken,
+        reauthToken: reauth.value.reauthToken,
+        expectedVersion: 0,
+        idempotencyKey: key(),
+        sessionToken: token,
+      }),
+    ).toMatchObject({ ok: false, reason: "AUTH_CODE_EXHAUSTED" });
+    expect((await service.readAccount(token)).ok && true).toBe(true);
+    const account = await service.readAccount(token);
+    expect(account.ok && account.value.phone.state).toBe("unbound");
+    expect(account.ok && account.value.userId).toBe(
+      email.registered.value.profile.id,
+    );
+  });
+
+  it("maps an attempts-bound constraint failure to exhaustion", async () => {
+    const memory = createMemoryCommunityAuthPort();
+    const now = new Date("2026-09-22T12:00:00.000Z");
+    const service = new CommunityAuthService(
+      {
+        transaction: (work) =>
+          memory.transaction(async (tx) =>
+            work({
+              ...tx,
+              saveChallenge: async (row) => {
+                if (row.attempts >= 5) {
+                  throw Object.assign(
+                    new Error(
+                      'violates check constraint "auth_challenges_attempts_bounded"',
+                    ),
+                    {
+                      code: "23514",
+                      constraint: "auth_challenges_attempts_bounded",
+                    },
+                  );
+                }
+                await tx.saveChallenge(row);
+              },
+            }),
+          ),
+      },
+      {
+        environment: "development",
+        profile: "full-local",
+        keys,
+        emailMode: "local_capture",
+        phoneMode: "simulated",
+        delivery: delivery(),
+        clock: () => now,
+      },
+    );
+    const email = await registerEmail(
+      service,
+      "constraint@example.com",
+      "约束",
+    );
+    const token = email.registered.value.token;
+    const reauthSend = await service.sendChallenge({
+      channel: "email",
+      purpose: "reauthenticate",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+    });
+    if (!reauthSend.ok || reauthSend.value.continuationToken === undefined)
+      throw new Error("reauth");
+    const reauth = await service.verifyChallenge({
+      challengeId: reauthSend.value.challengeId,
+      code: latestCode(),
+      continuationToken: reauthSend.value.continuationToken,
+      idempotencyKey: key(),
+    });
+    if (!reauth.ok || reauth.value.outcome !== "reauthenticated")
+      throw new Error("proof");
+    const link = await service.sendChallenge({
+      channel: "phone",
+      purpose: "link",
+      identifier: "13800138004",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+      reauthToken: reauth.value.reauthToken,
+    });
+    if (!link.ok || link.value.continuationToken === undefined)
+      throw new Error("link");
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      expect(
+        await service.completeFactor({
+          challengeId: link.value.challengeId,
+          code: "000000",
+          continuationToken: link.value.continuationToken,
+          reauthToken: reauth.value.reauthToken,
+          expectedVersion: 0,
+          idempotencyKey: key(),
+          sessionToken: token,
+        }),
+      ).toMatchObject({ ok: false, reason: "AUTH_CODE_INVALID" });
+    }
+    await expect(
+      service.completeFactor({
+        challengeId: link.value.challengeId,
+        code: "000000",
+        continuationToken: link.value.continuationToken,
+        reauthToken: reauth.value.reauthToken,
+        expectedVersion: 0,
+        idempotencyKey: key(),
+        sessionToken: token,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "AUTH_CODE_EXHAUSTED" });
+  });
+
   it("refuses a contact owned by someone else and a simulated proof after the provider mode changes", async () => {
     const { service, port } = harness();
     await registerEmail(service, "one@example.com", "甲");

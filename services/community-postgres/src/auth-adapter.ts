@@ -15,11 +15,20 @@ import type {
 } from "@moya/api";
 import type { Pool, PoolClient } from "pg";
 
-const persistenceKind = (error: unknown): "conflict" | "last_factor" | null => {
+const persistenceKind = (
+  error: unknown,
+): "conflict" | "last_factor" | "attempts" | null => {
   if (typeof error !== "object" || error === null || !("code" in error))
     return null;
   const code = String(error.code);
   const message = "message" in error ? String(error.message) : "";
+  const constraint = "constraint" in error ? String(error.constraint) : "";
+  if (
+    code === "23514" &&
+    (constraint === "auth_challenges_attempts_bounded" ||
+      message.includes("auth_challenges_attempts_bounded"))
+  )
+    return "attempts";
   if (code === "23514" && message.includes("last login identity"))
     return "last_factor";
   if (code === "23505" || (code === "23514" && message.includes("mixed login")))
