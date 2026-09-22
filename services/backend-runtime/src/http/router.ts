@@ -1,3 +1,6 @@
+import { handleNotificationRequest } from "../community/notification-handler.js";
+import type { NotificationStreams } from "../community/notification-stream.js";
+import type { NotificationService } from "@moya/api";
 import type { RequestListener } from "node:http";
 
 import {
@@ -54,6 +57,8 @@ const sendRouteError = (
 };
 
 export interface CommunityRouterDependencies {
+  readonly notificationService?: NotificationService;
+  readonly notificationStreams?: NotificationStreams;
   readonly sessionService: CommunitySessionService;
   /** Email and phone authentication. Mounted only for a Development acceptance profile. */
   readonly authService?: CommunityAuthService;
@@ -165,6 +170,24 @@ export const createRouter =
       pathname.startsWith("/v1/community/auth/")
     ) {
       void handleCommunityAuth(request, response, community.authService);
+      return;
+    }
+
+    if (
+      community?.developmentEntry &&
+      community.notificationService &&
+      community.notificationStreams &&
+      (pathname === "/v1/community/mentions" ||
+        pathname === "/v1/community/notifications" ||
+        pathname.startsWith("/v1/community/notifications/"))
+    ) {
+      void handleNotificationRequest(
+        request,
+        response,
+        community.notificationService,
+        community.sessionService,
+        community.notificationStreams,
+      );
       return;
     }
 

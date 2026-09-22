@@ -307,6 +307,7 @@ export const handleAuthorRequest = async (
               input.text,
               root,
               input.replyTo,
+              input.mentions,
             ),
             201,
           );

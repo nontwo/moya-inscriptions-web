@@ -284,3 +284,10 @@ GRANT UPDATE (count) ON TABLE community.auth_send_counters TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.auth_target_failures TO :"app_role";
 GRANT INSERT (id, user_id, action, occurred_at) ON TABLE community.auth_audit_events TO :"app_role";
 GRANT INSERT (issuer, auth_environment, auth_channel) ON TABLE community.sessions TO :"app_role";
+-- messaging-notification-foundation-v1: transaction effects and private inbox.
+GRANT SELECT, INSERT ON community.notification_sources, community.notification_recipient_versions,
+  community.notification_groups, community.notification_deliveries TO :"app_role";
+GRANT UPDATE (generation,completed_generation,attempts,run_after,lease_owner,lease_until,error_code)
+  ON community.notification_sources TO :"app_role";
+GRANT UPDATE (revision) ON community.notification_recipient_versions TO :"app_role";
+GRANT UPDATE (read_through) ON community.notification_groups TO :"app_role";

@@ -29,3 +29,5 @@ export type {
   ProcessShutdownLogger,
 } from "./process-lifecycle.js";
 export type { InternalListenOptions, ShutdownOptions } from "./server.js";
+
+export { NotificationSignals } from "./community/notification-stream.js";

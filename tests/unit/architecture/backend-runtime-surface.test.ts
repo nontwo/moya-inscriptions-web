@@ -43,6 +43,7 @@ describe("@moya/backend-runtime package boundary", () => {
 
   it("exposes only runtime composition and lifecycle values", async () => {
     expect(Object.keys(await import("@moya/backend-runtime")).sort()).toEqual([
+      "NotificationSignals",
       "assertProductionAuthConfiguration",
       "createBackendApplication",
       "createBackendServer",

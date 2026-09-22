@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import {
+  notificationPageSchema,
+  notificationReadSchema,
+  mentionReferenceSchema,
+  mentionLookupPageSchema,
   apiErrorCodeSchema,
   apiErrorSchema,
   catalogCitationScopeSchema,
@@ -149,6 +153,10 @@ import {
 } from "./schemas.js";
 
 export const authorCommunityJsonSchemas = {
+  NotificationPage: toJsonSchema(notificationPageSchema),
+  NotificationRead: toJsonSchema(notificationReadSchema),
+  MentionReference: toJsonSchema(mentionReferenceSchema),
+  MentionLookupPage: toJsonSchema(mentionLookupPageSchema),
   ContentIdentity: toJsonSchema(contentIdentitySchema),
   DiscussionReply: toJsonSchema(discussionReplySchema),
   DiscussionComment: toJsonSchema(discussionCommentSchema),

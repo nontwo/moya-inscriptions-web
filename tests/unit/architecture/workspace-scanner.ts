@@ -513,6 +513,18 @@ const isApprovedCatalogSearchApiReference = (
   );
 };
 
+const isApprovedNotificationStreamReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean =>
+  path.resolve(filePath) ===
+    path.join(webRoot, "app/api/community/notifications/stream/route.ts") &&
+  !hasUseClientDirective(source) &&
+  reference.kind === "static-import" &&
+  reference.specifier === "../../../../../lib/public-api/notification-stream" &&
+  /import\s*\{\s*relayNotificationStream\s*\}\s*from/u.test(source);
+
 const isApprovedCommunityServerReference = (
   filePath: string,
   source: string,
@@ -745,6 +757,12 @@ const isForbiddenServerReference = (specifier: string): boolean => {
 };
 
 const allowedClientContractTypes = new Set([
+  "MentionReference",
+  "NotificationPage",
+  "NotificationItem",
+  "NotificationUnread",
+  "NotificationReason",
+  "PublicUserProfile",
   "ContentIdentity",
   "ContentCard",
   "AuthorProfile",
@@ -1127,7 +1145,18 @@ export const frontendBoundaryViolations = (
       !approvedCatalogDetailApiImport &&
       !approvedCatalogListApiImport &&
       !approvedCatalogSearchApiImport &&
-      !approvedCommunityServerImport
+      !approvedCommunityServerImport &&
+      !isApprovedNotificationStreamReference(filePath, source, reference) &&
+      !(
+        isAuthorizedPublicApi &&
+        path.resolve(filePath) ===
+          path.join(webPublicApiRoot, "notification-stream.ts") &&
+        reference.kind === "static-import" &&
+        reference.specifier === "./server" &&
+        /import\s*\{\s*parsePublicApiBaseUrl\s*\}\s*from\s*["']\.\/server["']/u.test(
+          source,
+        )
+      )
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

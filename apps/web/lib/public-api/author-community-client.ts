@@ -1,4 +1,6 @@
 import {
+  notificationPageSchema,
+  mentionLookupPageSchema,
   authorProfileSchema,
   authorMediaSchema,
   authorPeoplePageSchema,
@@ -20,7 +22,11 @@ import {
   inscriptionFilterOptionsSchema,
   contentStateSchema,
 } from "@moya/contracts/schemas";
-import type { ContentIdentity, DiscoveryQuery } from "@moya/contracts";
+import type {
+  ContentIdentity,
+  DiscoveryQuery,
+  MentionReference,
+} from "@moya/contracts";
 interface Parser<T> {
   parse: (value: unknown) => T;
 }
@@ -39,6 +45,7 @@ const request = async <T>(
   schema: Parser<T>,
   options: {
     method?: string;
+    accountScoped?: boolean;
     body?: unknown;
     signal?: AbortSignal;
     upload?: Blob;
@@ -47,10 +54,12 @@ const request = async <T>(
 ): Promise<T> => {
   const epoch = accountEpoch;
   const method = options.method ?? "GET";
-  if (method !== "GET" && expectedAccount === null)
+  if ((method !== "GET" || options.accountScoped) && expectedAccount === null)
     throw new AuthorRequestError(401, "请先确认当前账户");
   const identityHeaders =
-    method === "GET" ? {} : { "x-author-account": expectedAccount! };
+    method === "GET" && !options.accountScoped
+      ? {}
+      : { "x-author-account": expectedAccount! };
   const response = await fetch(`/api/community/${path}`, {
     method: options.method ?? "GET",
     cache: "no-store",
@@ -66,7 +75,7 @@ const request = async <T>(
           "x-request-id": options.requestId ?? "",
         }
       : options.body === undefined
-        ? { accept: "application/json" }
+        ? { ...identityHeaders, accept: "application/json" }
         : { ...identityHeaders, "content-type": "application/json" },
     ...(options.upload
       ? { body: options.upload }
@@ -115,6 +124,37 @@ export const authorClient = {
   account: () => expectedAccount,
   /** Increases on every account change, so a late answer from an earlier account (even A→B→A) is detectable. */
   accountEpoch: () => accountEpoch,
+  notifications: (
+    filter: "all" | "likes" | "comments" | "mentions" = "all",
+    cursor?: string,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      `notifications?${query({ filter, cursor, limit: 20 })}`,
+      notificationPageSchema,
+      { accountScoped: true, ...(signal ? { signal } : {}) },
+    ),
+  readNotifications: (observation: string) =>
+    request(
+      "notifications/read",
+      {
+        parse: (value: unknown) => {
+          if (
+            !value ||
+            typeof value !== "object" ||
+            !("read" in value) ||
+            value.read !== true
+          )
+            throw Error("Invalid read response");
+          return true;
+        },
+      },
+      { method: "POST", body: { observation } },
+    ),
+  mentionPeople: (q: string, signal?: AbortSignal) =>
+    request(`mentions?${query({ q })}`, mentionLookupPageSchema, {
+      ...(signal ? { signal } : {}),
+    }),
   me: (signal?: AbortSignal) =>
     request("me", publicUserProfileSchema, { ...(signal ? { signal } : {}) }),
   profile: (id: string, signal?: AbortSignal) =>
@@ -200,11 +240,15 @@ export const authorClient = {
     text: string,
     root?: string,
     replyTo?: string,
+    mentions: readonly MentionReference[] = [],
   ) =>
     request(
       `discussion/${targetPath(target)}${root ? `/replies/${root}` : ""}`,
       discussionSubmitResultSchema,
-      { method: "POST", body: { text, ...(replyTo ? { replyTo } : {}) } },
+      {
+        method: "POST",
+        body: { text, mentions, ...(replyTo ? { replyTo } : {}) },
+      },
     ),
   locate: (target: ContentIdentity, id: string, pinned: readonly string[]) =>
     request(

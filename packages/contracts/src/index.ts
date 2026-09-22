@@ -138,3 +138,12 @@ export type {
   AuthChallengeAccepted,
   AuthFactor,
 } from "./auth-schemas.ts";
+export type { MentionReference } from "./mention-references.js";
+
+export type {
+  NotificationItem,
+  NotificationPage,
+  NotificationUnread,
+  NotificationReason,
+  MentionLookupPage,
+} from "./types.js";

@@ -111,3 +111,6 @@ export type {
   ProviderAdapterOptions,
   ProviderModel,
 } from "./agent-connection-provider-adapter.js";
+
+// messaging-notification-foundation-v1
+export { PostgresNotificationAdapter } from "./notifications/adapter.js";
