@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "@moya/ui";
-import type { ContentIdentity, NotificationItem } from "@moya/contracts";
+import type { DiscussionTarget, NotificationItem } from "@moya/contracts";
 import { authorClient } from "../authors/author-data";
 import { AuthorDialog } from "../authors/author-dialog";
 import { MyComments } from "../authors/author-profile";
@@ -69,10 +69,11 @@ function AccountMessages({
   const opener = useRef<HTMLButtonElement>(null),
     content = useRef<HTMLDivElement>(null),
     scroll = useRef(new Map<string, number>()),
-    pending = useRef<ContentIdentity | string | null>(null),
-    returning = useRef<{ kind: "content" | "profile"; opened: boolean } | null>(
-      null,
-    ),
+    pending = useRef<DiscussionTarget | string | null>(null),
+    returning = useRef<{
+      kind: "content" | "profile" | "topic";
+      opened: boolean;
+    } | null>(null),
     frame = useRef<number | null>(null);
   const confirmed = !author.checking && !author.sessionError && !!author.viewer;
   const incoming =
@@ -125,7 +126,11 @@ function AccountMessages({
     const target = returning.current;
     if (!target) return;
     const active =
-      target.kind === "content" ? shell.activeContent : shell.activeProfile;
+      target.kind === "content"
+        ? shell.activeContent
+        : target.kind === "topic"
+          ? shell.activeTopicId
+          : shell.activeProfile;
     if (active) {
       target.opened = true;
       return;
@@ -135,8 +140,8 @@ function AccountMessages({
       setCloseRequested(false);
       setOpen(true);
     }
-  }, [shell.activeContent, shell.activeProfile]);
-  const navigate = (target: ContentIdentity | string) => {
+  }, [shell.activeContent, shell.activeProfile, shell.activeTopicId]);
+  const navigate = (target: DiscussionTarget | string) => {
     if (!confirmedRef.current) return;
     pending.current = target;
     setCloseRequested(true);
@@ -157,9 +162,15 @@ function AccountMessages({
   const openItem = async (item: NotificationItem) => {
     if (!item.available || !item.target || !confirmed) return;
     try {
+      const target = item.target;
       if (item.commentId)
-        await authorClient.locate(item.target, item.commentId, []);
-      else await authorClient.card(item.target);
+        await authorClient.locate(target, item.commentId, []);
+      else if (target.type === "article")
+        // An Article notification is always comment activity, so it always
+        // carries a commentId. Without one there is nothing to resolve, and the
+        // safe unavailable notice below is the truthful answer.
+        throw new Error("Article notification without a comment");
+      else await authorClient.card(target);
       if (!confirmedRef.current) return;
       if (item.commentId)
         author.cache.set("discussion-location", {
@@ -223,13 +234,30 @@ function AccountMessages({
               frame.current = requestAnimationFrame(() => {
                 frame.current = null;
                 if (!opener.current || !confirmedRef.current) return;
+                const element = opener.current;
                 returning.current = {
-                  kind: typeof target === "string" ? "profile" : "content",
+                  kind:
+                    typeof target === "string"
+                      ? "profile"
+                      : target.type === "article"
+                        ? "topic"
+                        : "content",
                   opened: false,
                 };
                 if (typeof target === "string")
-                  shell.openProfile(target, opener.current);
-                else shell.openContent(target, opener.current);
+                  shell.openProfile(target, element);
+                else if (target.type === "article") {
+                  // C renders a published Article as a topic overlay on the
+                  // discussion destination, not as a Catalog/Work card. Switch
+                  // first: openTopic refuses from any other destination.
+                  const articleId = target.id;
+                  shell.navigatePrimary("discussion");
+                  frame.current = requestAnimationFrame(() => {
+                    frame.current = null;
+                    if (!confirmedRef.current) return;
+                    shell.openTopic(articleId, element, 0);
+                  });
+                } else shell.openContent(target, element);
               });
           }}
         >

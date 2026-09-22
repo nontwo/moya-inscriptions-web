@@ -14,7 +14,10 @@ import {
   PostgresPublishingOperatorAdapter,
   runCommunityMigrations,
 } from "@moya/community-postgres";
-import { catalogCommentIdSchema } from "@moya/contracts/schemas";
+import {
+  articleIdSchema,
+  catalogCommentIdSchema,
+} from "@moya/contracts/schemas";
 import type { WorkSubmissionContent } from "@moya/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
@@ -62,6 +65,14 @@ describe.each(["clean", "upgrade"])("notification App-role %s", (mode) => {
     cara = key("user"),
     dana = key("user");
   let work = "";
+  // parallel-community-integration-qa: C publishes Articles through the
+  // published-only public.article_entries projection. A withdrawn or never
+  // published Article simply has no row there.
+  const articleId = () =>
+    articleIdSchema.parse(`article-${randomBytes(16).toString("hex")}`);
+  const publishedArticle = articleId(),
+    unpublishedArticle = articleId(),
+    withdrawnArticle = articleId();
   const pump = async () => {
     for (let i = 0; i < 10; i++) {
       const claims = await inbox.claim("test-worker", 20);
@@ -106,10 +117,14 @@ describe.each(["clean", "upgrade"])("notification App-role %s", (mode) => {
       `${root}/database/community-migrations`,
     );
     await setup.query(
-      "CREATE TABLE public.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text); CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb); CREATE TABLE public.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)",
+      "CREATE TABLE public.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text); CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb); CREATE TABLE public.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean); CREATE TABLE public.article_entries(article_id text PRIMARY KEY,title text)",
     );
     await setup.query(
       "INSERT INTO public.catalog_discovery(catalog_id) VALUES('synthetic-catalog')",
+    );
+    await setup.query(
+      "INSERT INTO public.article_entries(article_id,title) VALUES($1,'合成文章'),($2,'待撤回文章')",
+      [publishedArticle, withdrawnArticle],
     );
     await setup.query(
       (
@@ -619,5 +634,170 @@ describe.each(["clean", "upgrade"])("notification App-role %s", (mode) => {
       await held.query("ROLLBACK");
       held.release();
     }
+  });
+  // parallel-community-integration-qa: C Articles participate in N notifications
+  // through the published-only projection. No Article owner is invented; every
+  // recipient is a real comment, reply or mention user.
+  it("notifies real Article comment recipients without inventing an Article owner", async () => {
+    const article = { type: "article" as const, id: publishedArticle };
+    // (4) a top-level Article comment has no owner to notify.
+    const plain = await comments.submitDiscussion(article, bob, "文章评论");
+    await pump();
+    expect(
+      (
+        await setup!.query(
+          "SELECT recipient_id FROM community.notification_deliveries WHERE action_key=$1",
+          [`comment:${plain.id}`],
+        )
+      ).rows,
+    ).toEqual([]);
+    // (1) and (3) a published Article comment mentioning a user notifies exactly
+    // that PublicUserId.
+    const mentioned = await comments.submitDiscussion(
+      article,
+      bob,
+      "@reader-cara",
+      undefined,
+      undefined,
+      [{ userId: cara, handle: "reader-cara", start: 0, end: 12 }],
+    );
+    // (2) a reply notifies the root author once, with no duplicate.
+    const reply = await comments.submitDiscussion(
+      article,
+      cara,
+      "文章回复",
+      plain.id,
+    );
+    await pump();
+    const c = await page(cara);
+    const mention = c.items.find((i) => i.commentId === mentioned.id);
+    expect(mention?.reason).toBe("mention");
+    expect(mention?.available).toBe(true);
+    expect(mention?.actors.map((a) => a.id)).toEqual([bob]);
+    expect(
+      (
+        await setup!.query(
+          "SELECT recipient_id,reasons FROM community.notification_deliveries WHERE action_key=$1",
+          [`comment:${reply.id}`],
+        )
+      ).rows,
+    ).toEqual([{ recipient_id: bob, reasons: ["reply"] }]);
+    // (5) the actor is never their own recipient.
+    expect(
+      (await page(bob)).items.filter((i) => i.actors.some((a) => a.id === bob)),
+    ).toEqual([]);
+    // (8) exact navigation keeps the Article target and the precise comment.
+    const b = await page(bob);
+    const navigable = b.items.find((i) => i.commentId === reply.id);
+    expect(navigable?.target).toEqual({
+      type: "article",
+      id: publishedArticle,
+    });
+    expect(navigable?.commentId).toBe(reply.id);
+  });
+
+  it("never delivers or leaks text for an unpublished or withdrawn Article", async () => {
+    // (7) an Article with no published projection row delivers nothing.
+    const pendingRoot = await comments.submitDiscussion(
+      { type: "article", id: unpublishedArticle },
+      bob,
+      "未发布文章根评论",
+    );
+    const pendingReply = await comments.submitDiscussion(
+      { type: "article", id: unpublishedArticle },
+      cara,
+      "未发布文章回复",
+      pendingRoot.id,
+    );
+    await pump();
+    expect(
+      (
+        await setup!.query(
+          "SELECT recipient_id FROM community.notification_deliveries WHERE action_key=$1",
+          [`comment:${pendingReply.id}`],
+        )
+      ).rows,
+    ).toEqual([]);
+    // (6) an Article withdrawn after delivery becomes the safe unavailable
+    // state: no excerpt, no actor, no navigable target, and not unread.
+    const secret = "撤回后不得泄露的评论正文";
+    const withdrawnRoot = await comments.submitDiscussion(
+      { type: "article", id: withdrawnArticle },
+      bob,
+      "待撤回文章根评论",
+    );
+    const live = await comments.submitDiscussion(
+      { type: "article", id: withdrawnArticle },
+      cara,
+      secret,
+      withdrawnRoot.id,
+    );
+    await pump();
+    const before = (await page(bob)).items.find((i) => i.commentId === live.id);
+    expect(before?.available).toBe(true);
+    expect(before?.text).toContain(secret);
+    await setup!.query(
+      "DELETE FROM public.article_entries WHERE article_id=$1",
+      [withdrawnArticle],
+    );
+    const after = await page(bob);
+    const hidden = after.items.find((i) => i.id === before!.id);
+    expect(hidden?.available).toBe(false);
+    expect(hidden?.text).toBe("");
+    expect(hidden?.target).toBeNull();
+    expect(hidden?.commentId).toBeNull();
+    expect(hidden?.actors).toEqual([]);
+    expect(hidden?.unread).toBe(false);
+    expect(JSON.stringify(after)).not.toContain(secret);
+  });
+
+  it("leaves Catalog and Work notification behaviour unchanged", async () => {
+    // (9) the pre-existing targets still resolve exactly as before. An earlier
+    // case withdraws 'synthetic-catalog' from the discovery projection on
+    // purpose, so this case publishes its own Catalog to observe live
+    // behaviour rather than the (also correct) unavailable state.
+    const catalogId = key("catalog");
+    await setup!.query(
+      "INSERT INTO public.catalog_discovery(catalog_id) VALUES($1)",
+      [catalogId],
+    );
+    const catalog = { type: "catalog" as const, id: catalogId };
+    const catalogRoot = await comments.submitDiscussion(
+      catalog,
+      bob,
+      "@reader-cara",
+      undefined,
+      undefined,
+      [{ userId: cara, handle: "reader-cara", start: 0, end: 12 }],
+    );
+    const workRoot = await comments.submitDiscussion(
+      { type: "work", id: work },
+      bob,
+      "作品评论",
+    );
+    await pump();
+    // Deliveries are asserted directly: page items are grouped, so a lookup by
+    // commentId is not a stable identity for a single action.
+    const deliveries = async (actionKey: string) =>
+      (
+        await setup!.query<{ recipient_id: string; reasons: string[] }>(
+          "SELECT recipient_id,reasons FROM community.notification_deliveries WHERE action_key=$1 ORDER BY recipient_id",
+          [actionKey],
+        )
+      ).rows;
+    expect(await deliveries(`comment:${catalogRoot.id}`)).toEqual([
+      { recipient_id: cara, reasons: ["mention"] },
+    ]);
+    expect(await deliveries(`comment:${workRoot.id}`)).toEqual([
+      { recipient_id: alice, reasons: ["comment"] },
+    ]);
+    // Both legacy target kinds still resolve to their own identities.
+    const targets = (items: readonly { target: unknown }[]) =>
+      items.map((i) => i.target).filter(Boolean);
+    expect(targets((await page(cara)).items)).toContainEqual(catalog);
+    expect(targets((await page(alice)).items)).toContainEqual({
+      type: "work",
+      id: work,
+    });
   });
 });
