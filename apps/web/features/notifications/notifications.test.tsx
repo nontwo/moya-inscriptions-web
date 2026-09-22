@@ -161,6 +161,76 @@ describe("real notification composition", () => {
     expect(completed).toBe(true);
     expect(inbox.page?.unread.total).toBe(0);
   });
+  it.each(["stream", "foreground", "read"])(
+    "revalidates loaded pages on %s without losing older rows or keeping stale private excerpts",
+    async (trigger) => {
+      let inbox!: ReturnType<typeof useNotifications>;
+      function Probe() {
+        inbox = useNotifications();
+        return null;
+      }
+      client.notifications
+        .mockResolvedValueOnce({
+          ...page(2),
+          items: [{ id: "first", excerpt: "first" }],
+          nextCursor: "old-page-2",
+        })
+        .mockResolvedValueOnce({
+          ...page(2),
+          items: [{ id: "older", excerpt: "old private text" }],
+        });
+      await act(async () =>
+        root.render(
+          <NotificationProvider enabled>
+            <Probe />
+          </NotificationProvider>,
+        ),
+      );
+      await act(async () => inbox.more());
+      expect(inbox.page?.items.map((item) => item.id)).toEqual([
+        "first",
+        "older",
+      ]);
+      client.notifications
+        .mockResolvedValueOnce({
+          ...page(1),
+          items: [{ id: "first", excerpt: "fresh" }],
+          nextCursor: "fresh-page-2",
+        })
+        .mockResolvedValueOnce({
+          ...page(1),
+          items: [{ id: "older", excerpt: "", available: false }],
+        });
+      client.readNotifications.mockResolvedValue(undefined);
+      await act(async () => {
+        if (trigger === "read") await inbox.read("item-observation");
+        else if (trigger === "foreground") {
+          Object.defineProperty(document, "visibilityState", {
+            configurable: true,
+            value: "visible",
+          });
+          document.dispatchEvent(new Event("visibilitychange"));
+        } else {
+          const signal = sockets[0]!.addEventListener.mock.calls.find(
+            ([name]) => name === "refresh",
+          )![1] as () => void;
+          signal();
+        }
+      });
+      expect(client.notifications.mock.calls.at(-1)?.[1]).toBe("fresh-page-2");
+      expect(inbox.page?.items.map((item) => item.id)).toEqual([
+        "first",
+        "older",
+      ]);
+      expect(inbox.page?.items[1]).toMatchObject({
+        excerpt: "",
+        available: false,
+      });
+      expect(inbox.page?.unread.total).toBe(1);
+      if (trigger !== "read")
+        expect(client.readNotifications).not.toHaveBeenCalled();
+    },
+  );
   it("selects one stable user among duplicate display names and never parses plain pasted text into recipients", async () => {
     vi.useFakeTimers();
     const person = {

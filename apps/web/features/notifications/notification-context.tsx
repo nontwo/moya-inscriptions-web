@@ -76,17 +76,45 @@ function AccountInbox({
     account !== null && pageOwner.current === account ? rawPage : null;
   current.current = page;
   const refresh = useCallback(
-    async (cursor?: string) => {
+    async (cursor?: string, preserveLoaded = false) => {
       if (!account) return;
       pending.current?.abort();
       const abort = new AbortController();
       pending.current = abort;
       const run = ++generation.current;
+      const retained =
+        !cursor && preserveLoaded ? current.current?.items : undefined;
+      const retainedCount = retained?.length ?? 0;
+      const retainedTail = retained?.at(-1)?.id;
       setLoading(true);
       setError("");
       await authorClient
         .notifications(filter, cursor, abort.signal)
-        .then((result) => {
+        .then(async (first) => {
+          let result = first;
+          // Revalidate loaded pages under one fresh server cursor snapshot.
+          // Never append stale private excerpts from the previous snapshot.
+          for (
+            let pages = 1;
+            pages < 10 &&
+            result.nextCursor &&
+            result.items.length < 200 &&
+            (result.items.length < retainedCount ||
+              (retainedTail &&
+                !result.items.some((item) => item.id === retainedTail)));
+            pages++
+          ) {
+            if (run !== generation.current || abort.signal.aborted) return;
+            const next = await authorClient.notifications(
+              filter,
+              result.nextCursor,
+              abort.signal,
+            );
+            result = {
+              ...next,
+              items: [...result.items, ...next.items].slice(0, 200),
+            };
+          }
           if (run !== generation.current || abort.signal.aborted) return;
           pageOwner.current = account;
           setPage((old) =>
@@ -132,7 +160,7 @@ function AccountInbox({
       stream = new EventSource("/api/community/notifications/stream");
       stream.addEventListener("refresh", () => {
         delay = 1000;
-        refreshRef.current();
+        refreshRef.current(undefined, true);
       });
       stream.onerror = () => {
         stream?.close();
@@ -143,7 +171,8 @@ function AccountInbox({
       };
     };
     const foreground = () => {
-      if (document.visibilityState === "visible") refreshRef.current();
+      if (document.visibilityState === "visible")
+        refreshRef.current(undefined, true);
     };
     connect();
     document.addEventListener("visibilitychange", foreground);
@@ -157,7 +186,8 @@ function AccountInbox({
   const read = async (observation: string) => {
     try {
       await authorClient.readNotifications(observation);
-      if (activeAccount.current === account) await refreshRef.current();
+      if (activeAccount.current === account)
+        await refreshRef.current(undefined, true);
     } catch {
       if (activeAccount.current === account)
         setError("已读状态未保存，请刷新后重试");

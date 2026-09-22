@@ -77,8 +77,9 @@ describe.each(["clean", "upgrade"])("notification App-role %s", (mode) => {
       probe.rows,
       decodeURI(new URL(target).pathname.slice(1)),
     );
+    const password = randomBytes(32).toString("hex");
     await admin.query(
-      `CREATE ROLE ${role} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT`,
+      `CREATE ROLE ${role} LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT`,
     );
     createdRole = true;
     await admin.query(`CREATE DATABASE ${database}`);
@@ -119,7 +120,7 @@ describe.each(["clean", "upgrade"])("notification App-role %s", (mode) => {
       ).replaceAll(':"app_role"', `"${role}"`),
     );
     url.username = role;
-    url.password = "";
+    url.password = password;
     app = poolFor(url.toString());
     inbox = new PostgresNotificationAdapter(app);
     service = new NotificationService(inbox);
