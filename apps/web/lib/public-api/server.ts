@@ -293,6 +293,14 @@ export const relayServerAuthorCommunity = async (
       accept: "application/json, image/png",
     };
     if (token !== undefined) outgoing.Authorization = `Bearer ${token}`;
+    // Bind private inbox reads to the UI's confirmed account when another tab changed the cookie.
+    if (request.method === "GET" && suffix === "notifications") {
+      const expected = request.headers.get("x-author-account");
+      if (expected) {
+        if (!/^user-[0-9a-f]{32}$/u.test(expected)) return fail(422);
+        outgoing["x-author-account"] = expected;
+      }
+    }
     let bytes: Uint8Array | undefined;
     if (request.method !== "GET") {
       const type = request.headers.get("content-type");

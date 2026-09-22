@@ -1,3 +1,4 @@
+import { enqueueNotification } from "./notifications/source.js";
 import { asCommunityOperationError } from "./availability.js";
 import { createHash, randomUUID } from "node:crypto";
 import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
@@ -740,16 +741,21 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
           await this.lockPair(db, actor, work.author_id);
           await this.accessible(db, actor, work.author_id);
         }
-        if (input.enabled)
-          await db.query(
-            "INSERT INTO community.content_relations(user_id,content_type,content_id,relation) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
-            [actor, input.target.type, input.target.id, relation],
-          );
-        else
-          await db.query(
-            "DELETE FROM community.content_relations WHERE user_id=$1 AND content_type=$2 AND content_id=$3 AND relation=$4",
-            [actor, input.target.type, input.target.id, relation],
-          );
+        const changed = input.enabled
+          ? await db.query(
+              "INSERT INTO community.content_relations(user_id,content_type,content_id,relation) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+              [actor, input.target.type, input.target.id, relation],
+            )
+          : await db.query(
+              "DELETE FROM community.content_relations WHERE user_id=$1 AND content_type=$2 AND content_id=$3 AND relation=$4",
+              [actor, input.target.type, input.target.id, relation],
+            );
+        if (
+          changed.rowCount &&
+          relation === "like" &&
+          input.target.type === "work"
+        )
+          await enqueueNotification(db, "work_like", input.target.id, actor);
       },
     );
   }

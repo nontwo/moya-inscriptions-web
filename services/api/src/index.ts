@@ -261,3 +261,16 @@ export type {
   AgentManifestSelection,
   AgentOperationDraft,
 } from "./modules/community/application/ports/agent-administration-port.js";
+
+// messaging-notification-foundation-v1
+export type {
+  NotificationPort,
+  NotificationQuery,
+  NotificationFilter,
+  NotificationReadResult,
+  NotificationStoredItem,
+  NotificationJobClaim,
+  NotificationWorkerPort,
+} from "./modules/community/application/ports/notification-port.js";
+
+export { NotificationService } from "./modules/community/application/services/notification-service.js";

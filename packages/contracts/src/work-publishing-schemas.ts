@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  mentionReferencesSchema,
+  validMentionReferences,
+} from "./mention-references.ts";
 
 import {
   AUTHORSHIP_ORIGINAL_AUTHOR_MAXIMUM,
@@ -370,6 +374,7 @@ export const workDraftItemSchema = z
   });
 
 const workContentShape = (stage: PublishingTextStage) => ({
+  mentions: mentionReferencesSchema.optional(),
   title: publishingTextSchema(
     publishingTitleRule,
     { tooLong: "title_too_long", lineBreak: "title_line_break" },
@@ -468,6 +473,11 @@ export const workSubmissionContentSchema = z
   .strictObject(workContentShape("submission"))
   .superRefine(checkContentReferences)
   .superRefine((content, context) => {
+    if (!validMentionReferences(content.body, content.mentions ?? []))
+      context.addIssue({
+        code: "custom",
+        message: "Invalid mention references",
+      });
     if (isEmptyWorkContent(content))
       context.addIssue({ code: "custom", message: "empty_work" });
   });

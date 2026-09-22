@@ -1,3 +1,6 @@
+import { handleNotificationRequest } from "../community/notification-handler.js";
+import type { NotificationStreams } from "../community/notification-stream.js";
+import type { NotificationService } from "@moya/api";
 import type { RequestListener } from "node:http";
 
 import {
@@ -52,6 +55,8 @@ const sendRouteError = (
 };
 
 export interface CommunityRouterDependencies {
+  readonly notificationService?: NotificationService;
+  readonly notificationStreams?: NotificationStreams;
   readonly sessionService: CommunitySessionService;
   readonly authorService?: AuthorCommunityService;
   /** Work publishing author routes; composed only with the author service in Development. */
@@ -154,6 +159,24 @@ export const createRouter =
         );
         return;
       }
+    }
+
+    if (
+      community?.developmentEntry &&
+      community.notificationService &&
+      community.notificationStreams &&
+      (pathname === "/v1/community/mentions" ||
+        pathname === "/v1/community/notifications" ||
+        pathname.startsWith("/v1/community/notifications/"))
+    ) {
+      void handleNotificationRequest(
+        request,
+        response,
+        community.notificationService,
+        community.sessionService,
+        community.notificationStreams,
+      );
+      return;
     }
 
     if (

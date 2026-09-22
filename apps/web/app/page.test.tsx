@@ -81,6 +81,7 @@ describe("FormalPage", () => {
       comments: { signInHref: "/dev/community" },
       authorCommunity: true,
       developmentDiscussion: true,
+      liveNotifications: true,
     });
 
     productApplicationMock.mockReset();
@@ -92,6 +93,9 @@ describe("FormalPage", () => {
     });
     expect(productApplicationMock.mock.calls[0]?.[0]).not.toHaveProperty(
       "developmentDiscussion",
+    );
+    expect(productApplicationMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "liveNotifications",
     );
   });
 

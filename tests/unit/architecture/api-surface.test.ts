@@ -70,6 +70,7 @@ describe("@moya/api server-only surface", () => {
       "CommunityStoreUnavailableError",
       "DisabledCommentAnalysisPort",
       "ExecutionFenceLostError",
+      "NotificationService",
       "PublishingOperatorService",
       "PublishingTransferRegistry",
       "WorkPublishingService",

@@ -113,6 +113,10 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/community/discussion/items/{commentId}/like",
         "/v1/community/discussion/items/{commentId}/body",
         "/v1/community/me/comments",
+        "/v1/community/notifications",
+        "/v1/community/notifications/read",
+        "/v1/community/notifications/stream",
+        "/v1/community/mentions",
         "/v1/community/authors/{authorId}",
         "/v1/community/authors/{authorId}/followers",
         "/v1/community/authors/{authorId}/following",
@@ -159,6 +163,10 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/catalog/{catalogId}/comments/{commentId}/replies",
     ]);
     const authorMethods: Record<string, string[]> = {
+      "/v1/community/notifications": ["get"],
+      "/v1/community/notifications/read": ["post"],
+      "/v1/community/notifications/stream": ["get"],
+      "/v1/community/mentions": ["get"],
       "/v1/community/discover": ["get"],
       "/v1/community/filter-options": ["get"],
       "/v1/community/content/{type}/{id}/card": ["get"],

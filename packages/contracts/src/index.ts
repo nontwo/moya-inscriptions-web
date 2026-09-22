@@ -131,3 +131,13 @@ export type {
   WorkVisibilityCommand,
   WorkVisibilityResult,
 } from "./work-publishing-schemas.js";
+
+export type { MentionReference } from "./mention-references.js";
+
+export type {
+  NotificationItem,
+  NotificationPage,
+  NotificationUnread,
+  NotificationReason,
+  MentionLookupPage,
+} from "./types.js";

@@ -2176,6 +2176,35 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "mentions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "end": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000,
+                  "type": "integer"
+                },
+                "handle": {
+                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                  "type": "string"
+                },
+                "start": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "userId": {
+                  "pattern": "^user-[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": ["userId", "handle", "start", "end"],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
           "replyTo": {
             "maxLength": 128,
             "minLength": 1,
@@ -2195,6 +2224,35 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "mentions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "end": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000,
+                  "type": "integer"
+                },
+                "handle": {
+                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                  "type": "string"
+                },
+                "start": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "userId": {
+                  "pattern": "^user-[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": ["userId", "handle", "start", "end"],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
           "text": {
             "maxLength": 1000,
             "minLength": 1,
@@ -2413,6 +2471,35 @@
                   "type": "object"
                 },
                 "maxItems": 500,
+                "type": "array"
+              },
+              "mentions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 100000,
+                      "type": "integer"
+                    },
+                    "handle": {
+                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "maximum": 100000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "userId": {
+                      "pattern": "^user-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["userId", "handle", "start", "end"],
+                  "type": "object"
+                },
+                "maxItems": 20,
                 "type": "array"
               },
               "title": {
@@ -3980,6 +4067,35 @@
                 "maxItems": 500,
                 "type": "array"
               },
+              "mentions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 100000,
+                      "type": "integer"
+                    },
+                    "handle": {
+                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "maximum": 100000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "userId": {
+                      "pattern": "^user-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["userId", "handle", "start", "end"],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
               "title": {
                 "maxLength": 4400,
                 "type": "string"
@@ -4627,6 +4743,269 @@
         "pattern": "^\\S+$",
         "type": "string"
       },
+      "MentionLookupPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "displayName": {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "handle": {
+                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                  "type": "string"
+                },
+                "id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^\\S+$",
+                  "type": "string"
+                }
+              },
+              "required": ["id", "handle", "displayName"],
+              "type": "object"
+            },
+            "maxItems": 10,
+            "type": "array"
+          }
+        },
+        "required": ["items"],
+        "type": "object"
+      },
+      "MentionReference": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "exclusiveMinimum": 0,
+            "maximum": 100000,
+            "type": "integer"
+          },
+          "handle": {
+            "pattern": "^[a-z][a-z0-9-]{2,31}$",
+            "type": "string"
+          },
+          "start": {
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "userId": {
+            "pattern": "^user-[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": ["userId", "handle", "start", "end"],
+        "type": "object"
+      },
+      "NotificationPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "actorCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "actors": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "displayName": {
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "handle": {
+                        "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^\\S+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "handle", "displayName"],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "type": "array"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "commentId": {
+                  "anyOf": [
+                    {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^\\S+$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                  "type": "string"
+                },
+                "id": {
+                  "pattern": "^notification-[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "observation": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": ["like", "comment", "reply", "mention"],
+                  "type": "string"
+                },
+                "target": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^\\S+$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "catalog",
+                              "type": "string"
+                            }
+                          },
+                          "required": ["type", "id"],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "pattern": "^work-[0-9a-f]{32}$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "work",
+                              "type": "string"
+                            }
+                          },
+                          "required": ["type", "id"],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "text": {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                "unread": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "reason",
+                "available",
+                "target",
+                "commentId",
+                "actors",
+                "actorCount",
+                "text",
+                "createdAt",
+                "unread",
+                "observation"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observation": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "unread": {
+            "additionalProperties": false,
+            "properties": {
+              "comments": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "likes": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mentions": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "total": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": ["total", "likes", "comments", "mentions"],
+            "type": "object"
+          }
+        },
+        "required": ["items", "nextCursor", "observation", "unread"],
+        "type": "object"
+      },
+      "NotificationRead": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "observation": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["observation"],
+        "type": "object"
+      },
       "OpenWorkEditDraftCommand": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -5248,6 +5627,35 @@
                             "maxItems": 500,
                             "type": "array"
                           },
+                          "mentions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "end": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100000,
+                                  "type": "integer"
+                                },
+                                "handle": {
+                                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "maximum": 100000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "userId": {
+                                  "pattern": "^user-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["userId", "handle", "start", "end"],
+                              "type": "object"
+                            },
+                            "maxItems": 20,
+                            "type": "array"
+                          },
                           "title": {
                             "maxLength": 4400,
                             "type": "string"
@@ -5529,6 +5937,35 @@
                             "maxItems": 500,
                             "type": "array"
                           },
+                          "mentions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "end": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100000,
+                                  "type": "integer"
+                                },
+                                "handle": {
+                                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "maximum": 100000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "userId": {
+                                  "pattern": "^user-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["userId", "handle", "start", "end"],
+                              "type": "object"
+                            },
+                            "maxItems": 20,
+                            "type": "array"
+                          },
                           "title": {
                             "maxLength": 4400,
                             "type": "string"
@@ -5792,6 +6229,35 @@
                   "type": "object"
                 },
                 "maxItems": 500,
+                "type": "array"
+              },
+              "mentions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 100000,
+                      "type": "integer"
+                    },
+                    "handle": {
+                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "maximum": 100000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "userId": {
+                      "pattern": "^user-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["userId", "handle", "start", "end"],
+                  "type": "object"
+                },
+                "maxItems": 20,
                 "type": "array"
               },
               "title": {
@@ -6494,6 +6960,40 @@
                                     "maxItems": 500,
                                     "type": "array"
                                   },
+                                  "mentions": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "end": {
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 100000,
+                                          "type": "integer"
+                                        },
+                                        "handle": {
+                                          "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                          "type": "string"
+                                        },
+                                        "start": {
+                                          "maximum": 100000,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "userId": {
+                                          "pattern": "^user-[0-9a-f]{32}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "userId",
+                                        "handle",
+                                        "start",
+                                        "end"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 20,
+                                    "type": "array"
+                                  },
                                   "title": {
                                     "maxLength": 4400,
                                     "type": "string"
@@ -6784,6 +7284,40 @@
                                     "maxItems": 500,
                                     "type": "array"
                                   },
+                                  "mentions": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "end": {
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 100000,
+                                          "type": "integer"
+                                        },
+                                        "handle": {
+                                          "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                          "type": "string"
+                                        },
+                                        "start": {
+                                          "maximum": 100000,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "userId": {
+                                          "pattern": "^user-[0-9a-f]{32}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "userId",
+                                        "handle",
+                                        "start",
+                                        "end"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 20,
+                                    "type": "array"
+                                  },
                                   "title": {
                                     "maxLength": 4400,
                                     "type": "string"
@@ -7053,6 +7587,35 @@
                           "type": "object"
                         },
                         "maxItems": 500,
+                        "type": "array"
+                      },
+                      "mentions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "end": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 100000,
+                              "type": "integer"
+                            },
+                            "handle": {
+                              "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                              "type": "string"
+                            },
+                            "start": {
+                              "maximum": 100000,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "userId": {
+                              "pattern": "^user-[0-9a-f]{32}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": ["userId", "handle", "start", "end"],
+                          "type": "object"
+                        },
+                        "maxItems": 20,
                         "type": "array"
                       },
                       "title": {
@@ -7568,6 +8131,35 @@
                             "maxItems": 500,
                             "type": "array"
                           },
+                          "mentions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "end": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100000,
+                                  "type": "integer"
+                                },
+                                "handle": {
+                                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "maximum": 100000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "userId": {
+                                  "pattern": "^user-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["userId", "handle", "start", "end"],
+                              "type": "object"
+                            },
+                            "maxItems": 20,
+                            "type": "array"
+                          },
                           "title": {
                             "maxLength": 4400,
                             "type": "string"
@@ -7847,6 +8439,35 @@
                               "type": "object"
                             },
                             "maxItems": 500,
+                            "type": "array"
+                          },
+                          "mentions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "end": {
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100000,
+                                  "type": "integer"
+                                },
+                                "handle": {
+                                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "maximum": 100000,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "userId": {
+                                  "pattern": "^user-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["userId", "handle", "start", "end"],
+                              "type": "object"
+                            },
+                            "maxItems": 20,
                             "type": "array"
                           },
                           "title": {
@@ -8151,6 +8772,40 @@
                                     "maxItems": 500,
                                     "type": "array"
                                   },
+                                  "mentions": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "end": {
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 100000,
+                                          "type": "integer"
+                                        },
+                                        "handle": {
+                                          "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                          "type": "string"
+                                        },
+                                        "start": {
+                                          "maximum": 100000,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "userId": {
+                                          "pattern": "^user-[0-9a-f]{32}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "userId",
+                                        "handle",
+                                        "start",
+                                        "end"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 20,
+                                    "type": "array"
+                                  },
                                   "title": {
                                     "maxLength": 4400,
                                     "type": "string"
@@ -8441,6 +9096,40 @@
                                     "maxItems": 500,
                                     "type": "array"
                                   },
+                                  "mentions": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "end": {
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 100000,
+                                          "type": "integer"
+                                        },
+                                        "handle": {
+                                          "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                          "type": "string"
+                                        },
+                                        "start": {
+                                          "maximum": 100000,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "userId": {
+                                          "pattern": "^user-[0-9a-f]{32}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "userId",
+                                        "handle",
+                                        "start",
+                                        "end"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 20,
+                                    "type": "array"
+                                  },
                                   "title": {
                                     "maxLength": 4400,
                                     "type": "string"
@@ -8710,6 +9399,35 @@
                           "type": "object"
                         },
                         "maxItems": 500,
+                        "type": "array"
+                      },
+                      "mentions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "end": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 100000,
+                              "type": "integer"
+                            },
+                            "handle": {
+                              "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                              "type": "string"
+                            },
+                            "start": {
+                              "maximum": 100000,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "userId": {
+                              "pattern": "^user-[0-9a-f]{32}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": ["userId", "handle", "start", "end"],
+                          "type": "object"
+                        },
+                        "maxItems": 20,
                         "type": "array"
                       },
                       "title": {
@@ -9478,6 +10196,40 @@
                                 "maxItems": 500,
                                 "type": "array"
                               },
+                              "mentions": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "end": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 100000,
+                                      "type": "integer"
+                                    },
+                                    "handle": {
+                                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "maximum": 100000,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "userId": {
+                                      "pattern": "^user-[0-9a-f]{32}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "handle",
+                                    "start",
+                                    "end"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 20,
+                                "type": "array"
+                              },
                               "title": {
                                 "maxLength": 4400,
                                 "type": "string"
@@ -9763,6 +10515,40 @@
                                 "maxItems": 500,
                                 "type": "array"
                               },
+                              "mentions": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "end": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 100000,
+                                      "type": "integer"
+                                    },
+                                    "handle": {
+                                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "maximum": 100000,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "userId": {
+                                      "pattern": "^user-[0-9a-f]{32}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "handle",
+                                    "start",
+                                    "end"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 20,
+                                "type": "array"
+                              },
                               "title": {
                                 "maxLength": 4400,
                                 "type": "string"
@@ -10032,6 +10818,35 @@
                       "type": "object"
                     },
                     "maxItems": 500,
+                    "type": "array"
+                  },
+                  "mentions": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "end": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 100000,
+                          "type": "integer"
+                        },
+                        "handle": {
+                          "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                          "type": "string"
+                        },
+                        "start": {
+                          "maximum": 100000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "userId": {
+                          "pattern": "^user-[0-9a-f]{32}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": ["userId", "handle", "start", "end"],
+                      "type": "object"
+                    },
+                    "maxItems": 20,
                     "type": "array"
                   },
                   "title": {
@@ -10565,6 +11380,35 @@
                 "maxItems": 500,
                 "type": "array"
               },
+              "mentions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 100000,
+                      "type": "integer"
+                    },
+                    "handle": {
+                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "maximum": 100000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "userId": {
+                      "pattern": "^user-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["userId", "handle", "start", "end"],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
               "title": {
                 "maxLength": 4400,
                 "type": "string"
@@ -10851,6 +11695,35 @@
                         "type": "object"
                       },
                       "maxItems": 500,
+                      "type": "array"
+                    },
+                    "mentions": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "end": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 100000,
+                            "type": "integer"
+                          },
+                          "handle": {
+                            "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                            "type": "string"
+                          },
+                          "start": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "userId": {
+                            "pattern": "^user-[0-9a-f]{32}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["userId", "handle", "start", "end"],
+                        "type": "object"
+                      },
+                      "maxItems": 20,
                       "type": "array"
                     },
                     "title": {
@@ -11680,6 +12553,35 @@
                 "maxItems": 500,
                 "type": "array"
               },
+              "mentions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 100000,
+                      "type": "integer"
+                    },
+                    "handle": {
+                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "maximum": 100000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "userId": {
+                      "pattern": "^user-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["userId", "handle", "start", "end"],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
               "title": {
                 "maxLength": 4400,
                 "type": "string"
@@ -12230,6 +13132,35 @@
             "maxItems": 500,
             "type": "array"
           },
+          "mentions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "end": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000,
+                  "type": "integer"
+                },
+                "handle": {
+                  "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                  "type": "string"
+                },
+                "start": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "userId": {
+                  "pattern": "^user-[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": ["userId", "handle", "start", "end"],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
           "title": {
             "maxLength": 4400,
             "type": "string"
@@ -12741,6 +13672,35 @@
                   "type": "object"
                 },
                 "maxItems": 500,
+                "type": "array"
+              },
+              "mentions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 100000,
+                      "type": "integer"
+                    },
+                    "handle": {
+                      "pattern": "^[a-z][a-z0-9-]{2,31}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "maximum": 100000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "userId": {
+                      "pattern": "^user-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["userId", "handle", "start", "end"],
+                  "type": "object"
+                },
+                "maxItems": 20,
                 "type": "array"
               },
               "title": {
@@ -16525,6 +17485,334 @@
         },
         "security": [
           {},
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/v1/community/mentions": {
+      "get": {
+        "description": "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Removing an own work moves it to the recycle bin.",
+        "operationId": "lookupMentionPeople",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 2,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MentionLookupPage"
+                }
+              }
+            },
+            "description": "Committed result; private responses are never cached."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "A valid session is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unavailable or private subject"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Version, request identity or New York avatar-date conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Strict input validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service unavailable; no success is claimed"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/v1/community/notifications": {
+      "get": {
+        "description": "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Removing an own work moves it to the recycle bin.",
+        "operationId": "readNotifications",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filter",
+            "schema": {
+              "default": "all",
+              "enum": ["all", "likes", "comments", "mentions"],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Owner/filter-scoped signed snapshot cursor; resync when expired.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 4096,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPage"
+                }
+              }
+            },
+            "description": "Committed result; private responses are never cached."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "A valid session is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unavailable or private subject"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Version, request identity or New York avatar-date conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Strict input validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service unavailable; no success is claimed"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/v1/community/notifications/read": {
+      "post": {
+        "description": "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Removing an own work moves it to the recycle bin.",
+        "operationId": "markObservedNotificationsRead",
+        "parameters": [
+          {
+            "description": "Optional assertion of the authenticated account; mismatch rejects. Does not authorize a request.",
+            "in": "header",
+            "name": "x-author-account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationRead"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Mutation and audit committed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "A valid session is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unavailable or private subject"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Version, request identity or New York avatar-date conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Strict input validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service unavailable; no success is claimed"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/v1/community/notifications/stream": {
+      "get": {
+        "description": "Development only; one backend process. Authenticated refresh signals, no bodies or resume IDs. Reconnect performs a bounded HTTP resync. Session is revalidated before each signal and every 15 seconds.",
+        "operationId": "streamNotificationRefresh",
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Unbuffered private stream; disconnect cancels upstream."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Valid session required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Queries and Last-Event-ID are not accepted"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Connection bound reached"
+          }
+        },
+        "security": [
           {
             "session": []
           }
