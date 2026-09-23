@@ -193,4 +193,10 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "6441c9d4d6cf9e3b10274fe0c47b8328f9e5e8a2da7a967c0b54c8c6f83330ea",
     }),
+    Object.freeze({
+      migrationId: "20260922020000",
+      filename: "20260922020000_auth_failure_rows_and_receipt_seal.sql",
+      checksum:
+        "cef51df23c932f2efe7b0259e120a726172af78cccef5759f848c640f14ccbf0",
+    }),
   ]);

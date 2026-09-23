@@ -122,6 +122,29 @@ const mapChallenge = (row: ChallengeRow): StoredChallenge => ({
   createdAt: iso(row.created_at),
 });
 
+interface ReceiptRow {
+  key_hash: string;
+  user_id: string;
+  session_id: string;
+  session_token_hash: string;
+  purpose: string;
+  origin_session_id: string;
+  closed_at: Date | null;
+}
+
+const receiptSelect =
+  "SELECT key_hash, user_id, session_id, session_token_hash, purpose, origin_session_id, closed_at FROM community.auth_receipts";
+
+const mapReceipt = (row: ReceiptRow) => ({
+  keyHash: row.key_hash,
+  userId: row.user_id,
+  sessionId: row.session_id,
+  sessionTokenHash: row.session_token_hash,
+  purpose: row.purpose,
+  originSessionId: row.origin_session_id,
+  closedAt: nullableIso(row.closed_at),
+});
+
 const mapHandoff = (row: {
   id: string;
   token_hash: string;
@@ -519,14 +542,17 @@ export class PostgresCommunityAuthAdapter implements CommunityAuthPort {
       insertReceipt: async (row) => {
         const outcome = await catchKind(async () => {
           await query(
-            `INSERT INTO community.auth_receipts(key_hash, user_id, session_id, session_token_hash, purpose, created_at)
-             VALUES($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)`,
+            `INSERT INTO community.auth_receipts(
+              key_hash, user_id, session_id, session_token_hash, purpose,
+              created_at, origin_session_id
+            ) VALUES($1,$2,$3,$4,$5,CURRENT_TIMESTAMP,$6)`,
             [
               row.keyHash,
               row.userId,
               row.sessionId,
               row.sessionTokenHash,
               row.purpose,
+              row.originSessionId,
             ],
           );
           return "ok" as const;
@@ -534,26 +560,57 @@ export class PostgresCommunityAuthAdapter implements CommunityAuthPort {
         return outcome === "ok" ? "ok" : "conflict";
       },
       findReceipt: async (keyHash) => {
-        const rows = await query<{
-          key_hash: string;
-          user_id: string;
-          session_id: string;
-          session_token_hash: string;
-          purpose: string;
-        }>(
-          "SELECT key_hash, user_id, session_id, session_token_hash, purpose FROM community.auth_receipts WHERE key_hash=$1",
+        const rows = await query<ReceiptRow>(
+          `${receiptSelect} WHERE key_hash=$1`,
           [keyHash],
+        );
+        const row = rows[0];
+        return row === undefined ? null : mapReceipt(row);
+      },
+      lockSession: async (tokenHash) => {
+        const rows = await query<{
+          id: string;
+          token_hash: string;
+          user_id: string;
+          expires_at: Date;
+          revoked_at: Date | null;
+        }>(
+          `SELECT id, token_hash, user_id, expires_at, revoked_at
+           FROM community.sessions WHERE token_hash=$1 FOR UPDATE`,
+          [tokenHash],
         );
         const row = rows[0];
         return row === undefined
           ? null
           : {
-              keyHash: row.key_hash,
+              id: row.id,
+              tokenHash: row.token_hash,
               userId: row.user_id,
-              sessionId: row.session_id,
-              sessionTokenHash: row.session_token_hash,
-              purpose: row.purpose,
+              expiresAt: iso(row.expires_at),
+              revokedAt: nullableIso(row.revoked_at),
             };
+      },
+      lockReceipt: async (keyHash) => {
+        const rows = await query<ReceiptRow>(
+          `${receiptSelect} WHERE key_hash=$1 FOR UPDATE`,
+          [keyHash],
+        );
+        const row = rows[0];
+        return row === undefined ? null : mapReceipt(row);
+      },
+      lockReceiptsForSession: async (sessionId) =>
+        (
+          await query<ReceiptRow>(
+            `${receiptSelect} WHERE origin_session_id=$1 OR session_id=$1 FOR UPDATE`,
+            [sessionId],
+          )
+        ).map(mapReceipt),
+      closeReceipt: async (keyHash, atIso) => {
+        await query(
+          `UPDATE community.auth_receipts SET closed_at=$2
+           WHERE key_hash=$1 AND closed_at IS NULL`,
+          [keyHash, atIso],
+        );
       },
       updateReceiptSession: async (keyHash, sessionId, sessionTokenHash) => {
         await query(

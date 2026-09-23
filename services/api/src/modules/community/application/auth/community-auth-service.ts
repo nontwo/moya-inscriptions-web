@@ -395,6 +395,8 @@ export class CommunityAuthService {
         sessionId: session.sessionId,
         sessionTokenHash: session.tokenHash,
         purpose: "register",
+        originSessionId: session.sessionId,
+        closedAt: null,
       });
       await this.audit(tx, user.id, "register", at);
       return { ok: true, value: session };
@@ -534,6 +536,13 @@ export class CommunityAuthService {
       if (reauthIdentity === undefined || !this.provenanceOk(reauthIdentity))
         return fail("AUTH_PROOF_REJECTED");
       await tx.lockUser(user.id);
+      const freshReauth = await tx.findHandoff(reauthHash);
+      if (
+        freshReauth === null ||
+        freshReauth.consumedAt !== null ||
+        freshReauth.userId !== user.id
+      )
+        return fail("AUTH_PROOF_REJECTED");
       const current = (await tx.listIdentities(user.id)).find(
         (row) => row.kind === challenge.channel,
       );
@@ -570,12 +579,13 @@ export class CommunityAuthService {
           },
           current.version,
         );
-        if (replaced === "stale") return fail("AUTH_STALE_VERSION");
+        if (replaced === "stale")
+          throw new AuthRollback(fail("AUTH_STALE_VERSION"));
         if (replaced === "conflict")
           throw new AuthRollback(fail("AUTH_IDENTIFIER_CONFLICT"));
       }
-      if ((await tx.consumeHandoff(reauth.id, at.toISOString())) !== "ok")
-        return fail("AUTH_PROOF_REJECTED");
+      if ((await tx.consumeHandoff(freshReauth.id, at.toISOString())) !== "ok")
+        throw new AuthRollback(fail("AUTH_PROOF_REJECTED"));
       await tx.saveChallenge({ ...challenge, completedAt: at.toISOString() });
       await tx.invalidateUserProofs(user.id, at.toISOString());
       const session = await this.mint(tx, user, challenge.channel, at);
@@ -590,6 +600,8 @@ export class CommunityAuthService {
         sessionId: session.sessionId,
         sessionTokenHash: session.tokenHash,
         purpose: challenge.purpose,
+        originSessionId: session.sessionId,
+        closedAt: null,
       });
       await this.audit(tx, user.id, challenge.purpose, at);
       return {
@@ -648,6 +660,14 @@ export class CommunityAuthService {
       )
         return fail("AUTH_PROOF_REJECTED");
       await tx.lockUser(user.id);
+      const freshReauth = await tx.findHandoff(reauthHash);
+      if (
+        freshReauth === null ||
+        freshReauth.consumedAt !== null ||
+        freshReauth.userId !== user.id ||
+        freshReauth.purpose !== "reauth"
+      )
+        return fail("AUTH_PROOF_REJECTED");
       const identities = await tx.listIdentities(user.id);
       const reauthIdentity = identities.find(
         (row) => row.kind === reauth.channel,
@@ -670,8 +690,8 @@ export class CommunityAuthService {
       if (deleted === "last_factor") return fail("AUTH_LAST_FACTOR");
       if (deleted === "stale") return fail("AUTH_STALE_VERSION");
       if (deleted !== "ok") return fail("AUTH_PROOF_REJECTED");
-      if ((await tx.consumeHandoff(reauth.id, at.toISOString())) !== "ok")
-        return fail("AUTH_PROOF_REJECTED");
+      if ((await tx.consumeHandoff(freshReauth.id, at.toISOString())) !== "ok")
+        throw new AuthRollback(fail("AUTH_PROOF_REJECTED"));
       await tx.invalidateUserProofs(user.id, at.toISOString());
       const session = await this.mint(
         tx,
@@ -690,6 +710,8 @@ export class CommunityAuthService {
         sessionId: session.sessionId,
         sessionTokenHash: session.tokenHash,
         purpose: "unlink",
+        originSessionId: session.sessionId,
+        closedAt: null,
       });
       await this.audit(tx, user.id, "unlink", at);
       return {
@@ -705,8 +727,26 @@ export class CommunityAuthService {
     const at = this.clock();
     const tokenHash = await hashSessionToken(sessionToken);
     return this.transactional(async (tx) => {
+      const session = await tx.lockSession(tokenHash);
+      if (session === null) return fail("AUTH_UNAUTHENTICATED");
+      if (
+        session.revokedAt === null &&
+        new Date(session.expiresAt).getTime() <= at.getTime()
+      )
+        return fail("AUTH_UNAUTHENTICATED");
+      if (session.revokedAt !== null) {
+        const open = (await tx.lockReceiptsForSession(session.id)).filter(
+          (row) => row.closedAt === null,
+        );
+        if (open.length === 0) return fail("AUTH_UNAUTHENTICATED");
+        for (const receipt of open)
+          await this.sealReceipt(tx, receipt, tokenHash, at);
+        return { ok: true, value: { signedOut: true } };
+      }
       if (!(await tx.revokeSession(tokenHash, at.toISOString())))
         return fail("AUTH_UNAUTHENTICATED");
+      for (const receipt of await tx.lockReceiptsForSession(session.id))
+        await this.sealReceipt(tx, receipt, tokenHash, at);
       return { ok: true, value: { signedOut: true } };
     });
   }
@@ -824,6 +864,8 @@ export class CommunityAuthService {
       sessionId: session.sessionId,
       sessionTokenHash: session.tokenHash,
       purpose: "sign_in",
+      originSessionId: session.sessionId,
+      closedAt: null,
     });
     await this.audit(tx, user.id, "sign_in", at);
     return { ok: true, value: { outcome: "signed_in", session } };
@@ -1211,6 +1253,18 @@ export class CommunityAuthService {
     };
   }
 
+  private async sealReceipt(
+    tx: AuthUnitOfWork,
+    receipt: StoredReceipt,
+    presentedHash: string,
+    at: Date,
+  ): Promise<void> {
+    if (receipt.closedAt === null)
+      await tx.closeReceipt(receipt.keyHash, at.toISOString());
+    if (receipt.sessionTokenHash !== presentedHash)
+      await tx.revokeSession(receipt.sessionTokenHash, at.toISOString());
+  }
+
   private async reissue(
     tx: AuthUnitOfWork,
     receipt: StoredReceipt,
@@ -1218,10 +1272,19 @@ export class CommunityAuthService {
     channel: AuthChannelName,
     at: Date,
   ): Promise<AuthSessionGrant> {
-    await tx.revokeSession(receipt.sessionTokenHash, at.toISOString());
+    const bound = await tx.lockSession(receipt.sessionTokenHash);
+    const locked = await tx.lockReceipt(receipt.keyHash);
+    const live =
+      bound !== null &&
+      bound.revokedAt === null &&
+      new Date(bound.expiresAt).getTime() > at.getTime();
+    if (locked === null || locked.closedAt !== null || !live)
+      throw new AuthRollback(fail("AUTH_PROOF_REJECTED"));
+    if (!(await tx.revokeSession(locked.sessionTokenHash, at.toISOString())))
+      throw new AuthRollback(fail("AUTH_PROOF_REJECTED"));
     const session = await this.mint(tx, user, channel, at);
     await tx.updateReceiptSession(
-      receipt.keyHash,
+      locked.keyHash,
       session.sessionId,
       session.tokenHash,
     );

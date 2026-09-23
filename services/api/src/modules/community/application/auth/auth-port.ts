@@ -73,6 +73,18 @@ export interface StoredReceipt {
   readonly sessionId: string;
   readonly sessionTokenHash: string;
   readonly purpose: string;
+  /** First session in this receipt lineage. Lost-response reissue does not change it. */
+  readonly originSessionId: string;
+  /** Set by explicit logout. A closed receipt must not mint another session. */
+  readonly closedAt: string | null;
+}
+
+export interface LockedAuthSession {
+  readonly id: string;
+  readonly tokenHash: string;
+  readonly userId: string;
+  readonly expiresAt: string;
+  readonly revokedAt: string | null;
 }
 
 export interface StoredSession {
@@ -132,6 +144,10 @@ export interface AuthUnitOfWork {
   ): Promise<"ok" | "consumed" | "missing">;
   insertReceipt(row: StoredReceipt): Promise<"ok" | "conflict">;
   findReceipt(keyHash: string): Promise<StoredReceipt | null>;
+  lockSession(tokenHash: string): Promise<LockedAuthSession | null>;
+  lockReceipt(keyHash: string): Promise<StoredReceipt | null>;
+  lockReceiptsForSession(sessionId: string): Promise<readonly StoredReceipt[]>;
+  closeReceipt(keyHash: string, atIso: string): Promise<void>;
   updateReceiptSession(
     keyHash: string,
     sessionId: string,
