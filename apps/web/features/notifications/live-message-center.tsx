@@ -23,7 +23,15 @@ export interface DirectMessagePanelAdapter {
     backRequested: number;
   }) => ReactNode;
   useUnreadConversationCount: () => number;
+  /**
+   * parallel-community-integration-qa: a pending entry request (for example a
+   * profile's 私信 action) that should open this host on its direct-message
+   * view. Returns an opaque token that changes per request, or null. The
+   * adapter consumes the request itself once its panel is mounted.
+   */
+  useOpenRequest?: () => number | null;
 }
+const noOpenRequest = () => null;
 const unavailableDM: DirectMessagePanelAdapter = {
   render: () => <p className={styles.empty}>私信尚未在此环境接入。</p>,
   useUnreadConversationCount: () => 0,
@@ -78,6 +86,44 @@ function AccountMessages({
   const confirmed = !author.checking && !author.sessionError && !!author.viewer;
   const incoming =
     view === "reactions" || (view === "comments" && commentTab !== "sent");
+  // parallel-community-integration-qa: C's profile 私信 action stores an entry
+  // request. The live host must open itself for it, as the scoped host did;
+  // otherwise the request waits until the user opens 消息 by hand. Only the
+  // visible host inside the active destination reacts (same guard as below).
+  const useOpenRequest = directMessages.useOpenRequest ?? noOpenRequest;
+  const openRequest = useOpenRequest();
+  const handledOpenRequest = useRef<number | null>(null);
+  useEffect(() => {
+    if (openRequest === null || handledOpenRequest.current === openRequest)
+      return;
+    if (!confirmed) return;
+    let frame = 0,
+      attempts = 0;
+    const tryOpen = () => {
+      frame = 0;
+      if (
+        !opener.current ||
+        opener.current.closest('[inert], [hidden], [aria-hidden="true"]')
+      ) {
+        // The request arrives in the same commit that closes the profile that
+        // issued it, while the page behind that profile is still inert. The
+        // active host becomes reachable a frame or two later; hosts of other
+        // destinations stay hidden and give up after a bounded wait.
+        attempts += 1;
+        if (attempts < 30) frame = requestAnimationFrame(tryOpen);
+        return;
+      }
+      handledOpenRequest.current = openRequest;
+      setView("home");
+      setNotice("");
+      setCloseRequested(false);
+      setOpen(true);
+    };
+    tryOpen();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [openRequest, confirmed]);
   const entryOpened = useRef(false);
   useEffect(() => {
     if (entryOpened.current || author.checking) return;

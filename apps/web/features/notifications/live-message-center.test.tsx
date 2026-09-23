@@ -169,6 +169,59 @@ describe("Owner notification reading interactions", () => {
       "discover",
     );
   });
+  // parallel-community-integration-qa: C's profile 私信 action stores an entry
+  // request that the live host must open for, on the view holding the DM panel.
+  const entryAdapter = (token: number | null) => ({
+    render: () => <p data-dm-panel="">DM panel</p>,
+    useUnreadConversationCount: () => 0,
+    useOpenRequest: () => token,
+  });
+  it("opens only the active host on the direct-message view for an adapter entry request", async () => {
+    await act(async () => root.render(null));
+    const adapter = entryAdapter(7);
+    await act(async () =>
+      root.render(
+        <>
+          <section hidden>
+            <LiveMessageTrigger directMessages={adapter} />
+          </section>
+          <LiveMessageTrigger directMessages={adapter} />
+        </>,
+      ),
+    );
+    expect(node.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(node.querySelector('section [role="dialog"]')).toBeNull();
+    expect(
+      node.querySelector('[role="dialog"] [data-dm-panel]'),
+    ).not.toBeNull();
+  });
+  it("opens once the overlay that issued the entry request stops making the host inert", async () => {
+    await act(async () => root.render(null));
+    const adapter = entryAdapter(9);
+    await act(async () =>
+      root.render(
+        <div data-overlay-backdrop="" inert>
+          <LiveMessageTrigger directMessages={adapter} />
+        </div>,
+      ),
+    );
+    expect(node.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => {
+      node.querySelector("[data-overlay-backdrop]")!.removeAttribute("inert");
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
+    expect(node.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(
+      node.querySelector('[role="dialog"] [data-dm-panel]'),
+    ).not.toBeNull();
+  });
+  it("does not open without an entry request", async () => {
+    await act(async () => root.render(null));
+    await act(async () =>
+      root.render(<LiveMessageTrigger directMessages={entryAdapter(null)} />),
+    );
+    expect(node.querySelector('[role="dialog"]')).toBeNull();
+  });
   it("ignores an unknown category and retains ordinary message navigation", async () => {
     await act(async () => root.render(null));
     window.history.replaceState({}, "", "/?notifications=unknown");

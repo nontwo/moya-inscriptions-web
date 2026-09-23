@@ -72,9 +72,14 @@ const LiveDirectMessages = ({
     />
   );
 };
+// The profile's 私信 action stores this request; the live host opens itself
+// for it and LiveDirectMessages then consumes it and opens the pair.
+const useDirectEntryOpenRequest = (): number | null =>
+  useDirectMessageEntry()?.request?.token ?? null;
 const liveDirectMessages: DirectMessagePanelAdapter = {
   render: (props) => <LiveDirectMessages {...props} />,
   useUnreadConversationCount,
+  useOpenRequest: useDirectEntryOpenRequest,
 };
 export function MessageTrigger({
   unreadCount = 0,
