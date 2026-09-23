@@ -273,7 +273,7 @@ describe("email-auth PostgreSQL", () => {
     ).rejects.toMatchObject({ code: "42P01" });
     expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual([
       authMigrationId,
-      "20260922020000",
+      "20260922011000",
     ]);
     expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual(
       [],

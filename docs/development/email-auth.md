@@ -93,10 +93,10 @@ tracks N and C integrate.
 
 ## Database
 
-Migrations `20260922010000` and `20260922020000`. Apply with the community
+Migrations `20260922010000` and `20260922011000`. Apply with the community
 migration role, then re-apply
 `infra/development/work-publishing/grant-runtime.sql` as the database owner.
-`20260922020000` gives each failed attempt its own row and records when logout
+`20260922011000` gives each failed attempt its own row and records when logout
 closes a receipt. Do not apply this to a retained Development database or
 TencentDB until a separate instruction. New accounts use ordinary privacy
 defaults and do not receive the owner publishing class.
