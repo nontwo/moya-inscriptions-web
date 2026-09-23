@@ -283,7 +283,7 @@ GRANT INSERT (
 ) ON TABLE community.auth_handoffs TO :"app_role";
 GRANT UPDATE (consumed_at) ON TABLE community.auth_handoffs TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.auth_receipts TO :"app_role";
-GRANT UPDATE (session_id, session_token_hash) ON TABLE community.auth_receipts TO :"app_role";
+GRANT UPDATE (session_id, session_token_hash, closed_at) ON TABLE community.auth_receipts TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.auth_send_counters TO :"app_role";
 GRANT UPDATE (count) ON TABLE community.auth_send_counters TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.auth_target_failures TO :"app_role";

@@ -229,6 +229,32 @@ export class MemoryCommunityAuthPort implements CommunityAuthPort {
       },
       findReceipt: async (keyHash) =>
         state.receipts.find((row) => row.keyHash === keyHash) ?? null,
+      lockSession: async (tokenHash) => {
+        const row = state.sessions.find((item) => item.tokenHash === tokenHash);
+        if (row === undefined) return null;
+        return {
+          id: row.id,
+          tokenHash: row.tokenHash,
+          userId: row.userId,
+          expiresAt: row.expiresAt,
+          revokedAt: row.revokedAt,
+        };
+      },
+      lockReceipt: async (keyHash) =>
+        state.receipts.find((row) => row.keyHash === keyHash) ?? null,
+      lockReceiptsForSession: async (sessionId) =>
+        state.receipts.filter(
+          (row) =>
+            row.originSessionId === sessionId || row.sessionId === sessionId,
+        ),
+      closeReceipt: async (keyHash, atIso) => {
+        const index = state.receipts.findIndex(
+          (row) => row.keyHash === keyHash,
+        );
+        const current = state.receipts[index];
+        if (current !== undefined && current.closedAt === null)
+          state.receipts[index] = { ...current, closedAt: atIso };
+      },
       updateReceiptSession: async (keyHash, sessionId, sessionTokenHash) => {
         const index = state.receipts.findIndex(
           (row) => row.keyHash === keyHash,

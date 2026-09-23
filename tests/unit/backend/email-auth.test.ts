@@ -23,7 +23,11 @@ import {
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AuthDeliveryPorts, CommunityAuthServiceOptions } from "@moya/api";
+import type {
+  AuthDeliveryPorts,
+  CommunityAuthPort,
+  CommunityAuthServiceOptions,
+} from "@moya/api";
 import type { Server } from "node:http";
 
 const keys = {
@@ -851,6 +855,250 @@ describe("authentication HTTP", () => {
       }),
     ).toThrow(/not composed in production/u);
     expect(port).toBeDefined();
+  });
+
+  it("does not keep an identity change when handoff consumption fails", async () => {
+    const memory = createMemoryCommunityAuthPort();
+    let armed = false;
+    const port: CommunityAuthPort = {
+      transaction: (work) =>
+        memory.transaction((tx) =>
+          work({
+            ...tx,
+            consumeHandoff: async (id, at) =>
+              armed ? "consumed" : tx.consumeHandoff(id, at),
+          }),
+        ),
+    };
+    let now = new Date("2026-09-22T12:00:00.000Z");
+    const service = new CommunityAuthService(port, {
+      environment: "development",
+      profile: "full-local",
+      keys,
+      emailMode: "local_capture",
+      phoneMode: "simulated",
+      delivery: delivery(),
+      clock: () => now,
+    });
+    const email = await registerEmail(service, "rollback@example.com", "回滚");
+    const token = email.registered.value.token;
+    const proof = await service.sendChallenge({
+      channel: "email",
+      purpose: "reauthenticate",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+    });
+    if (!proof.ok || proof.value.continuationToken === undefined)
+      throw new Error("reauth");
+    const reauth = await service.verifyChallenge({
+      challengeId: proof.value.challengeId,
+      code: latestCode(),
+      continuationToken: proof.value.continuationToken,
+      idempotencyKey: key(),
+    });
+    if (!reauth.ok || reauth.value.outcome !== "reauthenticated")
+      throw new Error("proof");
+    const link = await service.sendChallenge({
+      channel: "phone",
+      purpose: "link",
+      identifier: "13800138009",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: token,
+      reauthToken: reauth.value.reauthToken,
+    });
+    if (!link.ok || link.value.continuationToken === undefined)
+      throw new Error("link");
+    const phoneCode = latestCode();
+    armed = true;
+    expect(
+      await service.completeFactor({
+        challengeId: link.value.challengeId,
+        code: phoneCode,
+        continuationToken: link.value.continuationToken,
+        reauthToken: reauth.value.reauthToken,
+        expectedVersion: 0,
+        idempotencyKey: key(),
+        sessionToken: token,
+      }),
+    ).toMatchObject({ ok: false, reason: "AUTH_PROOF_REJECTED" });
+    expect((await service.readAccount(token)).ok).toBe(true);
+    const rejected = await service.readAccount(token);
+    expect(rejected.ok && rejected.value.phone.state).toBe("unbound");
+    armed = false;
+    now = new Date(now.getTime() + 61_000);
+    const recovered = await service.completeFactor({
+      challengeId: link.value.challengeId,
+      code: phoneCode,
+      continuationToken: link.value.continuationToken,
+      reauthToken: reauth.value.reauthToken,
+      expectedVersion: 0,
+      idempotencyKey: key(),
+      sessionToken: token,
+    });
+    expect(recovered.ok && recovered.value.account.phone.state).toBe(
+      "verified",
+    );
+    if (!recovered.ok) return;
+    const replaceProof = await service.sendChallenge({
+      channel: "phone",
+      purpose: "reauthenticate",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: recovered.value.session.token,
+    });
+    if (!replaceProof.ok || replaceProof.value.continuationToken === undefined)
+      throw new Error("replace reauth");
+    const replaceReauth = await service.verifyChallenge({
+      challengeId: replaceProof.value.challengeId,
+      code: latestCode(),
+      continuationToken: replaceProof.value.continuationToken,
+      idempotencyKey: key(),
+    });
+    if (!replaceReauth.ok || replaceReauth.value.outcome !== "reauthenticated")
+      throw new Error("replace proof");
+    const replacement = await service.sendChallenge({
+      channel: "email",
+      purpose: "replace",
+      identifier: "changed-back@example.com",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+      sessionToken: recovered.value.session.token,
+      reauthToken: replaceReauth.value.reauthToken,
+    });
+    if (!replacement.ok || replacement.value.continuationToken === undefined)
+      throw new Error("replace");
+    const replaceCode = latestCode();
+    armed = true;
+    expect(
+      await service.completeFactor({
+        challengeId: replacement.value.challengeId,
+        code: replaceCode,
+        continuationToken: replacement.value.continuationToken,
+        reauthToken: replaceReauth.value.reauthToken,
+        expectedVersion: recovered.value.account.email.version,
+        idempotencyKey: key(),
+        sessionToken: recovered.value.session.token,
+      }),
+    ).toMatchObject({ ok: false, reason: "AUTH_PROOF_REJECTED" });
+    const still = await service.readAccount(recovered.value.session.token);
+    expect(still.ok && still.value.email.masked).toBe("r***@example.com");
+    expect(
+      await service.unlinkFactor({
+        channel: "email",
+        reauthToken: replaceReauth.value.reauthToken,
+        expectedVersion: recovered.value.account.email.version,
+        idempotencyKey: key(),
+        sessionToken: recovered.value.session.token,
+      }),
+    ).toMatchObject({ ok: false, reason: "AUTH_PROOF_REJECTED" });
+    const kept = await service.readAccount(recovered.value.session.token);
+    expect(kept.ok && kept.value.email.masked).toBe("r***@example.com");
+    armed = false;
+    const unlinked = await service.unlinkFactor({
+      channel: "email",
+      reauthToken: replaceReauth.value.reauthToken,
+      expectedVersion: recovered.value.account.email.version,
+      idempotencyKey: key(),
+      sessionToken: recovered.value.session.token,
+    });
+    expect(unlinked.ok && unlinked.value.account.email.state).toBe("unbound");
+    void now;
+  });
+
+  it("recovers a lost sign-in response only until logout or expiry", async () => {
+    const { service, advance } = harness("full-local", {
+      sessionTtlMs: 60_000,
+    });
+    const email = await registerEmail(service, "receipt@example.com", "回执");
+    await service.signOut(email.registered.value.token);
+    const sent = await service.sendChallenge({
+      channel: "email",
+      purpose: "sign_in",
+      identifier: "receipt@example.com",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+    });
+    if (!sent.ok || sent.value.continuationToken === undefined)
+      throw new Error("send");
+    const body = {
+      challengeId: sent.value.challengeId,
+      code: latestCode(),
+      continuationToken: sent.value.continuationToken,
+      idempotencyKey: key(),
+    };
+    const first = await service.verifyChallenge(body);
+    const retry = await service.verifyChallenge(body);
+    expect(first.ok && first.value.outcome).toBe("signed_in");
+    expect(retry.ok && retry.value.outcome).toBe("signed_in");
+    if (
+      !first.ok ||
+      first.value.outcome !== "signed_in" ||
+      !retry.ok ||
+      retry.value.outcome !== "signed_in"
+    )
+      return;
+    expect((await service.readAccount(retry.value.session.token)).ok).toBe(
+      true,
+    );
+    expect(await service.readAccount(first.value.session.token)).toMatchObject({
+      ok: false,
+      reason: "AUTH_UNAUTHENTICATED",
+    });
+    expect(await service.signOut(retry.value.session.token)).toMatchObject({
+      ok: true,
+      value: { signedOut: true },
+    });
+    expect(await service.verifyChallenge(body)).toMatchObject({ ok: false });
+    expect(await service.readAccount(retry.value.session.token)).toMatchObject({
+      ok: false,
+      reason: "AUTH_UNAUTHENTICATED",
+    });
+    const fresh = await service.sendChallenge({
+      channel: "email",
+      purpose: "sign_in",
+      identifier: "receipt@example.com",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+    });
+    if (!fresh.ok || fresh.value.continuationToken === undefined)
+      throw new Error("fresh");
+    const freshBody = {
+      challengeId: fresh.value.challengeId,
+      code: latestCode(),
+      continuationToken: fresh.value.continuationToken,
+      idempotencyKey: key(),
+    };
+    const again = await service.verifyChallenge(freshBody);
+    expect(again.ok && again.value.outcome).toBe("signed_in");
+    if (!again.ok || again.value.outcome !== "signed_in") return;
+    advance(60_001);
+    expect(await service.readAccount(again.value.session.token)).toMatchObject({
+      ok: false,
+      reason: "AUTH_UNAUTHENTICATED",
+    });
+    expect(await service.verifyChallenge(freshBody)).toMatchObject({
+      ok: false,
+    });
+    advance(61_000);
+    const restored = await service.sendChallenge({
+      channel: "email",
+      purpose: "sign_in",
+      identifier: "receipt@example.com",
+      idempotencyKey: key(),
+      source: "127.0.0.1",
+    });
+    if (!restored.ok || restored.value.continuationToken === undefined)
+      throw new Error("restored");
+    expect(
+      await service.verifyChallenge({
+        challengeId: restored.value.challengeId,
+        code: latestCode(),
+        continuationToken: restored.value.continuationToken,
+        idempotencyKey: key(),
+      }),
+    ).toMatchObject({ ok: true, value: { outcome: "signed_in" } });
   });
 
   it("ignores forwarded headers when naming the request source", () => {

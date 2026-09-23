@@ -84,17 +84,22 @@ verify the contact.
 `CommunitySessionService.identify` remains the current-user check. Revocation
 sets `community.sessions.revoked_at`. Factor replacement and unlinking revoke
 other sessions and issue a fresh one for the current device. Ordinary sign-in
-does not. Logout revokes the presented session and clears the `yoyi-session`
-cookie. Notification streams and DM admission must treat a failed `identify` as
-logged out. That combined check is pending until tracks N and C integrate.
+does not. Logout revokes the presented session, closes the verify receipt for
+that session lineage, and clears the `yoyi-session` cookie. A closed receipt
+cannot mint another session. A lost response can still be recovered before
+logout, while that session is live. Notification streams and DM admission must
+treat a failed `identify` as logged out. That combined check is pending until
+tracks N and C integrate.
 
 ## Database
 
-Migration `20260922010000`. Apply with the community migration role, then
-re-apply `infra/development/work-publishing/grant-runtime.sql` as the database
-owner. Do not apply this to a retained Development database or TencentDB until a
-separate instruction. New accounts use ordinary privacy defaults and do not
-receive the owner publishing class.
+Migrations `20260922010000` and `20260922011000`. Apply with the community
+migration role, then re-apply
+`infra/development/work-publishing/grant-runtime.sql` as the database owner.
+`20260922011000` gives each failed attempt its own row and records when logout
+closes a receipt. Do not apply this to a retained Development database or
+TencentDB until a separate instruction. New accounts use ordinary privacy
+defaults and do not receive the owner publishing class.
 
 ## Rollback
 

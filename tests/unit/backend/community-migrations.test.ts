@@ -71,6 +71,7 @@ describe("community migration family", () => {
         "20260920080000_agent_connection_client_slug.sql",
         "20260921010000_agent_connection_one_per_client.sql",
         "20260922010000_email_phone_login_identities.sql",
+        "20260922011000_auth_failure_rows_and_receipt_seal.sql",
         "20260922020000_notification_foundation.sql",
         "20260922030000_threads.sql",
         "20260922031000_article_discussion_target.sql",
