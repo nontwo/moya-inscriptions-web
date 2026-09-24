@@ -9,6 +9,7 @@ import { MyComments } from "../authors/author-profile";
 import { useAuthors } from "../authors/author-context";
 import { CategoryIcon } from "../authors/message-category-icon";
 import { useProductShell } from "../product-shell/product-shell";
+import type { PrimaryDestination } from "../shell/primary-shell";
 import { useNotifications } from "./notification-context";
 import { NotificationRefresher } from "./notification-refresher";
 import styles from "../authors/message-preview.module.css";
@@ -92,6 +93,8 @@ function AccountMessages({
     returning = useRef<{
       kind: "content" | "profile" | "topic";
       opened: boolean;
+      /** The destination this host lives in, when the target left it. */
+      source?: PrimaryDestination;
     } | null>(null),
     frame = useRef<number | null>(null);
   const confirmed = !author.checking && !author.sessionError && !!author.viewer;
@@ -109,7 +112,8 @@ function AccountMessages({
       return;
     if (!confirmed) return;
     let frame = 0,
-      attempts = 0;
+      attempts = 0,
+      movedHome = false;
     const tryOpen = () => {
       frame = 0;
       if (
@@ -120,6 +124,18 @@ function AccountMessages({
         // issued it, while the page behind that profile is still inert. The
         // active host becomes reachable a frame or two later; hosts of other
         // destinations stay hidden and give up after a bounded wait.
+        // The user destination has no message host at all: there the home
+        // host brings the home destination forward once, then opens as usual.
+        const destination = opener.current
+          ?.closest("[data-primary-destination]")
+          ?.getAttribute("data-primary-destination");
+        const activeHasHost = document.querySelector(
+          '[data-primary-destination][data-active="true"] [data-live-message-trigger]',
+        );
+        if (!movedHome && destination === "home" && !activeHasHost) {
+          movedHome = true;
+          shell.navigatePrimary("home");
+        }
         attempts += 1;
         if (attempts < 30) frame = requestAnimationFrame(tryOpen);
         return;
@@ -200,6 +216,13 @@ function AccountMessages({
     }
     if (target.opened) {
       returning.current = null;
+      // parallel-community-integration-qa: an Article opens as a topic of the
+      // discussion destination, and closing it stays there. This host lives
+      // in the destination the reader came from, now hidden: return there
+      // before reopening, as the scoped host does, because a modal reopened
+      // inside a hidden destination blocks the whole page invisibly.
+      if (target.source && shell.activeDestination !== target.source)
+        shell.navigatePrimary(target.source);
       setCloseRequested(false);
       setOpen(true);
     }
@@ -252,6 +275,7 @@ function AccountMessages({
         ref={opener}
         type="button"
         className={triggerStyles.trigger}
+        data-live-message-trigger=""
         aria-label={
           total
             ? `打开消息，${activity} 条未读动态，${conversations} 个未读私信会话`
@@ -306,6 +330,7 @@ function AccountMessages({
                         ? "topic"
                         : "content",
                   opened: false,
+                  source: shell.activeDestination,
                 };
                 if (typeof target === "string")
                   shell.openProfile(target, element);
