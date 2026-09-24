@@ -48,6 +48,12 @@ export class AuthorRequestError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /**
+     * The machine reason a refused request named (for example
+     * `dm_request_pending`), for features that map it to their own text.
+     * It is never shown as is.
+     */
+    readonly reason: string | null = null,
   ) {
     super(message);
   }
@@ -101,14 +107,21 @@ const request = async <T>(
           : response.status === 409
             ? "状态已变化，请检查后重试"
             : "暂时无法完成，请重试";
+    let reason: string | null = null;
     try {
       const value = await response.json();
       if (response.status === 409 && typeof value?.error?.message === "string")
         message = value.error.message;
+      if (
+        response.status === 422 &&
+        typeof value?.error?.message === "string" &&
+        /^[a-z][a-z0-9_]{0,63}$/u.test(value.error.message)
+      )
+        reason = value.error.message;
     } catch {
       /* Preserve the transport failure. */
     }
-    throw new AuthorRequestError(response.status, message);
+    throw new AuthorRequestError(response.status, message, reason);
   }
   const result = schema.parse(await response.json());
   if (epoch !== accountEpoch)

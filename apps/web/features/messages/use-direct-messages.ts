@@ -15,7 +15,7 @@ const DM_POLL_BACKOFF_MAX_MS = 60_000;
 
 const describeFailure = (error: unknown): string => {
   if (error instanceof AuthorRequestError) {
-    const code = error.message;
+    const code = error.reason ?? "";
     const known: Record<string, string> = {
       dm_request_pending: "你已发送一条私信，等对方回复后才能继续发送。",
       dm_blocked: "对方目前不接受你的私信。",

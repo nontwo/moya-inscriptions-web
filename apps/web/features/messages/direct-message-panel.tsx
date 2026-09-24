@@ -211,7 +211,7 @@ const Composer = ({
           </div>
         </>
       )}
-      {error && (
+      {error && error !== disabledReason && (
         <p
           role="alert"
           className={`${panelStyles.inlineNotice} ${panelStyles.composerNotice}`}

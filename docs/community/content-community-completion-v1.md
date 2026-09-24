@@ -372,6 +372,20 @@ replacing the view (a failing refresh changes nothing, so the draft stays), and
 a conversation that cannot load offers 重试. Two panel cases cover both (they
 fail against the previous code).
 
+The review of `aa76cc7` (independent-review-aa76cc7.md) found one blocker that
+predates this round: a refused send never showed its reason. The server names it
+in a 422 body (`dm_request_pending`, `dm_blocked`, `dm_daily_limit`,
+`dm_rate_limited`, `dm_self`, `dm_recipient_unavailable`, `dm_text_invalid`),
+but the shared author client kept only 409 text, so every refusal
+read 暂时无法完成，请重试 and the panel's reason table never matched.
+`AuthorRequestError` now carries a 422's machine reason separately (a lower-case
+identifier only, never shown as is; other features keep their messages), the
+panel maps it to the exact text, and a gate refusal shows once as the composer's
+reason instead of beside a generic retry. Four panel cases cover a blocked
+start, the daily and minute limits and the gate (they fail against the previous
+code). `apps/web/lib/public-api/author-community-client.ts` is already in this
+task's approved paths (§4).
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,
