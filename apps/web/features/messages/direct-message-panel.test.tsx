@@ -479,4 +479,82 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
     expect(textarea.value).toBe("");
     expect(document.activeElement).toBe(textarea);
   });
+
+  it("keeps the accepted chat structure: a scrolling stream above the bottom composer", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    const structure = (view: Element) =>
+      [...view.children].map((child) =>
+        child.hasAttribute("data-dm-stream") ||
+        child.className.includes(previewStyles.chatStream!)
+          ? "stream"
+          : child.hasAttribute("data-message-composer")
+            ? "composer"
+            : child.className.includes(panelStyles.title!)
+              ? "title"
+              : child.tagName.toLowerCase(),
+      );
+    await act(async () =>
+      root.render(
+        <DirectMessagePanel onOpenProfile={vi.fn()} onTitleChange={vi.fn()} />,
+      ),
+    );
+    await flush();
+    await openFirstConversation();
+    const chat = node.querySelector('[data-dm-view="conversation"]')!;
+    expect(chat.className).toContain(previewStyles.chat);
+    expect(structure(chat)).toEqual(["stream", "composer"]);
+    const composer = chat.querySelector("[data-message-composer]")!;
+    expect(composer.className).toContain(previewStyles.chatComposer);
+    expect(
+      composer.querySelector('textarea[aria-label="私信内容"]'),
+    ).not.toBeNull();
+
+    await act(async () => root.unmount());
+    root = createRoot(node);
+    await act(async () =>
+      root.render(
+        <DirectMessagePanel
+          onOpenProfile={vi.fn()}
+          openWith={{ userId: other, displayName: "书法学徒" }}
+        />,
+      ),
+    );
+    await flush();
+    const start = node.querySelector('[data-dm-view="start"]')!;
+    expect(start.className).toContain(previewStyles.chat);
+    expect(structure(start)).toEqual(["title", "stream", "composer"]);
+  });
+
+  it("settles when a host passes a new title callback on every render", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    let calls = 0;
+    const { useState: useHostState } = await import("react");
+    const Host = () => {
+      const [title, setTitle] = useHostState<DirectMessageTitle | null>(null);
+      return (
+        <>
+          <p data-host-title="">{title?.label ?? "消息"}</p>
+          <DirectMessagePanel
+            onOpenProfile={vi.fn()}
+            onTitleChange={(next) => {
+              calls += 1;
+              setTitle(next);
+            }}
+          />
+        </>
+      );
+    };
+    await act(async () => root.render(<Host />));
+    await flush();
+    await openFirstConversation();
+    await flush();
+    expect(node.querySelector("[data-host-title]")?.textContent).toBe(
+      "书法学徒",
+    );
+    expect(calls).toBeLessThanOrEqual(2);
+  });
 });

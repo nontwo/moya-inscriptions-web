@@ -89,11 +89,16 @@ const useHostTitle = (
 ): boolean => {
   const open = useRef(onOpenProfile);
   open.current = onOpenProfile;
+  // The latest callback is used, so a host may pass an inline function
+  // without re-running the effect (which would loop through its own render).
+  const change = useRef(onTitleChange);
+  change.current = onTitleChange;
+  const seam = onTitleChange !== undefined;
   const id = participant?.id ?? null;
   const name = participant?.displayName ?? null;
   useEffect(() => {
-    if (!onTitleChange || id === null || name === null) return;
-    onTitleChange({
+    if (!seam || id === null || name === null) return;
+    change.current?.({
       label: name,
       content: (
         <HeaderTitle
@@ -102,9 +107,9 @@ const useHostTitle = (
         />
       ),
     });
-    return () => onTitleChange(null);
-  }, [onTitleChange, id, name]);
-  return !!onTitleChange;
+    return () => change.current?.(null);
+  }, [seam, id, name]);
+  return seam;
 };
 
 const refusalText = (conversation: DirectConversation): string | null =>
@@ -397,7 +402,7 @@ export interface DirectMessagePanelProps {
   readonly backRequested?: number;
   /**
    * Hosts that show the open conversation's participant in their dialog header
-   * pass this (a stable setter); without it the view keeps its own title row.
+   * pass this; without it the view keeps its own title row.
    */
   readonly onTitleChange?: (title: DirectMessageTitle | null) => void;
 }

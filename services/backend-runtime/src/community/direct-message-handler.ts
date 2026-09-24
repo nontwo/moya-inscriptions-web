@@ -85,7 +85,9 @@ export const handleDirectMessageRequest = async (
       return;
     }
     if (path.length === 2 && path[0] === "with" && method === "GET") {
-      const other = parsed(publicUserIdSchema, decodePathSegment(path[1]!));
+      const segment = decodePathSegment(path[1]!);
+      const other =
+        segment === undefined ? null : parsed(publicUserIdSchema, segment);
       if (other === null || Object.keys(query).length > 0)
         return invalidQuery();
       sendJson(
@@ -97,6 +99,10 @@ export const handleDirectMessageRequest = async (
       return;
     }
     const id = decodePathSegment(path[0] ?? "");
+    if (id === undefined) {
+      sendApiError(response, "ITEM_NOT_FOUND", "Conversation not found");
+      return;
+    }
     if (path.length === 1 && method === "GET") {
       const input = parsed(directMessageHistoryQuerySchema, query);
       if (input === null) return invalidQuery();
@@ -230,12 +236,17 @@ export const handleDirectMessageOperatorRequest = async (
       return true;
     }
     if (rest.length === 2 && rest[1] === "remove") {
+      const messageId = decodePathSegment(rest[0]!);
+      if (messageId === undefined) {
+        sendOperatorError(response, 404, "NOT_FOUND");
+        return true;
+      }
       sendJson(
         response,
         200,
         await service.operatorRemove(
           operator,
-          decodePathSegment(rest[0]!),
+          messageId,
           await readJsonBody(request, 10_000),
         ),
       );
