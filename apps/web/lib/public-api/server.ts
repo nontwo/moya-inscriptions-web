@@ -239,11 +239,31 @@ export const signOutServerDevelopmentSession = async (
   }
 };
 
+/** True when the Backend refuses the presented Session itself: `me` answers 401. */
+const communitySessionRefused = async (
+  base: URL,
+  token: string,
+): Promise<boolean> => {
+  try {
+    const answer = await fetch(new URL("v1/community/me", base), {
+      method: "GET",
+      headers: { accept: "application/json", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(15000),
+    });
+    await answer.body?.cancel().catch(() => undefined);
+    return answer.status === 401;
+  } catch {
+    return false;
+  }
+};
+
 /** Fixed Development namespace relay. Credentials stay on the server and every read is private. */
 export const relayServerAuthorCommunity = async (
   request: Request,
 ): Promise<Response> => {
-  const headers = {
+  const headers: Record<string, string> = {
     "cache-control": "private, no-store",
     vary: "Cookie",
     "x-content-type-options": "nosniff",
@@ -327,14 +347,38 @@ export const relayServerAuthorCommunity = async (
       }
       bytes = new Uint8Array(Buffer.concat(chunks));
     }
-    const upstream = await fetch(target, {
-      method: request.method,
-      headers: outgoing,
-      cache: "no-store",
-      redirect: "error",
-      signal: AbortSignal.timeout(15000),
-      ...(bytes === undefined ? {} : { body: bytes as BodyInit }),
-    });
+    const send = (credentials: Record<string, string>) =>
+      fetch(target, {
+        method: request.method,
+        headers: credentials,
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(15000),
+        ...(bytes === undefined ? {} : { body: bytes as BodyInit }),
+      });
+    let upstream = await send(outgoing);
+    // email-auth-v1: a Session the Backend no longer accepts (logged out or
+    // factor-replaced on another device, expired, unknown) must not keep this
+    // browser from public reads. Once the Backend refuses the Session itself
+    // (not an account header that no longer matches it), the cookie is cleared
+    // and a read is answered as for a signed-out browser; a write is not
+    // repeated.
+    if (
+      upstream.status === 401 &&
+      token !== undefined &&
+      ((request.method === "GET" && suffix === "me") ||
+        (await communitySessionRefused(base, token)))
+    ) {
+      headers["set-cookie"] = serializeClearedCommunitySessionCookie(
+        isSecureRequest(request),
+      );
+      if (request.method === "GET") {
+        await upstream.body?.cancel().catch(() => undefined);
+        const signedOut = { ...outgoing };
+        delete signedOut.Authorization;
+        upstream = await send(signedOut);
+      }
+    }
     const type = upstream.headers.get("content-type")?.split(";")[0];
     if (type !== "application/json" && type !== "image/png")
       return fail(upstream.ok ? 502 : upstream.status);
