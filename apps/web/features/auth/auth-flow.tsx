@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
+import { requestIdentity } from "../shell/request-identity";
 import { authRequest, safeReturnPath } from "./auth-api";
 import type { AuthCapabilitiesView } from "./auth-api";
 
@@ -41,7 +42,9 @@ const messageOf = (body: unknown): string => {
   return reasons[String(error.message)] ?? "请求失败，请稍后重试。";
 };
 
-const newKey = () => crypto.randomUUID();
+// crypto.randomUUID exists only in secure contexts; a phone on the Development
+// LAN origin is plain HTTP, so use the getRandomValues helper the app shares.
+const newKey = () => requestIdentity();
 
 export const AuthFlow = ({
   mode,
