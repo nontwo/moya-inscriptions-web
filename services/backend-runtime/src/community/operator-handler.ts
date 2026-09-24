@@ -74,10 +74,13 @@ export const isAuthorizedOperator = (
 
 const sendFailure = (response: ServerResponse, error: unknown): void => {
   // A handler that failed after it answered has nothing left to fail; one
-  // that failed while answering cannot be answered twice.
-  if (response.writableEnded) return;
+  // that failed while answering cannot be answered twice. Both still leave a
+  // diagnosable trace without private data.
   if (response.headersSent) {
-    response.destroy();
+    console.error(
+      `[backend-runtime] operator request failed after answering (${failureLabel(error)})`,
+    );
+    if (!response.writableEnded) response.destroy();
     return;
   }
   if (isCommunityNotFoundError(error)) {

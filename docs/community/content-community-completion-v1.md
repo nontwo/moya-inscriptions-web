@@ -359,6 +359,11 @@ suggestions were applied in a follow-up commit:
   always drops its disposable role;
 - a panel case pins the accepted chat structure (stream above the composer).
 
+The review of that follow-up (`817a5ed`, independent-review-817a5ed.md) also
+approved with no blockers; its two small suggestions were applied: an operator
+failure after the answer had started or ended is logged (class and code only),
+and the boundary test drops its role even when dropping its database fails.
+
 The combined J9 journey then found one more panel defect: a send that failed
 while offline refreshed the conversation, the refresh failed too, and the whole
 view was replaced by 暂时无法完成，请重试 — the composer and the typed draft

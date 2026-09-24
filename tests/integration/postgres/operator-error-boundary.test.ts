@@ -191,9 +191,15 @@ describe("operator failures stay request failures on the real server", () => {
       await app?.end();
       await setup?.end();
     } finally {
-      if (createdDB) await admin.query(`DROP DATABASE ${database}`);
-      if (createdRole) await admin.query(`DROP ROLE ${role}`);
-      await admin.end();
+      try {
+        if (createdDB) await admin.query(`DROP DATABASE ${database}`);
+      } finally {
+        try {
+          if (createdRole) await admin.query(`DROP ROLE ${role}`);
+        } finally {
+          await admin.end();
+        }
+      }
     }
   });
 
