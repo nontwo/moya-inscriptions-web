@@ -359,6 +359,14 @@ suggestions were applied in a follow-up commit:
   always drops its disposable role;
 - a panel case pins the accepted chat structure (stream above the composer).
 
+The combined J9 journey then found one more panel defect: a send that failed
+while offline refreshed the conversation, the refresh failed too, and the whole
+view was replaced by 暂时无法完成，请重试 — the composer and the typed draft
+were gone and nothing offered a retry. A failed send now refreshes without
+replacing the view (a failing refresh changes nothing, so the draft stays), and
+a conversation that cannot load offers 重试. Two panel cases cover both (they
+fail against the previous code).
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,

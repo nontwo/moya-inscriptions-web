@@ -275,12 +275,14 @@ export const useConversation = (id: string | null, enabled: boolean) => {
         await poll();
         return { ok: true };
       } catch (error) {
-        // Refresh the truthful state (e.g. the gate) but keep the draft.
-        await load().catch(() => undefined);
+        // Refresh the truthful state (e.g. the gate) but keep the draft and
+        // the conversation: a refresh that also fails (for example while
+        // offline) changes nothing, so the composer and its text stay.
+        await poll().catch(() => undefined);
         return { ok: false, message: describeFailure(error) };
       }
     },
-    [id, poll, load],
+    [id, poll],
   );
   return {
     state,

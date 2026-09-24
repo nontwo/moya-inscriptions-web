@@ -61,6 +61,8 @@ const message = (sequence: number, senderId: string, text: string) => ({
   createdAt: "2026-09-22T00:00:01.000Z",
 });
 let state: "requested" | "active" = "requested";
+/** When true every request fails as a browser without a network does. */
+let offline = false;
 const respond = (url: string, method: string, body: unknown) => {
   if (url.endsWith("/api/community/messages/unread"))
     return { unreadConversations: 0 };
@@ -121,6 +123,7 @@ let root: Root;
 beforeEach(() => {
   calls.length = 0;
   state = "requested";
+  offline = false;
   author.viewer = null;
   vi.stubGlobal(
     "fetch",
@@ -128,6 +131,7 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       calls.push({ method, url: input, body });
+      if (offline) throw new TypeError("Failed to fetch");
       const answer = respond(input, method, body) as {
         status?: number;
         json?: unknown;
@@ -556,5 +560,76 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
       "书法学徒",
     );
     expect(calls).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps the conversation and the typed draft when a send and its refresh both fail", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    await openFirstConversation();
+    const textarea = node.querySelector(
+      'textarea[aria-label="私信内容"]',
+    ) as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      setter.call(textarea, "离线时写下的草稿");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    offline = true;
+    await act(async () => textarea.closest("form")!.requestSubmit());
+    await flush();
+    expect(node.querySelector('[data-dm-view="conversation"]')).not.toBeNull();
+    expect(
+      (
+        node.querySelector(
+          'textarea[aria-label="私信内容"]',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("离线时写下的草稿");
+    expect(node.querySelector("[data-dm-error]")).not.toBeNull();
+
+    offline = false;
+    await act(async () => textarea.closest("form")!.requestSubmit());
+    await flush();
+    expect(
+      calls.filter(
+        (c) => c.method === "POST" && c.url.endsWith("/api/community/messages"),
+      ),
+    ).toHaveLength(2);
+    expect(
+      (
+        node.querySelector(
+          'textarea[aria-label="私信内容"]',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("");
+  });
+
+  it("offers a retry when a conversation cannot be loaded", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    offline = true;
+    await openFirstConversation();
+    const failed = node.querySelector('[data-dm-view-state="unavailable"]');
+    expect(failed?.getAttribute("role")).toBe("alert");
+    const retry = [...failed!.querySelectorAll("button")].find(
+      (b) => b.textContent === "重试",
+    )!;
+    offline = false;
+    await act(async () => retry.click());
+    await flush();
+    expect(node.querySelector('[data-dm-view="conversation"]')).not.toBeNull();
   });
 });

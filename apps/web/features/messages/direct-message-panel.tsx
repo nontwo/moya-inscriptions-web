@@ -234,7 +234,7 @@ const ConversationView = ({
   onTitleChange?: (title: DirectMessageTitle | null) => void;
 }) => {
   const author = useAuthors();
-  const { state, loadOlder, send } = useConversation(id, true);
+  const { state, loadOlder, send, refresh } = useConversation(id, true);
   const stream = useRef<HTMLDivElement>(null);
   const count = state.state === "populated" ? state.messages.length : 0;
   const titleInHost = useHostTitle(
@@ -253,8 +253,21 @@ const ConversationView = ({
       <p
         role={state.state === "unavailable" ? "alert" : "status"}
         className={`${panelStyles.panel} ${panelStyles.viewStatus}`}
+        data-dm-view-state={state.state}
       >
         {state.state === "loading" ? "正在加载对话…" : state.message}
+        {state.state === "unavailable" && (
+          <>
+            {" "}
+            <button
+              type="button"
+              className={panelStyles.textButton}
+              onClick={() => void refresh()}
+            >
+              重试
+            </button>
+          </>
+        )}
       </p>
     );
   const me = author.viewer?.id;
