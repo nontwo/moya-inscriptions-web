@@ -128,3 +128,19 @@
     animation: none;
   }
 }
+/*
+ * parallel-community-integration-qa: while a direct-message conversation or
+ * start view is open, the host body is one filling region, as the accepted
+ * chat's conversation content, not a scrolling list. The attribute qualifier
+ * outranks the shared .content rule regardless of stylesheet order.
+ */
+.directOpen[data-message-live] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.directOpen > .directRegion {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}

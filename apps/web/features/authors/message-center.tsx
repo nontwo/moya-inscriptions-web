@@ -41,10 +41,12 @@ const LiveDirectMessages = ({
   onOpenProfile,
   onDepthChange,
   backRequested,
+  onTitleChange,
 }: {
   readonly onOpenProfile: (id: string) => void;
   readonly onDepthChange: (depth: number) => void;
   readonly backRequested: number;
+  readonly onTitleChange: (title: DirectMessageTitle | null) => void;
 }) => {
   const directEntry = useDirectMessageEntry();
   const [openWith, setOpenWith] = useState<{
@@ -70,6 +72,7 @@ const LiveDirectMessages = ({
       }}
       onDepthChange={onDepthChange}
       backRequested={backRequested}
+      onTitleChange={onTitleChange}
     />
   );
 };

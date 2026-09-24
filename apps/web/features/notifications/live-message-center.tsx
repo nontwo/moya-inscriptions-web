@@ -21,6 +21,12 @@ export interface DirectMessagePanelAdapter {
     onOpenProfile: (id: string) => void;
     onDepthChange: (depth: number) => void;
     backRequested: number;
+    /**
+     * parallel-community-integration-qa: the open conversation's participant
+     * for this host's dialog header, as in the accepted chat (avatar beside
+     * the nickname, no extra profile row). A stable setter; null clears it.
+     */
+    onTitleChange: (title: DirectMessageHeader | null) => void;
   }) => ReactNode;
   useUnreadConversationCount: () => number;
   /**
@@ -30,6 +36,10 @@ export interface DirectMessagePanelAdapter {
    * adapter consumes the request itself once its panel is mounted.
    */
   useOpenRequest?: () => number | null;
+}
+export interface DirectMessageHeader {
+  readonly label: string;
+  readonly content: ReactNode;
 }
 const noOpenRequest = () => null;
 const unavailableDM: DirectMessagePanelAdapter = {
@@ -73,7 +83,8 @@ function AccountMessages({
     ),
     [notice, setNotice] = useState(""),
     [dmDepth, setDmDepth] = useState(0),
-    [dmBack, setDmBack] = useState(0);
+    [dmBack, setDmBack] = useState(0),
+    [dmTitle, setDmTitle] = useState<DirectMessageHeader | null>(null);
   const opener = useRef<HTMLButtonElement>(null),
     content = useRef<HTMLDivElement>(null),
     scroll = useRef(new Map<string, number>()),
@@ -156,8 +167,14 @@ function AccountMessages({
     confirmed && Number.isFinite(dmUnread)
       ? Math.max(0, Math.floor(dmUnread))
       : 0;
+  // parallel-community-integration-qa: an open conversation or start view
+  // replaces the home content, as in the accepted chat. The categories and the
+  // heading step aside while the panel stays mounted, and the panel fills the
+  // body so its stream scrolls inside and its composer stays at the bottom.
+  // The list keeps its own scroll position for Back.
+  const directOpen = view === "home" && dmDepth > 0;
   const total = activity + conversations,
-    location = `${view}:${commentTab}`;
+    location = `${view}:${commentTab}${directOpen ? ":direct" : ""}`;
   useEffect(
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
@@ -262,7 +279,8 @@ function AccountMessages({
       </button>
       {open && (
         <AuthorDialog
-          title={labels[view]}
+          title={directOpen && dmTitle ? dmTitle.label : labels[view]}
+          titleContent={directOpen ? dmTitle?.content : undefined}
           className={styles.page}
           navigationDepth={view === "home" ? dmDepth : 1}
           onBack={() => {
@@ -308,7 +326,7 @@ function AccountMessages({
         >
           <div
             ref={content}
-            className={`${styles.content}${incoming && confirmed ? ` ${local.pullScroll}` : ""}`}
+            className={`${styles.content}${incoming && confirmed ? ` ${local.pullScroll}` : ""}${directOpen ? ` ${local.directOpen}` : ""}`}
             data-message-live=""
             data-message-view={view}
             onScroll={(event) =>
@@ -349,51 +367,58 @@ function AccountMessages({
                 )}
                 {view === "home" && (
                   <>
-                    <nav className={styles.categories} aria-label="消息分类">
-                      {(["followers", "reactions", "comments"] as const).map(
-                        (kind) => {
-                          const count =
-                            kind === "reactions"
-                              ? (inbox.page?.unread.likes ?? 0)
-                              : kind === "comments"
-                                ? (inbox.page?.unread.comments ?? 0) +
-                                  (inbox.page?.unread.mentions ?? 0)
-                                : 0;
-                          return (
-                            <button
-                              type="button"
-                              key={kind}
-                              aria-label={`${labels[kind]}${count ? `，${count} 条未读动态` : ""}`}
-                              onClick={() => select(kind)}
-                            >
-                              <span
-                                className={styles.categoryIcon}
-                                data-kind={kind}
+                    {!directOpen && (
+                      <nav className={styles.categories} aria-label="消息分类">
+                        {(["followers", "reactions", "comments"] as const).map(
+                          (kind) => {
+                            const count =
+                              kind === "reactions"
+                                ? (inbox.page?.unread.likes ?? 0)
+                                : kind === "comments"
+                                  ? (inbox.page?.unread.comments ?? 0) +
+                                    (inbox.page?.unread.mentions ?? 0)
+                                  : 0;
+                            return (
+                              <button
+                                type="button"
+                                key={kind}
+                                aria-label={`${labels[kind]}${count ? `，${count} 条未读动态` : ""}`}
+                                onClick={() => select(kind)}
                               >
-                                <CategoryIcon kind={kind} />
-                                {count > 0 && (
-                                  <span
-                                    className={styles.categoryBadge}
-                                    aria-hidden="true"
-                                  >
-                                    {count > 99 ? "99+" : count}
-                                  </span>
-                                )}
-                              </span>
-                            </button>
-                          );
-                        },
-                      )}
-                    </nav>
-                    <div className={styles.listHeading}>
-                      <h3>私信</h3>
+                                <span
+                                  className={styles.categoryIcon}
+                                  data-kind={kind}
+                                >
+                                  <CategoryIcon kind={kind} />
+                                  {count > 0 && (
+                                    <span
+                                      className={styles.categoryBadge}
+                                      aria-hidden="true"
+                                    >
+                                      {count > 99 ? "99+" : count}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            );
+                          },
+                        )}
+                      </nav>
+                    )}
+                    {!directOpen && (
+                      <div className={styles.listHeading}>
+                        <h3>私信</h3>
+                      </div>
+                    )}
+                    <div className={local.directRegion}>
+                      {directMessages.render({
+                        onOpenProfile: navigate,
+                        onDepthChange: setDmDepth,
+                        backRequested: dmBack,
+                        onTitleChange: setDmTitle,
+                      })}
                     </div>
-                    {directMessages.render({
-                      onOpenProfile: navigate,
-                      onDepthChange: setDmDepth,
-                      backRequested: dmBack,
-                    })}
-                    {inbox.error && (
+                    {!directOpen && inbox.error && (
                       <p className={local.status} role="alert">
                         {inbox.error}{" "}
                         <button onClick={inbox.refresh}>重试</button>

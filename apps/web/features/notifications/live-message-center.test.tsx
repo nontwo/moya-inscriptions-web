@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,14 +50,24 @@ vi.mock("../authors/author-dialog", () => ({
   AuthorDialog: ({
     children,
     onClose,
+    onBack,
+    title,
+    titleContent,
   }: {
     children: ReactNode;
     onClose: () => void;
+    onBack?: () => void;
+    title: string;
+    titleContent?: ReactNode;
   }) => (
-    <div role="dialog">
+    <div role="dialog" aria-label={title}>
       <button data-close="" onClick={onClose}>
         Close
       </button>
+      <button data-back="" onClick={onBack}>
+        Back
+      </button>
+      <h2>{titleContent ?? title}</h2>
       {children}
     </div>
   ),
@@ -66,6 +76,8 @@ vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => ({ activeContent: null, activeProfile: null }),
 }));
 import { LiveMessageTrigger } from "./live-message-center";
+import type { DirectMessagePanelAdapter } from "./live-message-center";
+import local from "./notifications.module.css";
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -251,5 +263,80 @@ describe("Owner notification reading interactions", () => {
   it("opening the message center does not consume new incoming activity", () => {
     expect(inbox.refresh).toHaveBeenCalledOnce();
     expect(inbox.read).not.toHaveBeenCalled();
+  });
+  // parallel-community-integration-qa: an open conversation replaces the home
+  // content as in the accepted chat. The panel stays mounted, fills the body
+  // and hands the participant to the dialog header.
+  it("gives an open conversation the whole body and the header, and restores home on Back", async () => {
+    let mounts = 0;
+    const Panel = ({
+      onDepthChange,
+      onTitleChange,
+      backRequested,
+    }: Parameters<DirectMessagePanelAdapter["render"]>[0]) => {
+      const [open, setOpen] = useState(false);
+      const [mount] = useState(() => ++mounts);
+      useEffect(() => onDepthChange(open ? 1 : 0), [open, onDepthChange]);
+      useEffect(() => {
+        if (backRequested > 0) setOpen(false);
+      }, [backRequested]);
+      useEffect(() => {
+        if (!open) return;
+        onTitleChange({
+          label: "书法学徒",
+          content: <button aria-label="查看书法学徒的主页">书法学徒</button>,
+        });
+        return () => onTitleChange(null);
+      }, [open, onTitleChange]);
+      return open ? (
+        <div data-dm-view="conversation" data-mount={mount} />
+      ) : (
+        <button data-dm-row="" onClick={() => setOpen(true)}>
+          row
+        </button>
+      );
+    };
+    const adapter: DirectMessagePanelAdapter = {
+      render: (props) => <Panel {...props} />,
+      useUnreadConversationCount: () => 0,
+    };
+    inbox.error = "动态暂时不可用";
+    await act(async () => root.render(null));
+    await act(async () =>
+      root.render(<LiveMessageTrigger directMessages={adapter} />),
+    );
+    await click(button("打开消息"));
+    const content = () => node.querySelector("[data-message-live]")!;
+    const heading = () => node.querySelector('[role="dialog"] h2')!;
+    expect(node.querySelector('nav[aria-label="消息分类"]')).not.toBeNull();
+    expect(content().className).not.toContain(local.directOpen);
+    expect(heading().textContent).toBe("消息");
+    expect(content().textContent).toContain("动态暂时不可用");
+
+    await click(node.querySelector("[data-dm-row]") as HTMLElement);
+    expect(node.querySelector('nav[aria-label="消息分类"]')).toBeNull();
+    expect(
+      [...node.querySelectorAll("h3")].map((h) => h.textContent),
+    ).not.toContain("私信");
+    expect(content().className).toContain(local.directOpen);
+    expect(
+      content().querySelector(`.${local.directRegion} [data-dm-view]`),
+    ).not.toBeNull();
+    expect(
+      heading().querySelector('button[aria-label="查看书法学徒的主页"]'),
+    ).not.toBeNull();
+    expect(
+      node.querySelector('[role="dialog"]')!.getAttribute("aria-label"),
+    ).toBe("书法学徒");
+    expect(content().textContent).not.toContain("动态暂时不可用");
+
+    await click(node.querySelector("[data-back]") as HTMLElement);
+    expect(node.querySelector('nav[aria-label="消息分类"]')).not.toBeNull();
+    expect(content().className).not.toContain(local.directOpen);
+    expect(heading().textContent).toBe("消息");
+    expect(node.querySelector("[data-dm-row]")).not.toBeNull();
+    // The panel kept its state across the change: it was never remounted.
+    expect(mounts).toBe(1);
+    inbox.error = "";
   });
 });
