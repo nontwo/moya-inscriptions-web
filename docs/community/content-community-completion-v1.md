@@ -277,3 +277,74 @@ none of these ports and the Web relay answers as before for unknown paths.
   name a conversation.
 - The send receipt replays the committed message to its sender; moderation
   removal now redacts that receipt as well as the message row.
+
+## 10. Integration repair round (2026-09-23)
+
+Authority: the Owner's 2026-09-23 goal-delivery authorization for the combined
+A/N/C QA. The integration coordinator (`parallel-community-integration-qa`) held
+this task's writer role for this round and fixed the defects the combined
+journeys demonstrated at their source here; the reviewed forward delta is then
+integrated into the QA branch. No Ready, merge, deployment or retained-data
+change.
+
+- **C1 — moderation removal lacked a runtime privilege.**
+  `operatorRemoveMessage` redacts the sender's send receipt
+  (`UPDATE community.dm_command_receipts SET result = …`), but
+  `grant-runtime.sql` granted the App role only SELECT and INSERT there, so
+  removal failed with `42501` for the real App role. The DM tests ran as the
+  database owner, which hid it. Fix: `GRANT UPDATE (result)` only (actor,
+  request, fingerprint and time stay write-once; nothing is deleted).
+  Regression: `tests/integration/postgres/direct-message-app-role.test.ts` runs
+  removal, replay and forbidden statements as a real App role on a clean apply
+  and on a reapply over the previous grant state; with the previous grant file 8
+  of its 12 cases fail with `permission denied`.
+- **C2 — an operator error stopped the Backend.** The router started handlers
+  with `void handleX(…)`; the DM and Thread operator sub-dispatches ran outside
+  the operator handler's `try`, and a malformed percent-encoded path segment
+  threw `URIError`. Any of these became an unhandled rejection that ended the
+  process. Fix: `http/request-boundary.ts` (`containRequest` answers only the
+  failing request with a bounded 500, or closes it if a response had started,
+  and logs the error class and code only; `decodePathSegment` turns a malformed
+  segment into an ordinary refusal), every operator family inside the existing
+  boundary. No global `uncaughtException`/`unhandledRejection` handler.
+  Regression: `tests/integration/postgres/operator-error-boundary.test.ts`
+  drives the real server and dispatch chain as the App role with injected
+  database failures and malformed segments, then proves the process keeps
+  serving and nothing partial was written; against the previous source all three
+  cases fail.
+- **C3 — the 私信 panel did not follow the accepted message center.** The
+  conversation and start views used the list-row class, so the stream, composer
+  and textbox sat side by side. Measuring the combined stack also showed: list
+  rows painted their mute/delete actions over the row with native button chrome
+  (the accepted swipe markup was only partly used); inline status (request tag,
+  gate, refusal, start hint) used the accepted floating toast, so the start hint
+  covered 发送; the participant took an extra row instead of the dialog header;
+  focus fell to the page after sending; the scoped host did not give an open
+  conversation the dialog body. Fix: the accepted chat grid (stream above a
+  bottom composer, filling the host region); `direct-conversation-row.tsx`
+  follows the accepted two-action swipe row (left swipe or ArrowLeft reveals,
+  ArrowRight/Escape/activation closes, one open row, actions disabled while
+  covered); inline notices; the toast only for delete/restore/mute;
+  `onTitleChange` hands the participant to a host header (the view keeps its own
+  title row when a host has no such seam); the composer regains focus; the
+  scoped host hides its tabs and gives the panel the body while a conversation
+  is open. Regression: five panel cases and one scoped-host case in `apps/web`
+  (they fail against the previous panel); browser geometry at
+  360/390/430/768/1280 px in both hosts on the combined stack (composer below a
+  scrolling stream and inside the viewport, textbox width, wrapping, no
+  horizontal overflow, Back, start view, offline failure, empty list, swipe and
+  keyboard actions, Undo) is recorded in the private integration evidence.
+  Browser emulation is not physical-device QA.
+
+Paths added for this round:
+`services/backend-runtime/src/http/request-boundary.ts`,
+`apps/web/features/messages/direct-conversation-row.tsx`,
+`apps/web/features/messages/direct-message-panel.module.css`,
+`apps/web/features/authors/message-center.module.css` (scoped host),
+`apps/web/features/authors/message-center-direct.test.tsx` and the two
+PostgreSQL tests above.
+
+Integration-owned, not in this branch: the live (notifications) message host's
+fill region and header seam for this panel, and the profile 私信 entry that
+opens the live host, live on the QA branch with their own regression tests and
+must reach `main` with the integration commits after A, N and C.

@@ -15,6 +15,7 @@ import { collectTransportQuery } from "../http/transport-query.js";
 
 import type { ThreadService } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { decodePathSegment } from "../http/request-boundary.js";
 
 const noStore = { "cache-control": "private, no-store", vary: "Authorization" };
 
@@ -68,7 +69,7 @@ export const handleThreadRequest = async (
       sendJson(response, 200, await service.list(viewer, input), noStore);
       return;
     }
-    const id = decodeURIComponent(path[0]!);
+    const id = decodePathSegment(path[0]!);
     if (path.length === 1) {
       if (method !== "GET") {
         sendJson(
@@ -194,7 +195,7 @@ export const handleThreadOperatorRequest = async (
         200,
         await service.operatorUpdate(
           operator,
-          decodeURIComponent(rest[0]!),
+          decodePathSegment(rest[0]!),
           await readJsonBody(request, 100000),
         ),
       );

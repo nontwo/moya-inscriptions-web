@@ -18,6 +18,7 @@ import {
   DirectMessagePanel,
   useDirectMessageEntry,
   useUnreadConversationCount,
+  type DirectMessageTitle,
 } from "../messages";
 const sections = ["direct", "likes", "favorites", "comments"] as const;
 type Section = (typeof sections)[number];
@@ -63,6 +64,13 @@ function ScopedMessageTrigger({
   const unreadConversations = useUnreadConversationCount();
   const [directDepth, setDirectDepth] = useState(0);
   const [directBack, setDirectBack] = useState(0);
+  // An open conversation or start view replaces the tab content, as in the
+  // accepted chat: the tabs step aside and the panel fills the dialog body.
+  const directOpen = active === "direct" && directDepth > 0;
+  const [directTitle, setDirectTitle] = useState<DirectMessageTitle | null>(
+    null,
+  );
+  const header = directOpen ? directTitle : null;
   const [directOpenWith, setDirectOpenWith] = useState<{
     userId: string;
     displayName: string;
@@ -202,8 +210,9 @@ function ScopedMessageTrigger({
         />
       ) : open ? (
         <AuthorDialog
-          title="消息"
-          className={styles.page}
+          title={header?.label ?? "消息"}
+          titleContent={header?.content}
+          className={`${styles.page}${directOpen ? ` ${styles.directOpen}` : ""}`}
           closeRequested={closeRequested}
           navigationDepth={active === "direct" ? directDepth : 0}
           onBack={() => setDirectBack((value) => value + 1)}
@@ -223,7 +232,12 @@ function ScopedMessageTrigger({
               });
           }}
         >
-          <div role="tablist" aria-label="消息类型" className={styles.tabs}>
+          <div
+            role="tablist"
+            aria-label="消息类型"
+            className={styles.tabs}
+            hidden={directOpen}
+          >
             {sections.map((id) => (
               <button
                 key={id}
@@ -264,6 +278,7 @@ function ScopedMessageTrigger({
             role="tabpanel"
             id={`message-panel-${active}`}
             aria-labelledby={`message-tab-${active}`}
+            data-message-section={active}
           >
             {active === "comments" ? (
               author.checking ? (
@@ -291,6 +306,7 @@ function ScopedMessageTrigger({
                 openWith={directOpenWith}
                 onDepthChange={setDirectDepth}
                 backRequested={directBack}
+                onTitleChange={setDirectTitle}
                 onOpenProfile={(userId, profileOpener) => {
                   if (!confirmedAccount.current) return;
                   shell.openProfile(userId, profileOpener);

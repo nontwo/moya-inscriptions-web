@@ -5,7 +5,10 @@
  * to its activity units exactly once.
  */
 export { DirectMessagePanel } from "./direct-message-panel";
-export type { DirectMessagePanelProps } from "./direct-message-panel";
+export type {
+  DirectMessagePanelProps,
+  DirectMessageTitle,
+} from "./direct-message-panel";
 export { DM_POLL_INTERVAL_MS } from "./use-direct-messages";
 export {
   DirectMessageEntryProvider,

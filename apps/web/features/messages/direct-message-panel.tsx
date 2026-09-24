@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { Icon } from "@moya/ui";
 import type { DirectConversation } from "@moya/contracts";
 import { useAuthors } from "../authors/author-context";
-import { useProductShell } from "../product-shell/product-shell";
 import { requestIdentity } from "../shell/request-identity";
 import commentStyles from "../comments/comment-section.module.css";
 import styles from "../authors/message-preview.module.css";
+import panelStyles from "./direct-message-panel.module.css";
+import { DirectConversationRow, MutedMark } from "./direct-conversation-row";
 import { formatEditorialTime } from "../editorial-content/format-time";
 import { authorClient } from "./message-data";
 import {
@@ -26,17 +27,85 @@ const Avatar = ({ name, onOpen }: { name: string; onOpen?: () => void }) =>
   onOpen ? (
     <button
       type="button"
-      className={styles.smallAvatar}
+      className={`${styles.avatar} ${styles.smallAvatar}`}
       aria-label={`查看${name}的主页`}
       onClick={onOpen}
     >
       {initial(name)}
     </button>
   ) : (
-    <span className={styles.smallAvatar} aria-hidden="true">
+    <span
+      className={`${styles.avatar} ${styles.smallAvatar}`}
+      aria-hidden="true"
+    >
       {initial(name)}
     </span>
   );
+
+/**
+ * The open conversation's participant for the host's dialog header, as in the
+ * accepted chat: a clickable avatar beside the nickname, no extra profile row.
+ */
+export interface DirectMessageTitle {
+  readonly label: string;
+  readonly content: ReactNode;
+}
+
+const HeaderTitle = ({
+  name,
+  onOpen,
+}: {
+  name: string;
+  onOpen: (opener: HTMLElement) => void;
+}) => (
+  <button
+    type="button"
+    className={panelStyles.headerTitle}
+    aria-label={`查看${name}的主页`}
+    onClick={(event) => {
+      event.currentTarget.focus({ preventScroll: true });
+      onOpen(event.currentTarget);
+    }}
+  >
+    <span
+      className={`${styles.avatar} ${styles.smallAvatar} ${panelStyles.headerAvatar}`}
+      aria-hidden="true"
+    >
+      {initial(name)}
+    </span>
+    <span>{name}</span>
+  </button>
+);
+
+/**
+ * Hands the participant to a host that shows it in its header; a host without
+ * that seam keeps the title row inside the view. Returns whether the host
+ * shows it.
+ */
+const useHostTitle = (
+  onTitleChange: ((title: DirectMessageTitle | null) => void) | undefined,
+  participant: { id: string; displayName: string } | null,
+  onOpenProfile: (userId: string, opener: HTMLElement) => void,
+): boolean => {
+  const open = useRef(onOpenProfile);
+  open.current = onOpenProfile;
+  const id = participant?.id ?? null;
+  const name = participant?.displayName ?? null;
+  useEffect(() => {
+    if (!onTitleChange || id === null || name === null) return;
+    onTitleChange({
+      label: name,
+      content: (
+        <HeaderTitle
+          name={name}
+          onOpen={(opener) => open.current(id, opener)}
+        />
+      ),
+    });
+    return () => onTitleChange(null);
+  }, [onTitleChange, id, name]);
+  return !!onTitleChange;
+};
 
 const refusalText = (conversation: DirectConversation): string | null =>
   conversation.sendRefusal === "request_pending"
@@ -52,16 +121,20 @@ const Composer = ({
   disabledReason,
   onSend,
   autoFocus = false,
+  onOpenSelf,
 }: {
   disabledReason: string | null;
   onSend: (
     text: string,
   ) => Promise<{ ok: true } | { ok: false; message: string }>;
   autoFocus?: boolean;
+  /** Opens the viewer's own profile from the composer avatar, as in the accepted chat. */
+  onOpenSelf?: (opener: HTMLElement) => void;
 }) => {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
@@ -72,6 +145,13 @@ const Composer = ({
     setBusy(false);
     if (result.ok) setDraft("");
     else setError(result.message);
+    // Sending disables the submit button, which drops its focus to the page
+    // body; keep the writer in the composer instead.
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body)
+        input.current?.focus({ preventScroll: true });
+    });
   };
   return (
     <form
@@ -80,27 +160,58 @@ const Composer = ({
       onSubmit={submit}
     >
       {disabledReason ? (
-        <p role="status" className={styles.notice} data-dm-refusal="">
+        <p
+          role="status"
+          className={`${panelStyles.inlineNotice} ${panelStyles.composerNotice}`}
+          data-dm-refusal=""
+        >
           {disabledReason}
         </p>
       ) : (
         <>
-          <textarea
-            value={draft}
-            maxLength={TEXT_MAXIMUM * 2}
-            rows={1}
-            placeholder="写下私信…"
-            aria-label="私信内容"
-            autoFocus={autoFocus}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button type="submit" disabled={busy || !draft.trim()}>
-            发送
-          </button>
+          {onOpenSelf ? (
+            <button
+              type="button"
+              className={commentStyles.avatar}
+              aria-label="查看我的主页"
+              onClick={(event) => onOpenSelf(event.currentTarget)}
+            >
+              <span className={commentStyles.avatarContent} aria-hidden="true">
+                我
+              </span>
+            </button>
+          ) : (
+            <span className={commentStyles.avatar} aria-hidden="true">
+              <span className={commentStyles.avatarContent}>我</span>
+            </span>
+          )}
+          <div className={commentStyles.composerBody}>
+            <div className={commentStyles.composerInputRow}>
+              <textarea
+                ref={input}
+                value={draft}
+                maxLength={TEXT_MAXIMUM * 2}
+                rows={1}
+                placeholder="写下私信…"
+                aria-label="私信内容"
+                autoFocus={autoFocus}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+              <div className={commentStyles.composerFooter}>
+                <button type="submit" disabled={busy || !draft.trim()}>
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
         </>
       )}
       {error && (
-        <p role="alert" className={styles.notice} data-dm-error="">
+        <p
+          role="alert"
+          className={`${panelStyles.inlineNotice} ${panelStyles.composerNotice}`}
+          data-dm-error=""
+        >
           {error}
         </p>
       )}
@@ -111,14 +222,21 @@ const Composer = ({
 const ConversationView = ({
   id,
   onOpenProfile,
+  onTitleChange,
 }: {
   id: string;
   onOpenProfile: (userId: string, opener: HTMLElement) => void;
+  onTitleChange?: (title: DirectMessageTitle | null) => void;
 }) => {
   const author = useAuthors();
   const { state, loadOlder, send } = useConversation(id, true);
   const stream = useRef<HTMLDivElement>(null);
   const count = state.state === "populated" ? state.messages.length : 0;
+  const titleInHost = useHostTitle(
+    onTitleChange,
+    state.state === "populated" ? state.conversation.participant : null,
+    onOpenProfile,
+  );
   useEffect(() => {
     stream.current?.scrollTo?.({
       top: stream.current.scrollHeight,
@@ -129,7 +247,7 @@ const ConversationView = ({
     return (
       <p
         role={state.state === "unavailable" ? "alert" : "status"}
-        className={styles.notice}
+        className={`${panelStyles.panel} ${panelStyles.viewStatus}`}
       >
         {state.state === "loading" ? "正在加载对话…" : state.message}
       </p>
@@ -137,31 +255,37 @@ const ConversationView = ({
   const me = author.viewer?.id;
   return (
     <div
-      className={styles.conversation}
+      className={`${styles.chat} ${panelStyles.panel} ${panelStyles.conversation}`}
+      data-dm-view="conversation"
+      data-dm-title={titleInHost ? "host" : "view"}
       data-dm-conversation={id}
       data-dm-state={state.conversation.state}
     >
-      <div className={styles.chatTitle}>
-        <Avatar
-          name={state.conversation.participant.displayName}
-          onOpen={() => {
-            const opener =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : document.body;
-            onOpenProfile(state.conversation.participant.id, opener);
-          }}
-        />
-        <strong>{state.conversation.participant.displayName}</strong>
-        {state.conversation.muted && (
-          <span className={styles.mutedMark} aria-label="已静音" />
-        )}
-      </div>
-      <div className={styles.chatStream} ref={stream} data-dm-stream="">
+      {!titleInHost && (
+        <div className={panelStyles.title}>
+          <Avatar
+            name={state.conversation.participant.displayName}
+            onOpen={() => {
+              const opener =
+                document.activeElement instanceof HTMLElement
+                  ? document.activeElement
+                  : document.body;
+              onOpenProfile(state.conversation.participant.id, opener);
+            }}
+          />
+          <strong>{state.conversation.participant.displayName}</strong>
+          {state.conversation.muted && <MutedMark />}
+        </div>
+      )}
+      <div
+        className={`${styles.chatStream} ${panelStyles.stream}`}
+        ref={stream}
+        data-dm-stream=""
+      >
         {state.hasOlder && (
           <button
             type="button"
-            className={styles.secondary}
+            className={panelStyles.olderButton}
             onClick={() => void loadOlder()}
           >
             加载更早的消息
@@ -170,8 +294,10 @@ const ConversationView = ({
         {state.messages.map((message) => (
           <div
             key={message.id}
+            className={panelStyles.message}
             data-dm-message={message.sequence}
             data-dm-removed={message.removed}
+            data-dm-sent={message.senderId === me}
           >
             <p
               className={
@@ -182,14 +308,18 @@ const ConversationView = ({
             >
               {message.removed ? <em>此消息已被移除</em> : message.text}
             </p>
-            <time className={styles.chatTime} dateTime={message.createdAt}>
+            <time className={panelStyles.time} dateTime={message.createdAt}>
               {formatEditorialTime(message.createdAt)}
             </time>
           </div>
         ))}
         {state.conversation.state === "requested" &&
           state.conversation.sendRefusal === "request_pending" && (
-            <p role="status" className={styles.notice} data-dm-gate="">
+            <p
+              role="status"
+              className={panelStyles.inlineNotice}
+              data-dm-gate=""
+            >
               对方尚未回复。收到回复后即可继续交流。
             </p>
           )}
@@ -197,6 +327,9 @@ const ConversationView = ({
       <Composer
         disabledReason={refusalText(state.conversation)}
         onSend={send}
+        {...(me
+          ? { onOpenSelf: (opener: HTMLElement) => onOpenProfile(me, opener) }
+          : {})}
       />
     </div>
   );
@@ -207,32 +340,50 @@ const StartConversation = ({
   userId,
   displayName,
   onStarted,
+  onOpenProfile,
+  onTitleChange,
 }: {
   userId: string;
   displayName: string;
   onStarted: (conversationId: string) => void;
-}) => (
-  <div className={styles.conversation} data-dm-start={userId}>
-    <div className={styles.chatTitle}>
-      <Avatar name={displayName} />
-      <strong>{displayName}</strong>
+  onOpenProfile: (userId: string, opener: HTMLElement) => void;
+  onTitleChange?: (title: DirectMessageTitle | null) => void;
+}) => {
+  const titleInHost = useHostTitle(
+    onTitleChange,
+    { id: userId, displayName },
+    onOpenProfile,
+  );
+  return (
+    <div
+      className={`${styles.chat} ${panelStyles.panel} ${panelStyles.conversation}`}
+      data-dm-view="start"
+      data-dm-title={titleInHost ? "host" : "view"}
+      data-dm-start={userId}
+    >
+      {!titleInHost && (
+        <div className={panelStyles.title}>
+          <Avatar name={displayName} />
+          <strong>{displayName}</strong>
+        </div>
+      )}
+      <div className={`${styles.chatStream} ${panelStyles.stream}`}>
+        <p role="status" className={panelStyles.inlineNotice}>
+          发送第一条私信后，需等待对方回复才能继续发送。
+        </p>
+      </div>
+      <Composer
+        disabledReason={null}
+        autoFocus
+        onSend={async (text) => {
+          const result = await startConversationWith(userId, text);
+          if (result.ok) onStarted(result.conversationId);
+          return result.ok ? { ok: true } : result;
+        }}
+      />
     </div>
-    <div className={styles.chatStream}>
-      <p role="status" className={styles.notice}>
-        发送第一条私信后，需等待对方回复才能继续发送。
-      </p>
-    </div>
-    <Composer
-      disabledReason={null}
-      autoFocus
-      onSend={async (text) => {
-        const result = await startConversationWith(userId, text);
-        if (result.ok) onStarted(result.conversationId);
-        return result.ok ? { ok: true } : result;
-      }}
-    />
-  </div>
-);
+  );
+};
 
 export interface DirectMessagePanelProps {
   /** Open straight into the conversation with this account (from a profile). */
@@ -244,6 +395,11 @@ export interface DirectMessagePanelProps {
   /** Reports whether a child conversation is open so the host's Back returns one level. */
   readonly onDepthChange?: (depth: number) => void;
   readonly backRequested?: number;
+  /**
+   * Hosts that show the open conversation's participant in their dialog header
+   * pass this (a stable setter); without it the view keeps its own title row.
+   */
+  readonly onTitleChange?: (title: DirectMessageTitle | null) => void;
 }
 
 /**
@@ -256,9 +412,9 @@ export const DirectMessagePanel = ({
   onOpenProfile,
   onDepthChange,
   backRequested = 0,
+  onTitleChange,
 }: DirectMessagePanelProps) => {
   const author = useAuthors();
-  const shell = useProductShell();
   const conversations = useConversations(author.viewer !== null);
   const [open, setOpen] = useState<string | null>(null);
   const [starting, setStarting] = useState<{
@@ -270,7 +426,24 @@ export const DirectMessagePanel = ({
     until: number;
   } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // At most one row shows its actions; scrolling or pressing anywhere outside
+  // that row closes it, as in the accepted list.
+  const [expanded, setExpanded] = useState<string | null>(null);
   const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (expanded === null) return;
+    const close = () => setExpanded(null);
+    const outside = (event: PointerEvent) => {
+      const row = (event.target as Element | null)?.closest?.("[data-dm-row]");
+      if (row?.getAttribute("data-dm-row") !== expanded) close();
+    };
+    document.addEventListener("scroll", close, true);
+    document.addEventListener("pointerdown", outside, true);
+    return () => {
+      document.removeEventListener("scroll", close, true);
+      document.removeEventListener("pointerdown", outside, true);
+    };
+  }, [expanded]);
   useEffect(() => {
     onDepthChange?.(open || starting ? 1 : 0);
   }, [open, starting, onDepthChange]);
@@ -320,9 +493,18 @@ export const DirectMessagePanel = ({
           setOpen(conversationId);
           void conversations.refresh();
         }}
+        onOpenProfile={onOpenProfile}
+        {...(onTitleChange ? { onTitleChange } : {})}
       />
     );
-  if (open) return <ConversationView id={open} onOpenProfile={onOpenProfile} />;
+  if (open)
+    return (
+      <ConversationView
+        id={open}
+        onOpenProfile={onOpenProfile}
+        {...(onTitleChange ? { onTitleChange } : {})}
+      />
+    );
   const hide = async (conversation: DirectConversation) => {
     try {
       const hidden = await authorClient.messages.participant(
@@ -368,7 +550,7 @@ export const DirectMessagePanel = ({
   };
   const list = conversations.state;
   return (
-    <div className={styles.conversationList} data-dm-list="">
+    <div className={panelStyles.panel} data-dm-list="">
       {notice && (
         <p role="status" className={styles.notice} data-dm-notice="">
           {notice}
@@ -379,11 +561,19 @@ export const DirectMessagePanel = ({
           )}
         </p>
       )}
-      {list.state === "loading" && <p role="status">正在加载私信…</p>}
+      {list.state === "loading" && (
+        <p role="status" className={panelStyles.viewStatus}>
+          正在加载私信…
+        </p>
+      )}
       {list.state === "unavailable" && (
-        <p role="alert">
+        <p role="alert" className={panelStyles.viewStatus}>
           {list.message}{" "}
-          <button type="button" onClick={() => void conversations.refresh()}>
+          <button
+            type="button"
+            className={panelStyles.textButton}
+            onClick={() => void conversations.refresh()}
+          >
             重试
           </button>
         </p>
@@ -396,41 +586,43 @@ export const DirectMessagePanel = ({
         </div>
       )}
       {list.state === "populated" && (
-        <ul>
-          {list.items.map((conversation) => (
-            <li
-              key={conversation.id}
-              className={styles.swipeRow}
-              data-dm-row={conversation.id}
-            >
-              <div className={styles.rowFront}>
-                <Avatar
-                  name={conversation.participant.displayName}
-                  onOpen={() => {
-                    const opener =
-                      document.activeElement instanceof HTMLElement
-                        ? document.activeElement
-                        : document.body;
-                    onOpenProfile(conversation.participant.id, opener);
-                  }}
-                />
-                <button
-                  type="button"
-                  className={styles.conversationBody}
-                  onClick={() => setOpen(conversation.id)}
-                  aria-label={`打开与${conversation.participant.displayName}的私信`}
-                >
-                  <span className={styles.rowHeading}>
-                    <strong>{conversation.participant.displayName}</strong>
-                    {conversation.lastMessage && (
-                      <time dateTime={conversation.lastMessage.createdAt}>
-                        {formatEditorialTime(
-                          conversation.lastMessage.createdAt,
-                        )}
-                      </time>
-                    )}
+        <ul className={styles.conversationList} aria-label="私信会话">
+          {list.items.map((conversation) => {
+            const name = conversation.participant.displayName;
+            const unread = conversation.muted ? 0 : conversation.unreadCount;
+            return (
+              <DirectConversationRow
+                key={conversation.id}
+                id={conversation.id}
+                name={name}
+                avatar={
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initial(name)}
                   </span>
-                  <span className={styles.rowPreview}>
+                }
+                muted={conversation.muted}
+                label={`打开与${name}的私信${unread > 0 ? `，${unread} 条未读` : ""}${conversation.muted ? "，已静音" : ""}`}
+                expanded={expanded === conversation.id}
+                onExpand={(value) =>
+                  setExpanded(value ? conversation.id : null)
+                }
+                onOpen={() => setOpen(conversation.id)}
+                onOpenProfile={(opener) =>
+                  onOpenProfile(conversation.participant.id, opener)
+                }
+                onMute={() => void toggleMute(conversation)}
+                onHide={() => void hide(conversation)}
+              >
+                <span className={styles.rowHeading}>
+                  <strong>{name}</strong>
+                  {conversation.lastMessage && (
+                    <time dateTime={conversation.lastMessage.createdAt}>
+                      {formatEditorialTime(conversation.lastMessage.createdAt)}
+                    </time>
+                  )}
+                </span>
+                <span className={styles.rowPreview}>
+                  <span>
                     {conversation.lastMessage
                       ? conversation.lastMessage.removed
                         ? "此消息已被移除"
@@ -438,51 +630,28 @@ export const DirectMessagePanel = ({
                       : "尚无消息"}
                   </span>
                   {conversation.state === "requested" && (
-                    <span className={styles.notice}>
+                    <span className={panelStyles.requestTag}>
                       {conversation.sendRefusal === "request_pending"
                         ? "等待对方回复"
                         : "私信请求"}
                     </span>
                   )}
-                </button>
-                {conversation.unreadCount > 0 && !conversation.muted && (
-                  <span
-                    className={styles.unread}
-                    data-dm-unread={conversation.unreadCount}
-                  >
-                    {conversation.unreadCount > 99
-                      ? "99+"
-                      : conversation.unreadCount}
-                  </span>
-                )}
-                {conversation.muted && (
-                  <span className={styles.mutedMark} aria-label="已静音" />
-                )}
-              </div>
-              <div className={styles.rowActions}>
-                <button
-                  type="button"
-                  onClick={() => void toggleMute(conversation)}
-                  aria-label={conversation.muted ? "取消静音" : "静音"}
-                >
-                  {conversation.muted ? "取消静音" : "静音"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void hide(conversation)}
-                  aria-label="删除对话"
-                >
-                  删除
-                </button>
-              </div>
-            </li>
-          ))}
+                  {conversation.muted && <MutedMark />}
+                  {unread > 0 && (
+                    <span className={styles.unread} data-dm-unread={unread}>
+                      {unread > 99 ? "99+" : unread}
+                    </span>
+                  )}
+                </span>
+              </DirectConversationRow>
+            );
+          })}
         </ul>
       )}
       {list.state === "populated" && list.nextCursor && (
         <button
           type="button"
-          className={styles.secondary}
+          className={panelStyles.olderButton}
           onClick={() => void conversations.loadMore()}
         >
           继续加载
@@ -491,7 +660,6 @@ export const DirectMessagePanel = ({
       <p className={styles.previewNote}>
         私信为纯文本，每 10 秒在前台自动刷新；删除仅对自己隐藏。
       </p>
-      {shell.platform === "phone" ? null : null}
     </div>
   );
 };

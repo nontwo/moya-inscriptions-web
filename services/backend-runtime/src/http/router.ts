@@ -1,4 +1,4 @@
-import type { RequestListener } from "node:http";
+import type { RequestListener, ServerResponse } from "node:http";
 
 import {
   handleCatalogDetail,
@@ -20,6 +20,14 @@ import { handleAuthorRequest } from "../community/author-handler.js";
 import { handleOperatorRequest } from "../community/operator-handler.js";
 import { healthHandler } from "../health/health-handler.js";
 import { sendJson } from "./json-response.js";
+import { sendApiError } from "./api-error-response.js";
+import { containRequest } from "./request-boundary.js";
+
+// A rejected route handler fails only its own request (see containRequest).
+const apiFailure = (response: ServerResponse): void =>
+  sendApiError(response, "INTERNAL_ERROR", "Internal error");
+const operatorFailure = (response: ServerResponse): void =>
+  sendJson(response, 500, { error: { status: 500, code: "INTERNAL_ERROR" } });
 
 import type {
   CommunityContentOperatorPort,
@@ -112,7 +120,11 @@ export const createRouter =
         return;
       }
 
-      void handleCatalogList(request, response, catalogReadService);
+      containRequest(
+        response,
+        handleCatalogList(request, response, catalogReadService),
+        apiFailure,
+      );
       return;
     }
 
@@ -121,7 +133,11 @@ export const createRouter =
         sendRouteError(response, 405, "Method Not Allowed");
         return;
       }
-      void handleCatalogSearch(request, response, catalogReadService);
+      containRequest(
+        response,
+        handleCatalogSearch(request, response, catalogReadService),
+        apiFailure,
+      );
       return;
     }
 
@@ -130,7 +146,11 @@ export const createRouter =
         sendRouteError(response, 405, "Method Not Allowed");
         return;
       }
-      void handleCurrentUser(request, response, community?.sessionService);
+      containRequest(
+        response,
+        handleCurrentUser(request, response, community?.sessionService),
+        apiFailure,
+      );
       return;
     }
 
@@ -140,10 +160,10 @@ export const createRouter =
           sendRouteError(response, 405, "Method Not Allowed", "POST");
           return;
         }
-        void handleDevelopmentSignIn(
-          request,
+        containRequest(
           response,
-          community.sessionService,
+          handleDevelopmentSignIn(request, response, community.sessionService),
+          apiFailure,
         );
         return;
       }
@@ -153,10 +173,10 @@ export const createRouter =
           sendRouteError(response, 405, "Method Not Allowed", "POST");
           return;
         }
-        void handleDevelopmentSignOut(
-          request,
+        containRequest(
           response,
-          community.sessionService,
+          handleDevelopmentSignOut(request, response, community.sessionService),
+          apiFailure,
         );
         return;
       }
@@ -167,12 +187,16 @@ export const createRouter =
       community.authorService !== undefined &&
       pathname.startsWith("/v1/community/")
     ) {
-      void handleAuthorRequest(
-        request,
+      containRequest(
         response,
-        community.authorService,
-        community.sessionService,
-        community.publishingService,
+        handleAuthorRequest(
+          request,
+          response,
+          community.authorService,
+          community.sessionService,
+          community.publishingService,
+        ),
+        apiFailure,
       );
       return;
     }
@@ -187,11 +211,19 @@ export const createRouter =
       if (commentsRoute !== null) {
         const catalogId = commentsRoute[1] ?? "";
         if (request.method === "GET") {
-          void handleReadComments(request, response, catalogId, comments);
+          containRequest(
+            response,
+            handleReadComments(request, response, catalogId, comments),
+            apiFailure,
+          );
           return;
         }
         if (request.method === "POST") {
-          void handleCreateComment(request, response, catalogId, comments);
+          containRequest(
+            response,
+            handleCreateComment(request, response, catalogId, comments),
+            apiFailure,
+          );
           return;
         }
         sendRouteError(response, 405, "Method Not Allowed", "GET, POST");
@@ -204,22 +236,30 @@ export const createRouter =
         const catalogId = repliesRoute[1] ?? "";
         const commentId = repliesRoute[2] ?? "";
         if (request.method === "GET") {
-          void handleReadReplies(
-            request,
+          containRequest(
             response,
-            catalogId,
-            commentId,
-            comments,
+            handleReadReplies(
+              request,
+              response,
+              catalogId,
+              commentId,
+              comments,
+            ),
+            apiFailure,
           );
           return;
         }
         if (request.method === "POST") {
-          void handleCreateReply(
-            request,
+          containRequest(
             response,
-            catalogId,
-            commentId,
-            comments,
+            handleCreateReply(
+              request,
+              response,
+              catalogId,
+              commentId,
+              comments,
+            ),
+            apiFailure,
           );
           return;
         }
@@ -235,16 +275,20 @@ export const createRouter =
       moderationService !== undefined &&
       pathname.startsWith("/internal/community/")
     ) {
-      void handleOperatorRequest(request, response, pathname, {
-        moderationService,
-        contentOperatorPort: community?.contentOperatorPort,
-        discussionPort: community?.discussionPort,
-        publishingOperatorService: community?.publishingOperatorService,
-        agentAdministrationService: community?.agentAdministrationService,
-        threadService: community?.threadService,
-        directMessageService: community?.directMessageService,
-        operatorCredential: community?.operatorCredential ?? "",
-      });
+      containRequest(
+        response,
+        handleOperatorRequest(request, response, pathname, {
+          moderationService,
+          contentOperatorPort: community?.contentOperatorPort,
+          discussionPort: community?.discussionPort,
+          publishingOperatorService: community?.publishingOperatorService,
+          agentAdministrationService: community?.agentAdministrationService,
+          threadService: community?.threadService,
+          directMessageService: community?.directMessageService,
+          operatorCredential: community?.operatorCredential ?? "",
+        }),
+        operatorFailure,
+      );
       return;
     }
 
@@ -255,11 +299,15 @@ export const createRouter =
         return;
       }
 
-      void handleCatalogDetail(
-        request,
-        detailRoute[1] ?? "",
+      containRequest(
         response,
-        catalogReadService,
+        handleCatalogDetail(
+          request,
+          detailRoute[1] ?? "",
+          response,
+          catalogReadService,
+        ),
+        apiFailure,
       );
       return;
     }
