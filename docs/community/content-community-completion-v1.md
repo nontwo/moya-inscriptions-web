@@ -384,7 +384,10 @@ panel maps it to the exact text, and a gate refusal shows once as the composer's
 reason instead of beside a generic retry. Four panel cases cover a blocked
 start, the daily and minute limits and the gate (they fail against the previous
 code). `apps/web/lib/public-api/author-community-client.ts` is already in this
-task's approved paths (§4).
+task's approved paths (§4). The review of `f5d75a8` approved the cumulative
+head; its two suggestions were applied: a send error is cleared when the
+composer's own refusal appears or clears (so it cannot return as a stale alert
+once the pair may send again), and the reason table matches only its own keys.
 
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
