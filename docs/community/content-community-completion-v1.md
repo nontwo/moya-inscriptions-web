@@ -442,9 +442,8 @@ Paths added for this round:
 `apps/web/features/authors/message-center-direct.test.tsx`,
 `apps/web/features/discussion-preview/article-reader.test.tsx`,
 `apps/web/features/editorial-content/editorial-media.ts`,
-`apps/web/lib/public-api/editorial-media.ts`,
-`apps/web/app/api/editorial-media/[file]/route.ts` (with tests) and the two
-PostgreSQL tests above.
+`apps/web/app/api/editorial-media/[owner]/[file]/route.ts` (with tests) and the
+two PostgreSQL tests above.
 
 Integration-owned, not in this branch: the live (notifications) message host's
 fill region and header seam for this panel, and the profile 私信 entry that
