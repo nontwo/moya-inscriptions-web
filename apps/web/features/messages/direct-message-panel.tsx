@@ -140,6 +140,12 @@ const Composer = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  // A send error belongs to the refusal state it was shown in: once the
+  // composer's own refusal appears or clears, the old error must not linger
+  // (or come back as a stale alert when the pair can send again).
+  useEffect(() => {
+    setError(null);
+  }, [disabledReason]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
@@ -492,8 +498,13 @@ export const DirectMessagePanel = ({
     }, UNDO_NOTICE_MS);
     return () => window.clearTimeout(timer);
   }, [undo, notice]);
-  if (author.checking) return <p role="status">正在加载账户…</p>;
-  if (author.sessionError)
+  // Background revalidation (window focus, reconnect) keeps the confirmed
+  // account, so an open conversation and its draft stay mounted; only an
+  // unknown account shows these states. A different account remounts the
+  // panel through its host, and a revoked Session clears the viewer.
+  if (!author.viewer && author.checking)
+    return <p role="status">正在加载账户…</p>;
+  if (!author.viewer && author.sessionError)
     return <p role="alert">账户暂时不可用，请稍后重试。</p>;
   if (!author.viewer)
     return (
