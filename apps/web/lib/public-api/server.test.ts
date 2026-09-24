@@ -205,22 +205,6 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
     );
   });
 
-  it("clears the cookie of a refused `me` without asking twice", async () => {
-    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
-    const upstream = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(refused())
-      .mockResolvedValueOnce(refused());
-    vi.stubGlobal("fetch", upstream);
-    const response = await relayServerAuthorCommunity(read("me"));
-    expect(response.status).toBe(401);
-    expect(response.headers.get("set-cookie")).toMatch(
-      /^yoyi-session=; .*Max-Age=0/u,
-    );
-    expect(upstream).toHaveBeenCalledTimes(2);
-    expect(authorizationOf(upstream.mock.calls[1]!)).toBeNull();
-  });
-
   it("clears the cookie of a refused write but never repeats the write", async () => {
     vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
     const upstream = vi
@@ -269,7 +253,7 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
     const upstream = vi.fn<typeof fetch>().mockResolvedValueOnce(refused());
     vi.stubGlobal("fetch", upstream);
     const response = await relayServerAuthorCommunity(
-      new Request("http://127.0.0.1:3410/api/community/me", {
+      new Request("http://127.0.0.1:3410/api/community/notifications", {
         headers: { host: "127.0.0.1:3410" },
       }),
     );

@@ -366,8 +366,7 @@ export const relayServerAuthorCommunity = async (
     if (
       upstream.status === 401 &&
       token !== undefined &&
-      ((request.method === "GET" && suffix === "me") ||
-        (await communitySessionRefused(base, token)))
+      (await communitySessionRefused(base, token))
     ) {
       headers["set-cookie"] = serializeClearedCommunitySessionCookie(
         isSecureRequest(request),
