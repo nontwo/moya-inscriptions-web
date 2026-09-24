@@ -418,14 +418,32 @@ readers now place a live section in that same column
 (`apps/web/features/discussion-preview/article-reader.tsx`); two cases in
 `article-reader.test.tsx` fail against the previous code.
 
+Owner phone acceptance runs the Development Web on the Wi-Fi address. Editorial
+images (Article covers, section and academic figures, Collection covers) are
+native synthetic Payload files at loopback URLs that a phone cannot reach, while
+Catalog media already had a same-origin Development relay. As for Catalog media,
+the editorial pictures and the academic figure mapping now pass their source
+through `editorialMediaSrc(src, owner)`, which rewrites only loopback Payload
+files to the Development-only route
+`/api/editorial-media/<article-or-collection id>/<hashed file>`. The route
+(`relayServerLocalEditorialMedia` in `lib/public-api/server.ts`, registered in
+the architecture scanner's server-import list like the Catalog media route)
+reads that published Article or Collection from the Backend. It serves the file
+only when that detail shows it, fetching the loopback URL the detail itself
+carries, anonymously and with type and size checks. It never reads the CMS
+address from configuration and answers 404 outside Development. Other sources
+are unchanged.
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,
 `apps/web/features/messages/direct-message-panel.module.css`,
 `apps/web/features/authors/message-center.module.css` (scoped host),
 `apps/web/features/authors/message-center-direct.test.tsx`,
-`apps/web/features/discussion-preview/article-reader.test.tsx` and the two
-PostgreSQL tests above.
+`apps/web/features/discussion-preview/article-reader.test.tsx`,
+`apps/web/features/editorial-content/editorial-media.ts`,
+`apps/web/app/api/editorial-media/[owner]/[file]/route.ts` (with tests) and the
+two PostgreSQL tests above.
 
 Integration-owned, not in this branch: the live (notifications) message host's
 fill region and header seam for this panel, and the profile 私信 entry that
