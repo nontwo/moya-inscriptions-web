@@ -194,7 +194,7 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
     );
     expect(upstream).toHaveBeenCalledTimes(3);
     expect(String(upstream.mock.calls[1]![0])).toBe(
-      "http://127.0.0.1:3411/v1/community/me",
+      "http://127.0.0.1:3411/v1/me",
     );
     expect(authorizationOf(upstream.mock.calls[0]!)).toBe(
       `Bearer ${"B".repeat(43)}`,
@@ -231,7 +231,7 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
     );
     expect(upstream).toHaveBeenCalledTimes(2);
     expect(String(upstream.mock.calls[1]![0])).toBe(
-      "http://127.0.0.1:3411/v1/community/me",
+      "http://127.0.0.1:3411/v1/me",
     );
   });
 
@@ -246,7 +246,26 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(upstream).toHaveBeenCalledTimes(2);
+    expect(String(upstream.mock.calls[1]![0])).toBe(
+      "http://127.0.0.1:3411/v1/me",
+    );
   });
+
+  it.each([404, 503])(
+    "keeps the cookie when the Session check answers %s instead of refusing it",
+    async (status) => {
+      vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+      const upstream = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(refused())
+        .mockResolvedValueOnce(new Response(null, { status }));
+      vi.stubGlobal("fetch", upstream);
+      const response = await relayServerAuthorCommunity(read("threads"));
+      expect(response.status).toBe(401);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(upstream).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("never asks `me` when no Session was presented", async () => {
     vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");

@@ -245,7 +245,7 @@ const communitySessionRefused = async (
   token: string,
 ): Promise<boolean> => {
   try {
-    const answer = await fetch(new URL("v1/community/me", base), {
+    const answer = await fetch(new URL("v1/me", base), {
       method: "GET",
       headers: { accept: "application/json", Authorization: `Bearer ${token}` },
       cache: "no-store",
