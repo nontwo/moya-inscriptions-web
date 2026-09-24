@@ -87,9 +87,15 @@ other sessions and issue a fresh one for the current device. Ordinary sign-in
 does not. Logout revokes the presented session, closes the verify receipt for
 that session lineage, and clears the `yoyi-session` cookie. A closed receipt
 cannot mint another session. A lost response can still be recovered before
-logout, while that session is live. Notification streams and DM admission must
-treat a failed `identify` as logged out. That combined check is pending until
-tracks N and C integrate.
+logout, while that session is live. A browser whose session the Backend no
+longer accepts (logged out or factor-replaced on another device, expired or
+unknown) is treated as signed out: when the Backend refuses that session itself,
+the current-user check (`/api/community/me`) and the same-origin community relay
+clear the `yoyi-session` cookie, and the relay answers a read as it would for a
+signed-out browser, so public content stays readable; a write is refused and not
+repeated. A check that cannot reach the Backend never signs out. Notification
+streams and DM admission must treat a failed `identify` as logged out. That
+combined check is pending until tracks N and C integrate.
 
 ## Database
 
