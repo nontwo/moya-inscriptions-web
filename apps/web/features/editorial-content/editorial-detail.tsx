@@ -1,4 +1,5 @@
 "use client";
+import { editorialMediaSrc } from "./editorial-media";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { Icon } from "@moya/ui";
@@ -21,7 +22,7 @@ import {
 } from "./use-editorial-content";
 
 const Picture = ({ src, alt }: { src: string; alt: string }) => (
-  <img src={src} alt={alt} loading="lazy" decoding="async" />
+  <img src={editorialMediaSrc(src)} alt={alt} loading="lazy" decoding="async" />
 );
 
 const DetailState = ({
@@ -79,7 +80,7 @@ export const academicViewFromArticle = (
       ? [
           {
             afterParagraph: 0,
-            src: section.image.src,
+            src: editorialMediaSrc(section.image.src),
             alt: section.image.alt,
             caption: section.imageCaption ?? section.image.alt,
           },

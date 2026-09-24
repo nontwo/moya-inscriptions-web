@@ -418,13 +418,29 @@ readers now place a live section in that same column
 (`apps/web/features/discussion-preview/article-reader.tsx`); two cases in
 `article-reader.test.tsx` fail against the previous code.
 
+Owner phone acceptance runs the Development Web on the Wi-Fi address. Editorial
+images (Article covers, section and academic figures, Collection covers) are
+native synthetic Payload files at loopback URLs
+(`http://127.0.0.1:<admin>/api/media/file/...`) that a phone cannot reach, while
+Catalog media already had a same-origin Development relay. The editorial
+`Picture` components and the academic figure mapping now pass their source
+through `editorialMediaSrc`, which rewrites only those loopback Payload files to
+the Development-only route `/api/editorial-media/<hashed file>`. That route
+reads the named file anonymously from the loopback CMS origin (Payload serves
+only files of published Catalog records) and refuses every other name, origin or
+type. Other sources are unchanged, and the route answers 404 outside
+Development.
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,
 `apps/web/features/messages/direct-message-panel.module.css`,
 `apps/web/features/authors/message-center.module.css` (scoped host),
 `apps/web/features/authors/message-center-direct.test.tsx`,
-`apps/web/features/discussion-preview/article-reader.test.tsx` and the two
+`apps/web/features/discussion-preview/article-reader.test.tsx`,
+`apps/web/features/editorial-content/editorial-media.ts`,
+`apps/web/lib/public-api/editorial-media.ts`,
+`apps/web/app/api/editorial-media/[file]/route.ts` (with tests) and the two
 PostgreSQL tests above.
 
 Integration-owned, not in this branch: the live (notifications) message host's

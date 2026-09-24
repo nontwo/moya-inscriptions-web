@@ -1,4 +1,5 @@
 "use client";
+import { editorialMediaSrc } from "./editorial-media";
 import type { ArticleCollectionSummary, ArticleSummary } from "@moya/contracts";
 import { useProductShell } from "../product-shell/product-shell";
 import styles from "../discussion-preview/discussion-preview.module.css";
@@ -8,7 +9,7 @@ import { useArticles, useCollections } from "./use-editorial-content";
 import type { EditorialListState } from "./use-editorial-content";
 
 const Picture = ({ src, alt }: { src: string; alt: string }) => (
-  <img src={src} alt={alt} loading="lazy" decoding="async" />
+  <img src={editorialMediaSrc(src)} alt={alt} loading="lazy" decoding="async" />
 );
 
 const EmptyState = ({
