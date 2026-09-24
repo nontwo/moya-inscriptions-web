@@ -113,7 +113,7 @@ function AccountMessages({
     if (!confirmed) return;
     let frame = 0,
       attempts = 0,
-      movedHome = false;
+      hostless = false;
     const tryOpen = () => {
       frame = 0;
       if (
@@ -125,19 +125,22 @@ function AccountMessages({
         // active host becomes reachable a frame or two later; hosts of other
         // destinations stay hidden and give up after a bounded wait.
         // The user destination has no message host at all: there the home
-        // host brings the home destination forward once, then opens as usual.
+        // host brings the home destination forward, then opens as usual. The
+        // shell refuses to switch while the closing profile is still
+        // registered, so the (idempotent) switch is retried each frame.
         const destination = opener.current
           ?.closest("[data-primary-destination]")
           ?.getAttribute("data-primary-destination");
         const activeHasHost = document.querySelector(
           '[data-primary-destination][data-active="true"] [data-live-message-trigger]',
         );
-        if (!movedHome && destination === "home" && !activeHasHost) {
-          movedHome = true;
+        if (destination === "home" && !activeHasHost) {
+          hostless = true;
           shell.navigatePrimary("home");
         }
         attempts += 1;
-        if (attempts < 30) frame = requestAnimationFrame(tryOpen);
+        if (attempts < (hostless ? 120 : 30))
+          frame = requestAnimationFrame(tryOpen);
         return;
       }
       handledOpenRequest.current = openRequest;

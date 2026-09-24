@@ -18,12 +18,19 @@ const { inbox, author, client, shell } = vi.hoisted(() => {
   const shell = {
     activeDestination: "home" as "home" | "discussion" | "user",
     openToken: null as number | null,
+    /** As ProductShell while a closing profile is still registered. */
+    refuseNavigations: 0,
     activeContent: null,
     activeProfile: null,
     activeTopicId: null as string | null,
     calls: [] as string[],
     rerender: () => {},
     navigatePrimary(destination: "home" | "discussion" | "user") {
+      if (shell.refuseNavigations > 0) {
+        shell.refuseNavigations -= 1;
+        return;
+      }
+      if (destination === shell.activeDestination) return;
       shell.calls.push(`navigatePrimary:${destination}`);
       shell.activeDestination = destination;
       shell.rerender();
@@ -158,6 +165,7 @@ beforeEach(async () => {
   shell.activeDestination = "home";
   shell.activeTopicId = null;
   shell.openToken = null;
+  shell.refuseNavigations = 0;
   shell.calls.length = 0;
   node = document.createElement("div");
   document.body.append(node);
@@ -212,18 +220,19 @@ it("reopens in place when the Article was opened from the discussion destination
   shell.activeDestination = "discussion";
   await act(async () => shell.rerender());
   const reopened = await roundTrip("discussion");
-  expect(shell.calls).toEqual([
-    "navigatePrimary:discussion",
-    "openTopic:article-example",
-  ]);
+  // Switching to the destination already shown is a no-op, as in ProductShell.
+  expect(shell.calls).toEqual(["openTopic:article-example"]);
   expect(reopened).toEqual([{ host: "discussion", hidden: false }]);
 });
 
 it("opens the message center from the user destination, which has no host, by bringing home forward", async () => {
   shell.activeDestination = "user";
   await act(async () => shell.rerender());
+  // The profile that issued the request is still closing for a few frames.
+  shell.refuseNavigations = 3;
   shell.openToken = 1;
   await act(async () => shell.rerender());
+  await frames();
   await frames();
   const dialogs = [...node.querySelectorAll("[data-test-dialog]")].map((d) => ({
     host: d.closest("[data-dest]")?.getAttribute("data-dest"),
