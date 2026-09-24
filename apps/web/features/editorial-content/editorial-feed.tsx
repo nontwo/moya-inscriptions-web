@@ -8,8 +8,21 @@ import { formatEditorialTime } from "./format-time";
 import { useArticles, useCollections } from "./use-editorial-content";
 import type { EditorialListState } from "./use-editorial-content";
 
-const Picture = ({ src, alt }: { src: string; alt: string }) => (
-  <img src={editorialMediaSrc(src)} alt={alt} loading="lazy" decoding="async" />
+const Picture = ({
+  src,
+  alt,
+  owner,
+}: {
+  src: string;
+  alt: string;
+  owner: string;
+}) => (
+  <img
+    src={editorialMediaSrc(src, owner)}
+    alt={alt}
+    loading="lazy"
+    decoding="async"
+  />
 );
 
 const EmptyState = ({
@@ -83,7 +96,11 @@ export function EditorialNewsFeed() {
             }
           >
             {item.cover ? (
-              <Picture src={item.cover.src} alt={item.cover.alt} />
+              <Picture
+                owner={item.id}
+                src={item.cover.src}
+                alt={item.cover.alt}
+              />
             ) : (
               <span className={styles.imageFallback} aria-hidden="true" />
             )}
@@ -132,7 +149,7 @@ export function EditorialCollectionsFeed() {
             }
           >
             {item.cover ? (
-              <Picture src={item.cover.src} alt="" />
+              <Picture owner={item.id} src={item.cover.src} alt="" />
             ) : (
               <span className={styles.imageFallback} aria-hidden="true" />
             )}

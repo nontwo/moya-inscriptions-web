@@ -420,16 +420,19 @@ readers now place a live section in that same column
 
 Owner phone acceptance runs the Development Web on the Wi-Fi address. Editorial
 images (Article covers, section and academic figures, Collection covers) are
-native synthetic Payload files at loopback URLs
-(`http://127.0.0.1:<admin>/api/media/file/...`) that a phone cannot reach, while
-Catalog media already had a same-origin Development relay. The editorial
-`Picture` components and the academic figure mapping now pass their source
-through `editorialMediaSrc`, which rewrites only those loopback Payload files to
-the Development-only route `/api/editorial-media/<hashed file>`. That route
-reads the named file anonymously from the loopback CMS origin (Payload serves
-only files of published Catalog records) and refuses every other name, origin or
-type. Other sources are unchanged, and the route answers 404 outside
-Development.
+native synthetic Payload files at loopback URLs that a phone cannot reach, while
+Catalog media already had a same-origin Development relay. As for Catalog media,
+the editorial pictures and the academic figure mapping now pass their source
+through `editorialMediaSrc(src, owner)`, which rewrites only loopback Payload
+files to the Development-only route
+`/api/editorial-media/<article-or-collection id>/<hashed file>`. The route
+(`relayServerLocalEditorialMedia` in `lib/public-api/server.ts`, registered in
+the architecture scanner's server-import list like the Catalog media route)
+reads that published Article or Collection from the Backend. It serves the file
+only when that detail shows it, fetching the loopback URL the detail itself
+carries, anonymously and with type and size checks. It never reads the CMS
+address from configuration and answers 404 outside Development. Other sources
+are unchanged.
 
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,

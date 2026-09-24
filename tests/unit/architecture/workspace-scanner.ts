@@ -259,6 +259,20 @@ const webCommunityServerImports: ReadonlyMap<string, string> = new Map([
     ),
     "{relayServerLocalCatalogMedia}",
   ],
+  // content-community-completion-v1: Development-only editorial images for a
+  // phone on the LAN acceptance origin, looked up in the published item.
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "editorial-media",
+      "[owner]",
+      "[file]",
+      "route.ts",
+    ),
+    "{relayServerLocalEditorialMedia}",
+  ],
   [
     path.join(webRoot, "app", "api", "community", "[...path]", "route.ts"),
     "{relayServerAuthorCommunity}",

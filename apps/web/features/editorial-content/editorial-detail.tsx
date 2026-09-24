@@ -21,8 +21,21 @@ import {
   useCollection,
 } from "./use-editorial-content";
 
-const Picture = ({ src, alt }: { src: string; alt: string }) => (
-  <img src={editorialMediaSrc(src)} alt={alt} loading="lazy" decoding="async" />
+const Picture = ({
+  src,
+  alt,
+  owner,
+}: {
+  src: string;
+  alt: string;
+  owner: string;
+}) => (
+  <img
+    src={editorialMediaSrc(src, owner)}
+    alt={alt}
+    loading="lazy"
+    decoding="async"
+  />
 );
 
 const DetailState = ({
@@ -80,7 +93,7 @@ export const academicViewFromArticle = (
       ? [
           {
             afterParagraph: 0,
-            src: editorialMediaSrc(section.image.src),
+            src: editorialMediaSrc(section.image.src, article.id),
             alt: section.image.alt,
             caption: section.imageCaption ?? section.image.alt,
           },
@@ -110,7 +123,11 @@ function NewsArticleContent({ article }: { article: ArticleDetail }) {
       {article.intro && <p className={styles.articleLead}>{article.intro}</p>}
       {article.cover && (
         <figure>
-          <Picture src={article.cover.src} alt={article.cover.alt} />
+          <Picture
+            owner={article.id}
+            src={article.cover.src}
+            alt={article.cover.alt}
+          />
         </figure>
       )}
       {article.sections.map((section, index) => (
@@ -121,7 +138,11 @@ function NewsArticleContent({ article }: { article: ArticleDetail }) {
           ))}
           {section.image && (
             <figure>
-              <Picture src={section.image.src} alt={section.image.alt} />
+              <Picture
+                owner={article.id}
+                src={section.image.src}
+                alt={section.image.alt}
+              />
               {section.imageCaption && (
                 <figcaption>{section.imageCaption}</figcaption>
               )}
@@ -237,7 +258,11 @@ function CollectionPage({
         )}
         {collection.cover && (
           <figure>
-            <Picture src={collection.cover.src} alt={collection.cover.alt} />
+            <Picture
+              owner={collection.id}
+              src={collection.cover.src}
+              alt={collection.cover.alt}
+            />
           </figure>
         )}
         {collection.summary && (
