@@ -399,6 +399,16 @@ through its host and a revoked Session still clears the viewer. Two panel cases
 cover both flags (they fail against the previous code); a third keeps the
 unknown-account states.
 
+The combined-head review of the QA integration (blocker B2) found that
+"前往评论位置" on an Article comment in 我的评论 called `openTopic` directly and
+skipped the host's `onOpenContent`: from the home destination nothing happened
+(openTopic refuses outside discussion), and from discussion the Article opened
+under the still-open message center. Every target, Articles included, now goes
+through the host, which closes first; the scoped host then switches to the
+discussion destination and opens the Article, and without a host MyComments does
+the same itself. Three cases cover the host hand-off, the scoped host's
+close-then-open and the host-less path (they fail against the previous code).
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,
