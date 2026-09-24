@@ -140,6 +140,12 @@ const Composer = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  // A send error belongs to the refusal state it was shown in: once the
+  // composer's own refusal appears or clears, the old error must not linger
+  // (or come back as a stale alert when the pair can send again).
+  useEffect(() => {
+    setError(null);
+  }, [disabledReason]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();

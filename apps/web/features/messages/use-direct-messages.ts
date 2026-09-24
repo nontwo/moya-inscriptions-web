@@ -25,7 +25,7 @@ const describeFailure = (error: unknown): string => {
       dm_rate_limited: "发送太快了，请稍后再试。",
       dm_text_invalid: "私信内容需在 1 到 2000 字之间。",
     };
-    if (error.status === 422 && code in known) return known[code]!;
+    if (error.status === 422 && Object.hasOwn(known, code)) return known[code]!;
     if (error.status === 401) return "请先登录";
     if (error.status === 404) return "对话不可用";
     if (error.status === 409) return "状态已变化，请刷新后重试";

@@ -719,4 +719,30 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
     expect(node.querySelector("[data-dm-error]")).toBeNull();
     expect(node.textContent).not.toContain("暂时无法完成");
   });
+
+  it("does not bring a stale refusal back as an alert once the pair can send again", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    await openFirstConversation();
+    refuseSendWith = "dm_request_pending";
+    await typeAndSend("还在吗");
+    expect(node.querySelector("[data-dm-refusal]")).not.toBeNull();
+    // The recipient replies: the pair is active again and the next poll says so.
+    refuseSendWith = null;
+    state = "active";
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flush();
+    expect(node.querySelector("[data-dm-refusal]")).toBeNull();
+    expect(
+      node.querySelector('textarea[aria-label="私信内容"]'),
+    ).not.toBeNull();
+    expect(node.querySelector("[data-dm-error]")).toBeNull();
+  });
 });
