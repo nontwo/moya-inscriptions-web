@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@moya/ui";
-import type { ContentIdentity } from "@moya/contracts";
+import type { DiscussionTarget } from "@moya/contracts";
 import { QuickActionIcon } from "../quick-actions/quick-action-card-action";
 import { AuthorDialog } from "./author-dialog";
 import { MyComments } from "./author-profile";
@@ -100,7 +100,7 @@ function ScopedMessageTrigger({
   const [previewCommentTab, setPreviewCommentTab] = useState<
     "received" | "sent" | null
   >(null);
-  const pending = useRef<ContentIdentity | null>(null);
+  const pending = useRef<DiscussionTarget | null>(null);
   const pendingPreviewComment = useRef<{
     location: PreviewCommentLocation;
     sourceTab: "received" | "sent";
@@ -227,8 +227,22 @@ function ScopedMessageTrigger({
             if (target && account)
               frame.current = requestAnimationFrame(() => {
                 frame.current = null;
-                if (confirmedAccount.current === account && opener.current)
-                  shell.openContent(target, opener.current);
+                if (confirmedAccount.current !== account || !opener.current)
+                  return;
+                const element = opener.current;
+                if (target.type !== "article") {
+                  shell.openContent(target, element);
+                  return;
+                }
+                // An Article discussion is a topic overlay of the discussion
+                // destination; switch first, since openTopic refuses from any
+                // other destination.
+                shell.navigatePrimary("discussion");
+                frame.current = requestAnimationFrame(() => {
+                  frame.current = null;
+                  if (confirmedAccount.current === account)
+                    shell.openTopic(target.id, element, 0);
+                });
               });
           }}
         >

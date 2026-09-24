@@ -4,7 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   AuthorProfile,
-  ContentIdentity,
+  DiscussionTarget,
   OwnComment,
 } from "@moya/contracts";
 import type { ProductShellProfileOverlayRenderProps } from "../product-shell/product-shell";
@@ -575,8 +575,12 @@ export const MyComments = ({
   onOpenContent,
 }: {
   entryId: string;
+  /**
+   * A host that owns a modal (the message center) opens the target after it
+   * has finished closing. Every target, Articles included, goes through it.
+   */
   onOpenContent?:
-    ((target: ContentIdentity, opener: HTMLElement) => void) | undefined;
+    ((target: DiscussionTarget, opener: HTMLElement) => void) | undefined;
 }) => {
   const author = useAuthors(),
     shell = useProductShell();
@@ -668,13 +672,18 @@ export const MyComments = ({
                       id: item.id,
                     });
                     const target = item.target!;
-                    // content-community-completion-v1: an Article discussion
-                    // opens through the editorial reader (topic overlay).
-                    if (target.type === "article")
-                      shell.openTopic(target.id, event.currentTarget, 0);
-                    else if (onOpenContent)
-                      onOpenContent(target, event.currentTarget);
-                    else shell.openContent(target, event.currentTarget);
+                    const opener = event.currentTarget;
+                    if (onOpenContent) onOpenContent(target, opener);
+                    else if (target.type === "article") {
+                      // content-community-completion-v1: an Article discussion
+                      // opens through the editorial reader, a topic overlay of
+                      // the discussion destination (openTopic refuses from
+                      // any other destination).
+                      shell.navigatePrimary("discussion");
+                      requestAnimationFrame(() =>
+                        shell.openTopic(target.id, opener, 0),
+                      );
+                    } else shell.openContent(target, opener);
                   }}
                 >
                   前往评论位置
