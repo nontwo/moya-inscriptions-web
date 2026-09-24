@@ -94,6 +94,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   window.history.replaceState({}, "", "/");
   item.reason = "comment";
+  author.checking = false;
+  author.sessionError = false;
   item.unread = true;
   inbox.loading = false;
   inbox.error = "";
@@ -338,5 +340,68 @@ describe("Owner notification reading interactions", () => {
     // The panel kept its state across the change: it was never remounted.
     expect(mounts).toBe(1);
     inbox.error = "";
+  });
+  // parallel-community-integration-qa: window focus and reconnect revalidate
+  // the confirmed account; an open conversation must survive that.
+  it.each(["checking", "sessionError"] as const)(
+    "keeps an open conversation mounted while the confirmed account revalidates (%s)",
+    async (flag) => {
+      let mounts = 0;
+      const Panel = ({
+        onDepthChange,
+      }: Parameters<DirectMessagePanelAdapter["render"]>[0]) => {
+        const [open, setOpen] = useState(false);
+        useState(() => ++mounts);
+        useEffect(() => onDepthChange(open ? 1 : 0), [open, onDepthChange]);
+        return open ? (
+          <div data-dm-view="conversation" />
+        ) : (
+          <button data-dm-row="" onClick={() => setOpen(true)}>
+            row
+          </button>
+        );
+      };
+      const adapter: DirectMessagePanelAdapter = {
+        render: (props) => <Panel {...props} />,
+        useUnreadConversationCount: () => 0,
+      };
+      await act(async () => root.render(null));
+      await act(async () =>
+        root.render(<LiveMessageTrigger directMessages={adapter} />),
+      );
+      await click(button("打开消息"));
+      await click(node.querySelector("[data-dm-row]") as HTMLElement);
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+
+      author[flag] = true;
+      await act(async () =>
+        root.render(<LiveMessageTrigger directMessages={adapter} />),
+      );
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+      expect(node.textContent).not.toContain("正在确认账户");
+      author[flag] = false;
+      await act(async () =>
+        root.render(<LiveMessageTrigger directMessages={adapter} />),
+      );
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+      expect(mounts).toBe(1);
+    },
+  );
+  it("still shows the account states while no account is confirmed", async () => {
+    const viewer = author.viewer;
+    author.viewer = null as unknown as typeof viewer;
+    author.checking = true;
+    await act(async () => root.render(null));
+    await act(async () => root.render(<LiveMessageTrigger />));
+    await click(button("打开消息"));
+    expect(node.textContent).toContain("正在确认账户");
+    author.checking = false;
+    author.viewer = viewer;
   });
 });

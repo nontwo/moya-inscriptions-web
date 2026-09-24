@@ -345,11 +345,16 @@ function AccountMessages({
                 }
               />
             )}
-            {author.checking ? (
+            {/* parallel-community-integration-qa: revalidating the confirmed
+                account (window focus, reconnect) is not an account switch, so
+                the content — an open conversation and its draft — stays
+                mounted; a different account remounts this host by its key and
+                a revoked Session clears the viewer. */}
+            {!author.viewer && author.checking ? (
               <p className={local.status} role="status">
                 正在确认账户…
               </p>
-            ) : author.sessionError ? (
+            ) : !author.viewer && author.sessionError ? (
               <p className={local.status} role="alert">
                 账户暂时不可用。
                 <button onClick={() => void author.refresh()}>重试</button>
@@ -360,6 +365,12 @@ function AccountMessages({
               </p>
             ) : (
               <>
+                {author.sessionError && (
+                  <p className={local.status} role="alert">
+                    账户暂时不可用。
+                    <button onClick={() => void author.refresh()}>重试</button>
+                  </p>
+                )}
                 {notice && (
                   <p className={local.status} role="status">
                     {notice}
