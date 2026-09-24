@@ -389,6 +389,16 @@ head; its two suggestions were applied: a send error is cleared when the
 composer's own refusal appears or clears (so it cannot return as a stale alert
 once the pair may send again), and the reason table matches only its own keys.
 
+A later combined J9 run found that returning to the window (the author context
+revalidates the confirmed account on `focus`, and on reconnect) closed an open
+conversation and lost its draft: the panel showed its account states whenever
+`checking` or `sessionError` was set, unmounting the conversation. Revalidation
+keeps the confirmed account by design, so the panel now shows those states only
+while no account is confirmed; a different account still remounts the panel
+through its host and a revoked Session still clears the viewer. Two panel cases
+cover both flags (they fail against the previous code); a third keeps the
+unknown-account states.
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,

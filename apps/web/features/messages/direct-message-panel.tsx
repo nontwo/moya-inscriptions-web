@@ -498,8 +498,13 @@ export const DirectMessagePanel = ({
     }, UNDO_NOTICE_MS);
     return () => window.clearTimeout(timer);
   }, [undo, notice]);
-  if (author.checking) return <p role="status">正在加载账户…</p>;
-  if (author.sessionError)
+  // Background revalidation (window focus, reconnect) keeps the confirmed
+  // account, so an open conversation and its draft stay mounted; only an
+  // unknown account shows these states. A different account remounts the
+  // panel through its host, and a revoked Session clears the viewer.
+  if (!author.viewer && author.checking)
+    return <p role="status">正在加载账户…</p>;
+  if (!author.viewer && author.sessionError)
     return <p role="alert">账户暂时不可用，请稍后重试。</p>;
   if (!author.viewer)
     return (

@@ -146,6 +146,8 @@ beforeEach(() => {
   offline = false;
   refuseSendWith = null;
   author.viewer = null;
+  author.checking = false;
+  author.sessionError = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
@@ -744,5 +746,69 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
       node.querySelector('textarea[aria-label="私信内容"]'),
     ).not.toBeNull();
     expect(node.querySelector("[data-dm-error]")).toBeNull();
+  });
+
+  it.each(["checking", "sessionError"] as const)(
+    "keeps an open conversation and its draft while the confirmed account revalidates (%s)",
+    async (flag) => {
+      author.viewer = { id: me };
+      authorClient.setAccount(me);
+      state = "active";
+      const onDepthChange = vi.fn();
+      const panel = () => (
+        <DirectMessagePanel
+          onOpenProfile={vi.fn()}
+          onDepthChange={onDepthChange}
+        />
+      );
+      await act(async () => root.render(panel()));
+      await flush();
+      await openFirstConversation();
+      const textarea = node.querySelector(
+        'textarea[aria-label="私信内容"]',
+      ) as HTMLTextAreaElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!;
+      await act(async () => {
+        setter.call(textarea, "切回应用前写下的草稿");
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      // Window focus or a reconnect revalidates the same account.
+      author[flag] = true;
+      await act(async () => root.render(panel()));
+      await flush();
+      author[flag] = false;
+      await act(async () => root.render(panel()));
+      await flush();
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+      expect(
+        (
+          node.querySelector(
+            'textarea[aria-label="私信内容"]',
+          ) as HTMLTextAreaElement
+        ).value,
+      ).toBe("切回应用前写下的草稿");
+      expect(onDepthChange).not.toHaveBeenLastCalledWith(0);
+    },
+  );
+
+  it("still shows the account states while no account is confirmed", async () => {
+    author.viewer = null;
+    author.checking = true;
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    expect(node.textContent).toContain("正在加载账户");
+    author.checking = false;
+    author.sessionError = true;
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    expect(node.textContent).toContain("账户暂时不可用");
+    author.sessionError = false;
   });
 });
