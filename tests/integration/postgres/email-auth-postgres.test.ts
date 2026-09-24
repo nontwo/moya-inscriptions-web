@@ -97,8 +97,10 @@ const catalogStubs = `
   );
   -- parallel-community-integration-qa: the notification source query checks
   -- Article visibility against C's published-only projection, so grant-runtime
-  -- now names it. Development creates it from grant-public-read.sql before the
-  -- runtime grants run; these suites stand it in the same way as the Catalog views.
+  -- now names it. Development creates it with the Payload migration
+  -- 20260922_015000_editorial_content_views (grant-public-read.sql only grants
+  -- it) before the runtime grants run; these suites stand it in the same way as
+  -- the Catalog views.
   CREATE TABLE IF NOT EXISTS public.article_entries(
     article_id text PRIMARY KEY, title text
   );
