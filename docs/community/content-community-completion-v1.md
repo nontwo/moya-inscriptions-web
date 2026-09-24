@@ -329,12 +329,62 @@ change.
   title row when a host has no such seam); the composer regains focus; the
   scoped host hides its tabs and gives the panel the body while a conversation
   is open. Regression: five panel cases and one scoped-host case in `apps/web`
-  (they fail against the previous panel); browser geometry at
-  360/390/430/768/1280 px in both hosts on the combined stack (composer below a
-  scrolling stream and inside the viewport, textbox width, wrapping, no
-  horizontal overflow, Back, start view, offline failure, empty list, swipe and
-  keyboard actions, Undo) is recorded in the private integration evidence.
-  Browser emulation is not physical-device QA.
+  (they fail against the previous panel); browser geometry on the combined stack
+  — the live host at 360/390/430/768/1280 px and the scoped host at
+  360/390/768/1280 px (composer below a scrolling stream and inside the
+  viewport, textbox width, wrapping, no horizontal overflow, Back, start view,
+  offline failure, empty list, swipe and keyboard actions, Undo) — is recorded
+  in the private integration evidence. Browser emulation is not physical-device
+  QA.
+
+Independent review of `a10aa32` approved it with no blockers
+(`independent-review-a10aa32.md` in the task's private artifacts). Its
+suggestions were applied in a follow-up commit:
+
+- the header seam keeps the latest `onTitleChange` in a ref, so a host that
+  passes a new callback on every render no longer loops (a test proves it
+  settles; the previous code exhausts the heap);
+- a malformed percent-encoded segment now yields no identifier, and every caller
+  refuses it explicitly — `messages/with/<malformed>` answers 400 instead of
+  looking the pair up;
+- a request whose answer had already ended is left alone (its keep-alive
+  connection is not closed); an unmapped operator failure logs its error class
+  and code;
+- the router answers a request target that is not a URL path (for example `//[`)
+  with 400. That synchronous parse predates this task (it is on `main`) and
+  ended the process like C2; the shared request boundary lives here, so the fix
+  does too. A raw-socket case in `operator-error-boundary.test.ts` proves it
+  (the previous router crashes with `ERR_INVALID_URL`);
+- the boundary test closes open connections before stopping its server and
+  always drops its disposable role;
+- a panel case pins the accepted chat structure (stream above the composer).
+
+The review of that follow-up (`817a5ed`, independent-review-817a5ed.md) also
+approved with no blockers; its two small suggestions were applied: an operator
+failure after the answer had started or ended is logged (class and code only),
+and the boundary test drops its role even when dropping its database fails.
+
+The combined J9 journey then found one more panel defect: a send that failed
+while offline refreshed the conversation, the refresh failed too, and the whole
+view was replaced by 暂时无法完成，请重试 — the composer and the typed draft
+were gone and nothing offered a retry. A failed send now refreshes without
+replacing the view (a failing refresh changes nothing, so the draft stays), and
+a conversation that cannot load offers 重试. Two panel cases cover both (they
+fail against the previous code).
+
+The review of `aa76cc7` (independent-review-aa76cc7.md) found one blocker that
+predates this round: a refused send never showed its reason. The server names it
+in a 422 body (`dm_request_pending`, `dm_blocked`, `dm_daily_limit`,
+`dm_rate_limited`, `dm_self`, `dm_recipient_unavailable`, `dm_text_invalid`),
+but the shared author client kept only 409 text, so every refusal
+read 暂时无法完成，请重试 and the panel's reason table never matched.
+`AuthorRequestError` now carries a 422's machine reason separately (a lower-case
+identifier only, never shown as is; other features keep their messages), the
+panel maps it to the exact text, and a gate refusal shows once as the composer's
+reason instead of beside a generic retry. Four panel cases cover a blocked
+start, the daily and minute limits and the gate (they fail against the previous
+code). `apps/web/lib/public-api/author-community-client.ts` is already in this
+task's approved paths (§4).
 
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,

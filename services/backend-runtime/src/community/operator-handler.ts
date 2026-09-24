@@ -15,6 +15,7 @@ import {
 
 import { JsonBodyError, readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
+import { failureLabel } from "../http/request-boundary.js";
 import { collectTransportQuery } from "../http/transport-query.js";
 import { handleAgentRequest } from "./agent-handler.js";
 import { handlePublishingOperatorRequest } from "./work-publishing-handler.js";
@@ -72,9 +73,14 @@ export const isAuthorizedOperator = (
 };
 
 const sendFailure = (response: ServerResponse, error: unknown): void => {
-  // A handler that failed after it started answering cannot be answered twice.
+  // A handler that failed after it answered has nothing left to fail; one
+  // that failed while answering cannot be answered twice. Both still leave a
+  // diagnosable trace without private data.
   if (response.headersSent) {
-    response.destroy();
+    console.error(
+      `[backend-runtime] operator request failed after answering (${failureLabel(error)})`,
+    );
+    if (!response.writableEnded) response.destroy();
     return;
   }
   if (isCommunityNotFoundError(error)) {
@@ -94,6 +100,10 @@ const sendFailure = (response: ServerResponse, error: unknown): void => {
     sendOperatorError(response, 503, "STORE_UNAVAILABLE");
     return;
   }
+  // Unmapped: leave a diagnosable trace without private data.
+  console.error(
+    `[backend-runtime] operator request failed (${failureLabel(error)})`,
+  );
   sendOperatorError(response, 500, "INTERNAL_ERROR");
 };
 

@@ -61,6 +61,10 @@ const message = (sequence: number, senderId: string, text: string) => ({
   createdAt: "2026-09-22T00:00:01.000Z",
 });
 let state: "requested" | "active" = "requested";
+/** When true every request fails as a browser without a network does. */
+let offline = false;
+/** When set, the server refuses a send with this 422 reason. */
+let refuseSendWith: string | null = null;
 const respond = (url: string, method: string, body: unknown) => {
   if (url.endsWith("/api/community/messages/unread"))
     return { unreadConversations: 0 };
@@ -88,6 +92,24 @@ const respond = (url: string, method: string, body: unknown) => {
           : [message(1, me, "你好")],
       nextBefore: null,
     };
+  if (
+    url.endsWith("/api/community/messages") &&
+    method === "POST" &&
+    refuseSendWith !== null
+  ) {
+    // The server's truth after a gate refusal is the requested state.
+    if (refuseSendWith === "dm_request_pending") state = "requested";
+    return {
+      status: 422,
+      json: {
+        error: {
+          code: "INVALID_INPUT",
+          message: refuseSendWith,
+          requestId: "22222222-2222-4222-8222-222222222222",
+        },
+      },
+    };
+  }
   if (url.endsWith("/api/community/messages") && method === "POST") {
     const text = (body as { text: string }).text;
     return { status: 201, json: message(3, me, text) };
@@ -121,6 +143,8 @@ let root: Root;
 beforeEach(() => {
   calls.length = 0;
   state = "requested";
+  offline = false;
+  refuseSendWith = null;
   author.viewer = null;
   vi.stubGlobal(
     "fetch",
@@ -128,6 +152,7 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       calls.push({ method, url: input, body });
+      if (offline) throw new TypeError("Failed to fetch");
       const answer = respond(input, method, body) as {
         status?: number;
         json?: unknown;
@@ -478,5 +503,220 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
     await flush();
     expect(textarea.value).toBe("");
     expect(document.activeElement).toBe(textarea);
+  });
+
+  it("keeps the accepted chat structure: a scrolling stream above the bottom composer", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    const structure = (view: Element) =>
+      [...view.children].map((child) =>
+        child.hasAttribute("data-dm-stream") ||
+        child.className.includes(previewStyles.chatStream!)
+          ? "stream"
+          : child.hasAttribute("data-message-composer")
+            ? "composer"
+            : child.className.includes(panelStyles.title!)
+              ? "title"
+              : child.tagName.toLowerCase(),
+      );
+    await act(async () =>
+      root.render(
+        <DirectMessagePanel onOpenProfile={vi.fn()} onTitleChange={vi.fn()} />,
+      ),
+    );
+    await flush();
+    await openFirstConversation();
+    const chat = node.querySelector('[data-dm-view="conversation"]')!;
+    expect(chat.className).toContain(previewStyles.chat);
+    expect(structure(chat)).toEqual(["stream", "composer"]);
+    const composer = chat.querySelector("[data-message-composer]")!;
+    expect(composer.className).toContain(previewStyles.chatComposer);
+    expect(
+      composer.querySelector('textarea[aria-label="私信内容"]'),
+    ).not.toBeNull();
+
+    await act(async () => root.unmount());
+    root = createRoot(node);
+    await act(async () =>
+      root.render(
+        <DirectMessagePanel
+          onOpenProfile={vi.fn()}
+          openWith={{ userId: other, displayName: "书法学徒" }}
+        />,
+      ),
+    );
+    await flush();
+    const start = node.querySelector('[data-dm-view="start"]')!;
+    expect(start.className).toContain(previewStyles.chat);
+    expect(structure(start)).toEqual(["title", "stream", "composer"]);
+  });
+
+  it("settles when a host passes a new title callback on every render", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    let calls = 0;
+    const { useState: useHostState } = await import("react");
+    const Host = () => {
+      const [title, setTitle] = useHostState<DirectMessageTitle | null>(null);
+      return (
+        <>
+          <p data-host-title="">{title?.label ?? "消息"}</p>
+          <DirectMessagePanel
+            onOpenProfile={vi.fn()}
+            onTitleChange={(next) => {
+              calls += 1;
+              setTitle(next);
+            }}
+          />
+        </>
+      );
+    };
+    await act(async () => root.render(<Host />));
+    await flush();
+    await openFirstConversation();
+    await flush();
+    expect(node.querySelector("[data-host-title]")?.textContent).toBe(
+      "书法学徒",
+    );
+    expect(calls).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps the conversation and the typed draft when a send and its refresh both fail", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    await openFirstConversation();
+    const textarea = node.querySelector(
+      'textarea[aria-label="私信内容"]',
+    ) as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      setter.call(textarea, "离线时写下的草稿");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    offline = true;
+    await act(async () => textarea.closest("form")!.requestSubmit());
+    await flush();
+    expect(node.querySelector('[data-dm-view="conversation"]')).not.toBeNull();
+    expect(
+      (
+        node.querySelector(
+          'textarea[aria-label="私信内容"]',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("离线时写下的草稿");
+    expect(node.querySelector("[data-dm-error]")).not.toBeNull();
+
+    offline = false;
+    await act(async () => textarea.closest("form")!.requestSubmit());
+    await flush();
+    expect(
+      calls.filter(
+        (c) => c.method === "POST" && c.url.endsWith("/api/community/messages"),
+      ),
+    ).toHaveLength(2);
+    expect(
+      (
+        node.querySelector(
+          'textarea[aria-label="私信内容"]',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("");
+  });
+
+  it("offers a retry when a conversation cannot be loaded", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    offline = true;
+    await openFirstConversation();
+    const failed = node.querySelector('[data-dm-view-state="unavailable"]');
+    expect(failed?.getAttribute("role")).toBe("alert");
+    const retry = [...failed!.querySelectorAll("button")].find(
+      (b) => b.textContent === "重试",
+    )!;
+    offline = false;
+    await act(async () => retry.click());
+    await flush();
+    expect(node.querySelector('[data-dm-view="conversation"]')).not.toBeNull();
+  });
+
+  const typeAndSend = async (text: string) => {
+    const textarea = node.querySelector(
+      'textarea[aria-label="私信内容"]',
+    ) as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      setter.call(textarea, text);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => textarea.closest("form")!.requestSubmit());
+    await flush();
+  };
+
+  it.each([
+    ["dm_blocked", "对方目前不接受你的私信。"],
+    ["dm_daily_limit", "今天新发起的私信对话已达上限，请明天再试。"],
+    ["dm_rate_limited", "发送太快了，请稍后再试。"],
+  ])(
+    "shows the server's exact reason when a first message is refused (%s)",
+    async (reason, text) => {
+      author.viewer = { id: me };
+      authorClient.setAccount(me);
+      refuseSendWith = reason;
+      await act(async () =>
+        root.render(
+          <DirectMessagePanel
+            onOpenProfile={vi.fn()}
+            openWith={{ userId: other, displayName: "书法学徒" }}
+          />,
+        ),
+      );
+      await flush();
+      await typeAndSend("你好");
+      expect(node.querySelector("[data-dm-error]")?.textContent).toBe(text);
+      expect(node.textContent).not.toContain("暂时无法完成");
+      expect(
+        (
+          node.querySelector(
+            'textarea[aria-label="私信内容"]',
+          ) as HTMLTextAreaElement
+        ).value,
+      ).toBe("你好");
+    },
+  );
+
+  it("shows a gate refusal once, as the composer's reason, not beside a generic retry", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    await openFirstConversation();
+    refuseSendWith = "dm_request_pending";
+    await typeAndSend("还在吗");
+    expect(node.querySelector("[data-dm-refusal]")?.textContent).toBe(
+      "你已发送一条私信，等对方回复后才能继续发送。",
+    );
+    expect(node.querySelector("[data-dm-error]")).toBeNull();
+    expect(node.textContent).not.toContain("暂时无法完成");
   });
 });

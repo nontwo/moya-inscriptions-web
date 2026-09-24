@@ -15,7 +15,7 @@ const DM_POLL_BACKOFF_MAX_MS = 60_000;
 
 const describeFailure = (error: unknown): string => {
   if (error instanceof AuthorRequestError) {
-    const code = error.message;
+    const code = error.reason ?? "";
     const known: Record<string, string> = {
       dm_request_pending: "你已发送一条私信，等对方回复后才能继续发送。",
       dm_blocked: "对方目前不接受你的私信。",
@@ -275,12 +275,14 @@ export const useConversation = (id: string | null, enabled: boolean) => {
         await poll();
         return { ok: true };
       } catch (error) {
-        // Refresh the truthful state (e.g. the gate) but keep the draft.
-        await load().catch(() => undefined);
+        // Refresh the truthful state (e.g. the gate) but keep the draft and
+        // the conversation: a refresh that also fails (for example while
+        // offline) changes nothing, so the composer and its text stay.
+        await poll().catch(() => undefined);
         return { ok: false, message: describeFailure(error) };
       }
     },
-    [id, poll, load],
+    [id, poll],
   );
   return {
     state,

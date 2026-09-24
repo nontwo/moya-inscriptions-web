@@ -54,8 +54,8 @@ type AllowedMethod = "GET" | "POST" | "GET, POST";
 
 const sendRouteError = (
   response: Parameters<RequestListener>[1],
-  status: 404 | 405,
-  message: "Method Not Allowed" | "Not Found",
+  status: 400 | 404 | 405,
+  message: "Bad Request" | "Method Not Allowed" | "Not Found",
   allow: AllowedMethod = "GET",
 ): void => {
   sendJson(
@@ -110,8 +110,16 @@ export const createRouter =
     community,
   }: RouterDependencies): RequestListener =>
   (request, response) => {
-    const pathname = new URL(request.url ?? "/", "http://request.invalid")
-      .pathname;
+    // A request target that is not a URL path (for example `//[`) is a client
+    // error. This listener runs synchronously, so a throw here would be an
+    // uncaught exception that ends the process.
+    let pathname: string;
+    try {
+      pathname = new URL(request.url ?? "/", "http://request.invalid").pathname;
+    } catch {
+      sendRouteError(response, 400, "Bad Request");
+      return;
+    }
 
     if (pathname === "/health") {
       if (request.method !== "GET") {

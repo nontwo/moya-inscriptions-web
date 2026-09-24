@@ -13,6 +13,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Server } from "node:http";
+import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -182,12 +183,24 @@ describe("operator failures stay request failures on the real server", () => {
 
   afterAll(async () => {
     process.off("unhandledRejection", onRejection);
-    if (server) await stopServer(server);
-    await app?.end();
-    await setup?.end();
-    if (createdDB) await admin.query(`DROP DATABASE ${database}`);
-    if (createdRole) await admin.query(`DROP ROLE ${role}`);
-    await admin.end();
+    try {
+      // A server that failed to answer (a negative control) must not keep the
+      // teardown waiting on its open connections.
+      server?.closeAllConnections();
+      if (server) await stopServer(server);
+      await app?.end();
+      await setup?.end();
+    } finally {
+      try {
+        if (createdDB) await admin.query(`DROP DATABASE ${database}`);
+      } finally {
+        try {
+          if (createdRole) await admin.query(`DROP ROLE ${role}`);
+        } finally {
+          await admin.end();
+        }
+      }
+    }
   });
 
   it("answers an unexpected direct-message removal failure with a bounded 500, keeps serving, and leaves no partial writes", async () => {
@@ -342,19 +355,49 @@ describe("operator failures stay request failures on the real server", () => {
       `/internal/community/messages/${malformed}/remove`,
       { requestId: randomUUID(), purpose: "验收：畸形路径" },
     );
-    expect([400, 404]).toContain(dmRemove.status);
+    expect(dmRemove.status).toBe(404);
     const threadEdit = await operator(
       "POST",
       `/internal/community/threads/${malformed}`,
       { requestId: randomUUID(), expectedVersion: 1, title: "x" },
     );
-    expect([400, 404]).toContain(threadEdit.status);
+    expect(threadEdit.status).toBe(404);
     const publicRead = await withSession(
       one.token,
       "GET",
       `/v1/community/messages/${malformed}?pageSize=30`,
     );
-    expect([404, 422]).toContain(publicRead.status);
+    expect(publicRead.status).toBe(404);
+    // A malformed participant is refused, not looked up as a stranger.
+    const pairLookup = await withSession(
+      one.token,
+      "GET",
+      `/v1/community/messages/with/${malformed}`,
+    );
+    expect(pairLookup.status).toBe(400);
+    const threadRead = await fetch(`${base}/v1/community/threads/${malformed}`);
+    expect(threadRead.status).toBe(404);
+    await stillServing(one.token);
+    expect(rejections).toEqual([]);
+  });
+
+  it("answers a request target that is not a URL path with 400 and keeps serving", async () => {
+    const one = await signIn("dev-user-01");
+    const { hostname, port } = new URL(base);
+    // Raw bytes: fetch would normalize the target before sending it.
+    const statusLine = await new Promise<string>((resolve, reject) => {
+      const socket = connect(Number(port), hostname, () =>
+        socket.write(
+          "GET //[ HTTP/1.1\r\nHost: backend.invalid\r\nConnection: close\r\n\r\n",
+        ),
+      );
+      let received = "";
+      socket.setEncoding("utf8");
+      socket.on("data", (chunk) => (received += chunk));
+      socket.on("end", () => resolve(received.split("\r\n")[0] ?? ""));
+      socket.on("error", reject);
+    });
+    expect(statusLine).toBe("HTTP/1.1 400 Bad Request");
     await stillServing(one.token);
     expect(rejections).toEqual([]);
   });

@@ -70,6 +70,10 @@ export const handleThreadRequest = async (
       return;
     }
     const id = decodePathSegment(path[0]!);
+    if (id === undefined) {
+      sendApiError(response, "ITEM_NOT_FOUND", "Thread not found");
+      return;
+    }
     if (path.length === 1) {
       if (method !== "GET") {
         sendJson(
@@ -190,12 +194,17 @@ export const handleThreadOperatorRequest = async (
         sendOperatorError(response, 400, "INVALID_COMMAND");
         return true;
       }
+      const id = decodePathSegment(rest[0]!);
+      if (id === undefined) {
+        sendOperatorError(response, 404, "NOT_FOUND");
+        return true;
+      }
       sendJson(
         response,
         200,
         await service.operatorUpdate(
           operator,
-          decodePathSegment(rest[0]!),
+          id,
           await readJsonBody(request, 100000),
         ),
       );
