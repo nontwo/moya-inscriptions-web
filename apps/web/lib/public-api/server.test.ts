@@ -342,6 +342,8 @@ describe("Combined relay: notifications account binding next to a refused Sessio
     expect(upstream).toHaveBeenCalledTimes(3);
     expect(headerOf(upstream.mock.calls[2]!, "authorization")).toBeNull();
     expect(headerOf(upstream.mock.calls[2]!, "x-author-account")).toBe(account);
+  });
+});
 
 /* content-community-completion-v1: Development editorial images for a phone on the LAN. */
 
