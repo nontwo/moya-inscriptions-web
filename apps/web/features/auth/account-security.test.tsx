@@ -259,4 +259,61 @@ describe("AccountSecurity", () => {
     ).toBe(false);
     root.unmount();
   });
+
+  // A phone on the Development LAN origin (plain HTTP) is not a secure
+  // context, so crypto.randomUUID does not exist there.
+  it("starts binding on a plain-HTTP LAN origin, where crypto.randomUUID does not exist", async () => {
+    request.mockImplementation(async (path, init) => {
+      const body = init?.body as { purpose?: string } | undefined;
+      if (path === "account") return { status: 200, body: account };
+      if (path === "challenges" && body?.purpose === "reauthenticate")
+        return { status: 200, body: challenge };
+      return {
+        status: 500,
+        body: { error: { message: "AUTH_PROOF_REJECTED" } },
+      };
+    });
+    Object.defineProperty(crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(<AccountSecurity />);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const bind = [...container.querySelectorAll("button")].find(
+        (button) => button.textContent === "绑定",
+      );
+      await act(async () => {
+        bind?.click();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(
+        container.querySelector("input[autocomplete='one-time-code']"),
+      ).not.toBeNull();
+      const sent = request.mock.calls.find(
+        ([path, init]) =>
+          path === "challenges" &&
+          (init?.body as { purpose?: string } | undefined)?.purpose ===
+            "reauthenticate",
+      );
+      expect(
+        (sent?.[1]?.body as { idempotencyKey?: string } | undefined)
+          ?.idempotencyKey,
+      ).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      );
+      root.unmount();
+    } finally {
+      delete (crypto as { randomUUID?: unknown }).randomUUID;
+    }
+  });
 });

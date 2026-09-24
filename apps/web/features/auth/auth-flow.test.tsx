@@ -106,4 +106,56 @@ describe("AuthFlow", () => {
     expect(code.value).toBe("123456");
     root.unmount();
   });
+
+  // A phone on the Development LAN origin (plain HTTP) is not a secure
+  // context, so crypto.randomUUID does not exist there.
+  it("sends a code on a plain-HTTP LAN origin, where crypto.randomUUID does not exist", async () => {
+    Object.defineProperty(crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(<AuthFlow mode="sign-in" returnTo="/" />);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const email = container.querySelector(
+        "input[autocomplete='email']",
+      ) as HTMLInputElement;
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(email, "phone@example.com");
+      await act(async () => {
+        email.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      const send = [...container.querySelectorAll("button")].find(
+        (button) => button.textContent === "发送验证码",
+      );
+      await act(async () => {
+        send?.click();
+      });
+      expect(
+        container.querySelector("input[autocomplete='one-time-code']"),
+      ).not.toBeNull();
+      const { authRequest } = await import("./auth-api");
+      const sent = vi
+        .mocked(authRequest)
+        .mock.calls.find(([path]) => path === "challenges");
+      expect(
+        (sent?.[1]?.body as { idempotencyKey?: string } | undefined)
+          ?.idempotencyKey,
+      ).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      );
+      root.unmount();
+    } finally {
+      delete (crypto as { randomUUID?: unknown }).randomUUID;
+    }
+  });
 });

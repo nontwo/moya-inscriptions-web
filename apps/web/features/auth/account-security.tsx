@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { requestIdentity } from "../shell/request-identity";
 import { authRequest } from "./auth-api";
 import type { AuthAccountView } from "./auth-api";
 
@@ -157,7 +158,7 @@ export const AccountSecurity = () => {
       body: {
         channel: currentFlow.proof,
         purpose: "reauthenticate",
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: requestIdentity(),
       },
     });
     if (current !== generation.current) return;
@@ -196,7 +197,7 @@ export const AccountSecurity = () => {
         purpose: currentFlow.action === "replace" ? "replace" : "link",
         identifier: value,
         reauthToken: currentFlow.reauthToken,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: requestIdentity(),
       },
     });
     if (current !== generation.current) return;
@@ -249,7 +250,7 @@ export const AccountSecurity = () => {
           challengeId: flow.challengeId,
           code,
           continuationToken: flow.continuation,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: requestIdentity(),
         },
       });
       if (current !== generation.current) return;
@@ -271,7 +272,7 @@ export const AccountSecurity = () => {
             channel: flow.target,
             reauthToken: body.reauthToken,
             expectedVersion: flow.expectedVersion,
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: requestIdentity(),
           },
         });
         if (current !== generation.current) return;
@@ -293,7 +294,7 @@ export const AccountSecurity = () => {
         continuationToken: flow.continuation,
         reauthToken: flow.reauthToken,
         expectedVersion: flow.expectedVersion,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: requestIdentity(),
       },
     });
     if (current !== generation.current) return;

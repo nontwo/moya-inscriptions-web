@@ -93,7 +93,10 @@ unknown) is treated as signed out: when the Backend refuses that session itself,
 the current-user check (`/api/community/me`) and the same-origin community relay
 clear the `yoyi-session` cookie, and the relay answers a read as it would for a
 signed-out browser, so public content stays readable; a write is refused and not
-repeated. A check that cannot reach the Backend never signs out. Notification
+repeated. A check that cannot reach the Backend never signs out. The login,
+registration and account-security pages also work on the plain-HTTP Development
+LAN origin used for phone QA, which is not a secure context: their idempotency
+keys come from `crypto.getRandomValues`, not `crypto.randomUUID`. Notification
 streams and DM admission must treat a failed `identify` as logged out. That
 combined check is pending until tracks N and C integrate.
 
