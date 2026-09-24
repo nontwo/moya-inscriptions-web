@@ -318,4 +318,9 @@ GRANT UPDATE (hidden_at, hidden_before_sequence, muted, read_sequence, updated_a
 GRANT SELECT, INSERT ON TABLE community.dm_messages TO :"app_role";
 GRANT UPDATE (removed_at, removed_by) ON TABLE community.dm_messages TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.dm_command_receipts TO :"app_role";
+-- Owner moderation removal redacts the sender's send receipt so removed text
+-- keeps no second copy (direct-message-adapter operatorRemoveMessage). Only the
+-- stored result is rewritten; actor, request, fingerprint and time stay
+-- write-once, and nothing is deleted.
+GRANT UPDATE (result) ON TABLE community.dm_command_receipts TO :"app_role";
 GRANT SELECT, INSERT ON TABLE community.dm_moderation_events TO :"app_role";

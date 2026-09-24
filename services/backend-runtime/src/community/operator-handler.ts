@@ -72,6 +72,11 @@ export const isAuthorizedOperator = (
 };
 
 const sendFailure = (response: ServerResponse, error: unknown): void => {
+  // A handler that failed after it started answering cannot be answered twice.
+  if (response.headersSent) {
+    response.destroy();
+    return;
+  }
   if (isCommunityNotFoundError(error)) {
     sendOperatorError(response, 404, "NOT_FOUND");
     return;
@@ -167,52 +172,55 @@ export const handleOperatorRequest = async (
     sendOperatorError(response, 401, "OPERATOR_UNAUTHORIZED");
     return;
   }
-  if (
-    agentAdministrationService !== undefined &&
-    (await handleAgentRequest(
-      request,
-      response,
-      pathname,
-      agentAdministrationService,
-    ))
-  )
-    return;
-  if (
-    publishingOperatorService !== undefined &&
-    (await handlePublishingOperatorRequest(
-      request,
-      response,
-      pathname,
-      publishingOperatorService,
-    ))
-  )
-    return;
-  if (
-    directMessageService !== undefined &&
-    (await handleDirectMessageOperatorRequest(
-      request,
-      response,
-      pathname,
-      directMessageService,
-      "owner",
-    ))
-  )
-    return;
-  if (
-    threadService !== undefined &&
-    (await handleThreadOperatorRequest(
-      request,
-      response,
-      pathname,
-      threadService,
-      "owner",
-    ))
-  )
-    return;
   const method = request.method ?? "GET";
   const methodNotAllowed = () =>
     sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
   try {
+    // Every operator route family, including the Agent, publishing, direct-
+    // message and Thread handlers, runs inside this boundary: an error they do
+    // not map themselves becomes a bounded operator failure for this request.
+    if (
+      agentAdministrationService !== undefined &&
+      (await handleAgentRequest(
+        request,
+        response,
+        pathname,
+        agentAdministrationService,
+      ))
+    )
+      return;
+    if (
+      publishingOperatorService !== undefined &&
+      (await handlePublishingOperatorRequest(
+        request,
+        response,
+        pathname,
+        publishingOperatorService,
+      ))
+    )
+      return;
+    if (
+      directMessageService !== undefined &&
+      (await handleDirectMessageOperatorRequest(
+        request,
+        response,
+        pathname,
+        directMessageService,
+        "owner",
+      ))
+    )
+      return;
+    if (
+      threadService !== undefined &&
+      (await handleThreadOperatorRequest(
+        request,
+        response,
+        pathname,
+        threadService,
+        "owner",
+      ))
+    )
+      return;
     const operatorService = new CommunityContentOperatorService(
       contentOperatorPort,
       discussionPort,
@@ -497,7 +505,7 @@ export const handleOperatorRequest = async (
 
     sendOperatorError(response, 404, "NOT_FOUND");
   } catch (error) {
-    if (error instanceof JsonBodyError) {
+    if (error instanceof JsonBodyError && !response.headersSent) {
       sendOperatorError(response, 400, "INVALID_COMMAND");
       return;
     }

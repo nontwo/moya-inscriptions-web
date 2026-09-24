@@ -23,7 +23,10 @@ vi.mock("../shell/request-identity", () => ({
   requestIdentity: () => "11111111-1111-4111-8111-111111111111",
 }));
 import { DirectMessagePanel } from "./direct-message-panel";
+import type { DirectMessageTitle } from "./direct-message-panel";
 import { authorClient } from "./message-data";
+import previewStyles from "../authors/message-preview.module.css";
+import panelStyles from "./direct-message-panel.module.css";
 
 const me = `user-${"1".repeat(32)}`;
 const other = `user-${"2".repeat(32)}`;
@@ -89,6 +92,20 @@ const respond = (url: string, method: string, body: unknown) => {
     const text = (body as { text: string }).text;
     return { status: 201, json: message(3, me, text) };
   }
+  if (url.includes("/api/community/messages/with/"))
+    return { conversation: null };
+  const action =
+    /\/api\/community\/messages\/[^/]+\/(hide|unhide|mute|unmute)$/.exec(
+      url,
+    )?.[1];
+  if (action && method === "POST")
+    return conversation({
+      state,
+      canSend: state === "active",
+      sendRefusal: state === "active" ? null : "request_pending",
+      muted: action === "mute",
+      hidden: action === "hide",
+    });
   if (url.endsWith("/read"))
     return conversation({
       state,
@@ -216,5 +233,250 @@ describe("DirectMessagePanel (content-community-completion-v1)", () => {
     expect(calls.indexOf(historyReads.at(-1)!)).toBeGreaterThan(
       calls.indexOf(sent!),
     );
+  });
+});
+
+const key = (target: Element, name: string) =>
+  act(async () => {
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", { key: name, bubbles: true }),
+    );
+  });
+const openFirstConversation = async () => {
+  await act(async () =>
+    (
+      node.querySelector('button[aria-label^="打开与"]') as HTMLButtonElement
+    ).click(),
+  );
+  await flush();
+};
+
+describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
+  it("keeps a row's actions covered and disabled until ArrowLeft reveals them; Escape or the row closes them", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    const row = node.querySelector(
+      `[data-dm-row="${conversationId}"]`,
+    ) as HTMLLIElement;
+    const open = row.querySelector(
+      'button[aria-label^="打开与"]',
+    ) as HTMLButtonElement;
+    const mute = row.querySelector(
+      'button[aria-label="静音"]',
+    ) as HTMLButtonElement;
+    const hide = row.querySelector(
+      'button[aria-label="删除对话"]',
+    ) as HTMLButtonElement;
+    expect(row.dataset.reveal).toBe("0");
+    expect([mute.disabled, hide.disabled]).toEqual([true, true]);
+    expect(
+      row.querySelector('[role="group"]')?.getAttribute("aria-hidden"),
+    ).toBe("true");
+
+    open.focus();
+    await key(open, "ArrowLeft");
+    await flush();
+    expect(row.dataset.reveal).toBe("136");
+    expect([mute.disabled, hide.disabled]).toEqual([false, false]);
+    expect(document.activeElement).toBe(mute);
+
+    await key(mute, "Escape");
+    expect(row.dataset.reveal).toBe("0");
+    expect(document.activeElement).toBe(open);
+
+    // Activating the row while its actions show closes them instead of opening.
+    await key(open, "ArrowLeft");
+    await act(async () => open.click());
+    await flush();
+    expect(row.dataset.reveal).toBe("0");
+    expect(node.querySelector("[data-dm-view]")).toBeNull();
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("mutes and hides only from the revealed actions; hiding offers Undo in the floating notice", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    const open = () =>
+      node.querySelector('button[aria-label^="打开与"]') as HTMLButtonElement;
+    await key(open(), "ArrowLeft");
+    await act(async () =>
+      (
+        node.querySelector('button[aria-label="静音"]') as HTMLButtonElement
+      ).click(),
+    );
+    await flush();
+    expect(calls.some((c) => c.url.endsWith(`/${conversationId}/mute`))).toBe(
+      true,
+    );
+    expect(open().getAttribute("aria-label")).toContain("已静音");
+    expect(
+      node.querySelector('[role="img"][aria-label="已静音"]'),
+    ).not.toBeNull();
+
+    await key(open(), "ArrowLeft");
+    await act(async () =>
+      (
+        node.querySelector('button[aria-label="删除对话"]') as HTMLButtonElement
+      ).click(),
+    );
+    await flush();
+    expect(node.querySelector(`[data-dm-row="${conversationId}"]`)).toBeNull();
+    const notice = node.querySelector("[data-dm-notice]") as HTMLElement;
+    expect(notice.textContent).toContain("已删除对话");
+    expect(notice.className).toContain(previewStyles.notice);
+    await act(async () => notice.querySelector("button")!.click());
+    await flush();
+    expect(calls.some((c) => c.url.endsWith(`/${conversationId}/unhide`))).toBe(
+      true,
+    );
+    expect(
+      node.querySelector(`[data-dm-row="${conversationId}"]`),
+    ).not.toBeNull();
+  });
+
+  it("keeps request, gate, refusal and start notices inline, never as the floating toast", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    const inline = (element: Element | null) => {
+      expect(element).not.toBeNull();
+      expect(element!.className).not.toContain(previewStyles.notice);
+    };
+    inline(
+      [...node.querySelectorAll("[data-dm-row] span")].find(
+        (span) => span.textContent === "等待对方回复",
+      ) ?? null,
+    );
+    await openFirstConversation();
+    inline(node.querySelector("[data-dm-gate]"));
+    inline(node.querySelector("[data-dm-refusal]"));
+    expect(node.querySelector("[data-dm-refusal]")!.className).toContain(
+      panelStyles.inlineNotice,
+    );
+
+    await act(async () => root.unmount());
+    root = createRoot(node);
+    await act(async () =>
+      root.render(
+        <DirectMessagePanel
+          onOpenProfile={vi.fn()}
+          openWith={{ userId: other, displayName: "书法学徒" }}
+        />,
+      ),
+    );
+    await flush();
+    const start = node.querySelector('[data-dm-view="start"]');
+    expect(start).not.toBeNull();
+    inline(start!.querySelector('[role="status"]'));
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("hands the participant to a host header, clears it on Back, and keeps its own title row without that seam", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    const titles: (DirectMessageTitle | null)[] = [];
+    const onTitleChange = (title: DirectMessageTitle | null) => {
+      titles.push(title);
+    };
+    const onOpenProfile = vi.fn();
+    const depths: number[] = [];
+    const onDepthChange = (depth: number) => {
+      depths.push(depth);
+    };
+    const panel = (back: number) => (
+      <DirectMessagePanel
+        onOpenProfile={onOpenProfile}
+        onTitleChange={onTitleChange}
+        onDepthChange={onDepthChange}
+        backRequested={back}
+      />
+    );
+    await act(async () => root.render(panel(0)));
+    await flush();
+    await openFirstConversation();
+    const view = node.querySelector('[data-dm-view="conversation"]')!;
+    expect(view.getAttribute("data-dm-title")).toBe("host");
+    expect(view.querySelector(`.${panelStyles.title}`)).toBeNull();
+    const header = titles.at(-1)!;
+    expect(header.label).toBe("书法学徒");
+
+    // The host renders the header content; it opens the participant's profile.
+    const hostNode = document.createElement("div");
+    document.body.append(hostNode);
+    const hostRoot = createRoot(hostNode);
+    await act(async () => hostRoot.render(header.content));
+    const button = hostNode.querySelector(
+      'button[aria-label="查看书法学徒的主页"]',
+    ) as HTMLButtonElement;
+    expect(button.textContent).toContain("书法学徒");
+    await act(async () => button.click());
+    expect(onOpenProfile).toHaveBeenCalledWith(other, button);
+    await act(async () => hostRoot.unmount());
+    hostNode.remove();
+
+    await act(async () => root.render(panel(1)));
+    await flush();
+    expect(titles.at(-1)).toBeNull();
+    expect(depths.at(-1)).toBe(0);
+
+    await act(async () => root.unmount());
+    root = createRoot(node);
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    await openFirstConversation();
+    const fallback = node.querySelector('[data-dm-view="conversation"]')!;
+    expect(fallback.getAttribute("data-dm-title")).toBe("view");
+    expect(
+      fallback.querySelector(`.${panelStyles.title}`)?.textContent,
+    ).toContain("书法学徒");
+  });
+
+  it("returns focus to the composer when sending dropped it", async () => {
+    author.viewer = { id: me };
+    authorClient.setAccount(me);
+    state = "active";
+    await act(async () =>
+      root.render(<DirectMessagePanel onOpenProfile={vi.fn()} />),
+    );
+    await flush();
+    await openFirstConversation();
+    const textarea = node.querySelector(
+      'textarea[aria-label="私信内容"]',
+    ) as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      setter.call(textarea, "收到");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // A browser drops focus from the submit button once sending disables it.
+    const submit = textarea
+      .closest("form")!
+      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    submit.focus();
+    submit.blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => textarea.closest("form")!.requestSubmit());
+    await flush();
+    expect(textarea.value).toBe("");
+    expect(document.activeElement).toBe(textarea);
   });
 });

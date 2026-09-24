@@ -19,6 +19,7 @@ import { collectTransportQuery } from "../http/transport-query.js";
 
 import type { DirectMessageService } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { decodePathSegment } from "../http/request-boundary.js";
 
 const noStore = { "cache-control": "private, no-store", vary: "Authorization" };
 
@@ -84,7 +85,7 @@ export const handleDirectMessageRequest = async (
       return;
     }
     if (path.length === 2 && path[0] === "with" && method === "GET") {
-      const other = parsed(publicUserIdSchema, decodeURIComponent(path[1]!));
+      const other = parsed(publicUserIdSchema, decodePathSegment(path[1]!));
       if (other === null || Object.keys(query).length > 0)
         return invalidQuery();
       sendJson(
@@ -95,7 +96,7 @@ export const handleDirectMessageRequest = async (
       );
       return;
     }
-    const id = decodeURIComponent(path[0] ?? "");
+    const id = decodePathSegment(path[0] ?? "");
     if (path.length === 1 && method === "GET") {
       const input = parsed(directMessageHistoryQuerySchema, query);
       if (input === null) return invalidQuery();
@@ -234,7 +235,7 @@ export const handleDirectMessageOperatorRequest = async (
         200,
         await service.operatorRemove(
           operator,
-          decodeURIComponent(rest[0]!),
+          decodePathSegment(rest[0]!),
           await readJsonBody(request, 10_000),
         ),
       );
