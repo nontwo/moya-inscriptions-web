@@ -48,6 +48,18 @@ export function PreviewComments({
   );
 }
 
+/**
+ * A live comment section takes the same comment column as the preview's
+ * comments (width, centring, padding and room for the fixed composer).
+ */
+function LiveComments({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.comments} data-live-comments="">
+      {children}
+    </div>
+  );
+}
+
 export function PostReader({
   id,
   children,
@@ -68,7 +80,9 @@ export function PostReader({
       <CommentComposerPortalProvider target={outlet}>
         <div className={styles.readerScroll} data-post-reader={id}>
           {children}
-          {comments ?? (
+          {comments != null ? (
+            <LiveComments>{comments}</LiveComments>
+          ) : (
             <PreviewComments
               contentId={id}
               {...(highlightCommentId ? { highlightCommentId } : {})}
@@ -230,7 +244,9 @@ export function ArticleReader({
         </div>
         {commentHost &&
           createPortal(
-            comments ?? (
+            comments != null ? (
+              <LiveComments>{comments}</LiveComments>
+            ) : (
               <PreviewComments
                 contentId={id}
                 {...(highlightCommentId ? { highlightCommentId } : {})}

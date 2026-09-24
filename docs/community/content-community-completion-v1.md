@@ -409,12 +409,22 @@ discussion destination and opens the Article, and without a host MyComments does
 the same itself. Three cases cover the host hand-off, the scoped host's
 close-then-open and the host-less path (they fail against the previous code).
 
+The final combined journey run showed the live Article discussion running edge
+to edge in the accepted Article reader, while the reading column above it and
+the preview's comments are centred. Supplying a live `comments` slot replaced
+the preview's whole `PreviewComments`, including the accepted `.comments` column
+(maximum width, centring, side padding and room for the fixed composer). Both
+readers now place a live section in that same column
+(`apps/web/features/discussion-preview/article-reader.tsx`); two cases in
+`article-reader.test.tsx` fail against the previous code.
+
 Paths added for this round:
 `services/backend-runtime/src/http/request-boundary.ts`,
 `apps/web/features/messages/direct-conversation-row.tsx`,
 `apps/web/features/messages/direct-message-panel.module.css`,
 `apps/web/features/authors/message-center.module.css` (scoped host),
-`apps/web/features/authors/message-center-direct.test.tsx` and the two
+`apps/web/features/authors/message-center-direct.test.tsx`,
+`apps/web/features/discussion-preview/article-reader.test.tsx` and the two
 PostgreSQL tests above.
 
 Integration-owned, not in this branch: the live (notifications) message host's
