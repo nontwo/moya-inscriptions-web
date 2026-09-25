@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { MentionReference, PublicUserProfile } from "@moya/contracts";
 import { normalizeMentionText } from "./mention-data";
 import { authorClient } from "../authors/author-data";
@@ -22,7 +22,8 @@ export function MentionControl({
   inline?: boolean;
 }) {
   const enabled = useNotifications().enabled,
-    id = useId();
+    id = useId(),
+    trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [people, setPeople] = useState<PublicUserProfile[]>([]),
@@ -57,6 +58,7 @@ export function MentionControl({
   return (
     <div className={inline ? styles.mentionInline : styles.mention}>
       <button
+        ref={trigger}
         type="button"
         className={inline ? styles.mentionTrigger : undefined}
         aria-label={inline ? "提醒用户" : undefined}
@@ -67,7 +69,16 @@ export function MentionControl({
         {inline ? "@" : "@ 提醒用户"}
       </button>
       {open && (
-        <div id={id} className={inline ? styles.mentionPanel : undefined}>
+        <div
+          id={id}
+          className={inline ? styles.mentionPanel : undefined}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.stopPropagation();
+            setOpen(false);
+            trigger.current?.focus();
+          }}
+        >
           <label>
             查找用户
             <input
@@ -75,6 +86,10 @@ export function MentionControl({
               value={query}
               maxLength={40}
               onChange={(event) => setQuery(event.currentTarget.value)}
+              // Enter searches here; it must not submit the surrounding form.
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.preventDefault();
+              }}
               placeholder="输入至少两个字符"
             />
           </label>

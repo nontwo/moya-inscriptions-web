@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -576,6 +577,7 @@ export const CommentSection = ({
   };
   const [sort, setSort] = useState<CommentSort>("hot");
   const composerPortalTarget = useCommentComposerPortalTarget();
+  const postingAsId = useId();
   const live = presentation === "live";
   const loading = loadingOverride ?? scenario === "comment-loading";
   const hot = hotItems ?? [];
@@ -653,12 +655,10 @@ export const CommentSection = ({
         </div>
       )}
       <div className={styles.composerInputRow}>
-        <div
-          className={styles.composerField}
-          data-composer-mention={live ? "" : undefined}
-        >
+        <div className={styles.composerField}>
           <textarea
             ref={textareaRef}
+            aria-describedby={postingAsId}
             aria-label={
               replyTarget === null
                 ? "写下你的评论"
@@ -697,7 +697,9 @@ export const CommentSection = ({
           {submitting ? "发送中…" : "发送"}
         </button>
       </div>
-      <span className={styles.visuallyHidden}>以“{currentUser.name}”发布</span>
+      <span id={postingAsId} className={styles.visuallyHidden}>
+        以“{currentUser.name}”发布
+      </span>
     </form>
   );
   // Signed out, the composer's place carries the truthful state instead.

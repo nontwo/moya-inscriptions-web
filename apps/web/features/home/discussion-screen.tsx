@@ -37,7 +37,10 @@ const editorialFeed = (id: string | null): DiscussionFeed | null =>
       : isThreadId(id)
         ? "threads"
         : null;
-const openerFeed = (opener: HTMLElement | undefined): DiscussionFeed | null => {
+/** The Discussion feed whose panel holds an opened card, if any. */
+export const openerFeed = (
+  opener: HTMLElement | undefined,
+): DiscussionFeed | null => {
   const panel = opener?.closest<HTMLElement>('[id^="discussion-panel-"]');
   const feed = panel?.id.slice("discussion-panel-".length);
   return feeds.find((key) => key === feed) ?? null;

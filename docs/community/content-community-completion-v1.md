@@ -464,20 +464,27 @@ integration commits after A, N and C.
    shape: a single text box with the 发送 button on its right.
    - Removed: the composer avatar (supersedes Phase 4's composer-avatar rows and
      `work-publishing-v1` "Comment avatars" for the composer only) and the
-     visible 以“…”发布 line, which stays for screen readers only.
+     visible 以“…”发布 line, which now only describes the box for screen
+     readers.
+   - The box is one line high and scrolls longer text inside it.
    - Mentions stay reachable. An "@" inside the box (accessible name 提醒用户)
      opens the same resolved-user picker above the box. Only a person chosen
-     there is mentioned, as before.
+     there is mentioned, as before. Escape closes the picker, and Enter in its
+     search field no longer sends the comment.
 2. **专题 opens one Article.** The 专题 tab lists published academic Articles as
    the large cards. A card opens that Article's reader directly, titled 专题;
    there is no Collection 阅读目录 step. When the tapped card is in 专题, the
-   Discussion pager stays on 专题.
+   Discussion pager stays on 专题. This changes the Goal's (§2) Web Specials:
+   Collections are no longer listed as 专题 cards.
    - Collections keep their published reads and their detail page, reachable by
      a deep link to a `collection-…` id. The Web no longer lists them.
-   - A deep link to an academic Article is titled 文章 until the Article loads,
-     and the pager behind it follows the id prefix (近闻) as before.
+   - An Article opened from 近闻 or 专题 is titled from its feed at once. A deep
+     link to any Article is titled 文章 until the Article loads (before, a news
+     deep link read 近闻 at once), and the pager behind it follows the id prefix
+     (近闻) as before.
 3. **Direct-message rows show only the count.** A row no longer shows
    a 私信请求 or 等待对方回复 tag; the unread count stays on the right, and a
    muted row keeps its muted mark. The request state moves into the row's
    accessible name. Inside the conversation, the gate notice and the composer's
-   refusal are unchanged.
+   refusal are unchanged. This drops the row's request tag kept inline by §10's
+   C3 repair.

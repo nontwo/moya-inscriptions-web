@@ -294,8 +294,24 @@ describe("real notification composition", () => {
     const panel = document.getElementById(
       trigger.getAttribute("aria-controls")!,
     );
-    expect(
-      panel?.querySelector('input[aria-label="查找要提醒的用户"]'),
-    ).not.toBeNull();
+    const input = panel!.querySelector<HTMLInputElement>(
+      'input[aria-label="查找要提醒的用户"]',
+    )!;
+    // Enter searches in the picker and never submits the comment around it;
+    // Escape closes the picker and returns to the trigger.
+    const enter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => input.dispatchEvent(enter));
+    expect(enter.defaultPrevented).toBe(true);
+    await act(async () =>
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
   });
 });

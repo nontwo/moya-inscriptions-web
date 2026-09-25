@@ -383,12 +383,15 @@ Active development tracks (independent of the parked cloud track):
    discussions and Admin existing-work management. Accepted presentation
    includes shared author bars, inscription rows, long-press actions, My
    display/account settings, icon-only Detail actions, direct avatar cropping
-   and Save recovery after Back or refresh. Comment, reply and composer avatars
-   follow the saved profile. Work creation/editing/deletion entrances remain
-   frozen; favorites/likes list filters remain hidden. Backend authorization,
-   media ownership and the America/New_York avatar-change rule remain in force.
-   The [Behavior Matrix](community/phase4-author-community-v1.md) preserves
-   scope and acceptance history;
+   and Save recovery after Back or refresh. Comment and reply avatars follow the
+   saved profile; since the Owner's 2026-09-25 phone acceptance the composer has
+   no avatar
+   ([decision](community/content-community-completion-v1.md#11-owner-phone-acceptance-decisions-2026-09-25)).
+   Work creation/editing/deletion entrances remain frozen; favorites/likes list
+   filters remain hidden. Backend authorization, media ownership and the
+   America/New_York avatar-change rule remain in force. The
+   [Behavior Matrix](community/phase4-author-community-v1.md) preserves scope
+   and acceptance history;
    [PR #126](https://github.com/nontwo/moya-inscriptions-web/pull/126) records
    the exact delivery head, independent reviews, CI outcomes and merge
    verification. Owner acceptance does not waive failed checks. This is a

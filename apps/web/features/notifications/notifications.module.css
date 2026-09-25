@@ -34,7 +34,9 @@
   color: var(--yoyi-color-text-secondary);
   font-size: var(--yoyi-type-body-small-size);
 }
-.mentionTrigger {
+/* Qualified by .mentionInline so hosts' generic `button { font: inherit }`
+   resets cannot restyle the trigger or the picker's buttons. */
+.mentionInline .mentionTrigger {
   position: absolute;
   right: 2px;
   bottom: 0;
@@ -49,10 +51,10 @@
   font-weight: 650;
   cursor: pointer;
 }
-.mentionTrigger[aria-expanded="true"] {
+.mentionInline .mentionTrigger[aria-expanded="true"] {
   color: var(--yoyi-color-seal-red);
 }
-.mentionTrigger:focus-visible {
+.mentionInline .mentionTrigger:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
   outline-offset: -2px;
   border-radius: var(--yoyi-radius-sm);
@@ -95,7 +97,7 @@
   margin: 0;
   padding: 0;
 }
-.mentionPanel button {
+.mentionInline .mentionPanel button {
   min-height: 44px;
   padding: 0 var(--yoyi-space-3);
   border: 0;
@@ -104,7 +106,7 @@
   font: inherit;
   cursor: pointer;
 }
-.mentionPanel li button {
+.mentionInline .mentionPanel li button {
   width: 100%;
   color: var(--yoyi-color-text-primary);
   text-align: left;
@@ -112,7 +114,7 @@
 .mentionPanel li button span {
   color: var(--yoyi-color-text-tertiary);
 }
-.mentionPanel button:disabled {
+.mentionInline .mentionPanel button:disabled {
   color: var(--yoyi-color-text-tertiary);
   cursor: not-allowed;
 }

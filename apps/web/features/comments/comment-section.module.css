@@ -105,7 +105,6 @@
   width: 100%;
   height: 44px;
   min-height: 44px;
-  max-height: 132px;
   resize: none;
   padding: 10px var(--yoyi-space-4);
   color: var(--yoyi-color-text-primary);
@@ -117,15 +116,8 @@
   line-height: 1.45;
 }
 
-/* Where supported, the box grows with its text up to about five lines. */
-@supports (field-sizing: content) {
-  .composer textarea {
-    height: auto;
-    field-sizing: content;
-  }
-}
-
-.composerField[data-composer-mention] textarea {
+/* Room for the "@" mention trigger, only when the box shows one. */
+.composerField:has(button) textarea {
   padding-right: 44px;
 }
 
@@ -133,7 +125,9 @@
   color: var(--yoyi-color-text-tertiary);
 }
 
-.composerSend {
+/* Qualified by .composer so the Article, message and chat hosts' generic
+   `button { font: inherit }` resets cannot restyle it. */
+.composer .composerSend {
   min-width: 64px;
   min-height: 44px;
   padding: 0 var(--yoyi-space-5);
@@ -147,11 +141,11 @@
   cursor: pointer;
 }
 
-.composerSend:hover:not(:disabled) {
+.composer .composerSend:hover:not(:disabled) {
   background: var(--yoyi-color-seal-red-hover);
 }
 
-.composerSend:disabled {
+.composer .composerSend:disabled {
   color: var(--yoyi-color-text-disabled);
   background: var(--yoyi-color-background-muted);
   cursor: not-allowed;

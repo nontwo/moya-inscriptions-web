@@ -1,6 +1,12 @@
 "use client";
 import { editorialMediaSrc } from "./editorial-media";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode, RefObject } from "react";
 import { Icon } from "@moya/ui";
 import type {
@@ -376,6 +382,15 @@ export function EditorialDetail({
   // either the feed or the detail says which, the neutral 文章.
   const presentation =
     loaded?.id === id ? loaded.presentation : listedArticlePresentation(id);
+  const reportPresentation = useCallback(
+    (value: ArticlePresentation) =>
+      setLoaded((old) =>
+        old?.id === id && old.presentation === value
+          ? old
+          : { id, presentation: value },
+      ),
+    [id],
+  );
   useLayoutEffect(() => {
     if (!child && detailScroll.current)
       detailScroll.current.scrollTop = parentScroll.current;
@@ -413,13 +428,7 @@ export function EditorialDetail({
       {isArticle ? (
         <LiveArticleReader
           id={id}
-          onPresentation={(value) =>
-            setLoaded((old) =>
-              old?.id === id && old.presentation === value
-                ? old
-                : { id, presentation: value },
-            )
-          }
+          onPresentation={reportPresentation}
           {...(renderComments ? { renderComments } : {})}
         />
       ) : child ? (
