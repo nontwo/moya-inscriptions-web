@@ -1,11 +1,11 @@
 "use client";
 import { editorialMediaSrc } from "./editorial-media";
-import type { ArticleCollectionSummary, ArticleSummary } from "@moya/contracts";
+import type { ArticleSummary } from "@moya/contracts";
 import { useProductShell } from "../product-shell/product-shell";
 import styles from "../discussion-preview/discussion-preview.module.css";
 import homeStyles from "../home/home-screen.module.css";
 import { formatEditorialTime } from "./format-time";
-import { useArticles, useCollections } from "./use-editorial-content";
+import { useArticles } from "./use-editorial-content";
 import type { EditorialListState } from "./use-editorial-content";
 
 const Picture = ({
@@ -125,16 +125,20 @@ export function EditorialNewsFeed() {
   );
 }
 
-/** 专题: published Article Collections as the large image-background cards. */
-export function EditorialCollectionsFeed() {
+/**
+ * 专题: published academic Articles as the large image-background cards. Owner
+ * acceptance (2026-09-25): each card opens its one Article directly, not a
+ * Collection's reading list.
+ */
+export function EditorialTopicsFeed() {
   const shell = useProductShell();
-  const { state, busy, retry, loadMore } = useCollections();
+  const { state, busy, retry, loadMore } = useArticles("academic");
   if (state.state !== "populated")
     return <EmptyState state={state.state} label="专题" onRetry={retry} />;
   return (
-    <div className={styles.feed} data-editorial-feed="collections">
+    <div className={styles.feed} data-editorial-feed="topics">
       <div className={styles.specialList}>
-        {state.items.map((item: ArticleCollectionSummary) => (
+        {state.items.map((item: ArticleSummary) => (
           <button
             type="button"
             key={item.id}
@@ -156,7 +160,7 @@ export function EditorialCollectionsFeed() {
             <span className={styles.specialShade} />
             <span className={styles.specialCopy}>
               <span className={styles.specialCategory}>
-                {[item.issue, item.category].filter(Boolean).join(" / ")}
+                {[item.issue, item.section].filter(Boolean).join(" / ")}
               </span>
               <strong>{item.title}</strong>
               {item.subtitle && (

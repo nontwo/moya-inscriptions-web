@@ -1100,24 +1100,8 @@ export function MessagePreview({
                 setDraft("");
               }}
             >
-              <button
-                type="button"
-                className={commentStyles.avatar}
-                aria-label="查看我的主页"
-                onClick={(event) => {
-                  event.currentTarget.focus({ preventScroll: true });
-                  openPerson("self");
-                }}
-              >
-                <span
-                  className={commentStyles.avatarContent}
-                  aria-hidden="true"
-                >
-                  我
-                </span>
-              </button>
-              <div className={commentStyles.composerBody}>
-                <div className={commentStyles.composerInputRow}>
+              <div className={commentStyles.composerInputRow}>
+                <div className={commentStyles.composerField}>
                   <textarea
                     id="message-preview-draft"
                     aria-label="输入消息"
@@ -1128,12 +1112,14 @@ export function MessagePreview({
                     maxLength={500}
                     onChange={(event) => setDraft(event.currentTarget.value)}
                   />
-                  <div className={commentStyles.composerFooter}>
-                    <button type="submit" disabled={!draft.trim()}>
-                      发送
-                    </button>
-                  </div>
                 </div>
+                <button
+                  type="submit"
+                  className={commentStyles.composerSend}
+                  disabled={!draft.trim()}
+                >
+                  发送
+                </button>
               </div>
             </form>
           </div>

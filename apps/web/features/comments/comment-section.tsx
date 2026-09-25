@@ -636,23 +636,27 @@ export const CommentSection = ({
       );
     } else accepted();
   };
+  // Owner acceptance (2026-09-25): every text composer is one box with the
+  // send button on its right; the mention trigger sits inside the box.
   const composer = (
     <form
       className={styles.composer}
       data-comment-composer=""
       onSubmit={submit}
     >
-      <Avatar user={currentUser} />
-      <div className={styles.composerBody}>
-        {replyTarget === null ? null : (
-          <div className={styles.replyMode} data-comment-reply-mode="">
-            <span>回复 {replyTarget.user.name}</span>
-            <button onClick={() => changeReplyTarget(null)} type="button">
-              取消
-            </button>
-          </div>
-        )}
-        <div className={styles.composerInputRow}>
+      {replyTarget === null ? null : (
+        <div className={styles.replyMode} data-comment-reply-mode="">
+          <span>回复 {replyTarget.user.name}</span>
+          <button onClick={() => changeReplyTarget(null)} type="button">
+            取消
+          </button>
+        </div>
+      )}
+      <div className={styles.composerInputRow}>
+        <div
+          className={styles.composerField}
+          data-composer-mention={live ? "" : undefined}
+        >
           <textarea
             ref={textareaRef}
             aria-label={
@@ -667,11 +671,12 @@ export const CommentSection = ({
               setDraft(next);
             }}
             placeholder="写下你的评论…"
-            rows={3}
+            rows={1}
             value={draft}
           />
           {live && (
             <MentionControl
+              inline
               text={draft}
               mentions={mentions}
               maxLength={1000}
@@ -683,17 +688,16 @@ export const CommentSection = ({
               }}
             />
           )}
-          <div className={styles.composerFooter}>
-            <span>以“{currentUser.name}”发布</span>
-            <button
-              disabled={draft.trim().length === 0 || submitting}
-              type="submit"
-            >
-              {submitting ? "发送中…" : "发送"}
-            </button>
-          </div>
         </div>
+        <button
+          className={styles.composerSend}
+          disabled={draft.trim().length === 0 || submitting}
+          type="submit"
+        >
+          {submitting ? "发送中…" : "发送"}
+        </button>
       </div>
+      <span className={styles.visuallyHidden}>以“{currentUser.name}”发布</span>
     </form>
   );
   // Signed out, the composer's place carries the truthful state instead.

@@ -274,4 +274,28 @@ describe("real notification composition", () => {
       { userId: person.id, handle: person.handle, start: 4, end: 15 },
     ]);
   });
+
+  it("sits inside a comment box as an @ trigger that opens the same picker", async () => {
+    // Owner acceptance (2026-09-25): the comment composer is one box and a
+    // send button; mentions stay reachable from an "@" inside the box.
+    await act(async () =>
+      root.render(
+        <NotificationProvider enabled>
+          <MentionControl inline text="" mentions={[]} onChange={vi.fn()} />
+        </NotificationProvider>,
+      ),
+    );
+    const trigger = node.querySelector("button")!;
+    expect(trigger.textContent).toBe("@");
+    expect(trigger.getAttribute("aria-label")).toBe("提醒用户");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => trigger.click());
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const panel = document.getElementById(
+      trigger.getAttribute("aria-controls")!,
+    );
+    expect(
+      panel?.querySelector('input[aria-label="查找要提醒的用户"]'),
+    ).not.toBeNull();
+  });
 });

@@ -199,7 +199,16 @@ describe("DirectMessagePanel (content-community-completion-v1)", () => {
     );
     await flush();
     expect(node.textContent).toContain("书法学徒");
-    expect(node.textContent).toContain("等待对方回复");
+    // Owner acceptance (2026-09-25): a row shows no visible request tag, only
+    // the unread count; its accessible name still states the request.
+    expect(node.querySelector("[data-dm-row]")?.textContent).not.toContain(
+      "等待对方回复",
+    );
+    expect(
+      node
+        .querySelector('button[aria-label^="打开与"]')
+        ?.getAttribute("aria-label"),
+    ).toContain("等待对方回复");
     await act(async () =>
       (
         node.querySelector('button[aria-label^="打开与"]') as HTMLButtonElement
@@ -382,11 +391,11 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
       expect(element).not.toBeNull();
       expect(element!.className).not.toContain(previewStyles.notice);
     };
-    inline(
-      [...node.querySelectorAll("[data-dm-row] span")].find(
-        (span) => span.textContent === "等待对方回复",
-      ) ?? null,
-    );
+    expect(
+      [...node.querySelectorAll("[data-dm-row] span")].some((span) =>
+        ["等待对方回复", "私信请求"].includes(span.textContent ?? ""),
+      ),
+    ).toBe(false);
     await openFirstConversation();
     inline(node.querySelector("[data-dm-gate]"));
     inline(node.querySelector("[data-dm-refusal]"));
@@ -534,9 +543,15 @@ describe("DirectMessagePanel rows, notices and header (C3 repair)", () => {
     expect(structure(chat)).toEqual(["stream", "composer"]);
     const composer = chat.querySelector("[data-message-composer]")!;
     expect(composer.className).toContain(previewStyles.chatComposer);
-    expect(
-      composer.querySelector('textarea[aria-label="私信内容"]'),
-    ).not.toBeNull();
+    const textarea = composer.querySelector('textarea[aria-label="私信内容"]');
+    expect(textarea).not.toBeNull();
+    // Owner acceptance (2026-09-25): the same box-and-send shape as comments,
+    // with no avatar beside it.
+    const send = composer.querySelector('button[type="submit"]')!;
+    expect(send.parentElement!.contains(textarea)).toBe(true);
+    expect([...send.parentElement!.children].at(-1)).toBe(send);
+    expect(composer.textContent).not.toContain("我");
+    expect(composer.querySelector('[aria-label="查看我的主页"]')).toBeNull();
 
     await act(async () => root.unmount());
     root = createRoot(node);

@@ -27,6 +27,100 @@
 .mention button:disabled {
   color: var(--yoyi-color-text-tertiary);
 }
+/* Inline in a comment box (Owner acceptance 2026-09-25): the root takes no
+   space, the "@" trigger sits at the box's right edge and the picker opens
+   above the box. Both are placed against the composer field. */
+.mentionInline {
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+}
+.mentionTrigger {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  width: 40px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--yoyi-color-text-secondary);
+  font: inherit;
+  font-size: var(--yoyi-type-body-size);
+  font-weight: 650;
+  cursor: pointer;
+}
+.mentionTrigger[aria-expanded="true"] {
+  color: var(--yoyi-color-seal-red);
+}
+.mentionTrigger:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--yoyi-radius-sm);
+}
+.mentionPanel {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: calc(100% + var(--yoyi-space-2));
+  left: 0;
+  display: grid;
+  gap: var(--yoyi-space-3);
+  box-sizing: border-box;
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+  padding: var(--yoyi-space-4);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-md);
+  box-shadow: var(--yoyi-shadow-dialog);
+}
+.mentionPanel label {
+  display: grid;
+  gap: var(--yoyi-space-2);
+}
+.mentionPanel input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-md);
+  font: inherit;
+  font-size: var(--yoyi-type-input-size);
+}
+.mentionPanel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mentionPanel button {
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--yoyi-color-seal-red);
+  font: inherit;
+  cursor: pointer;
+}
+.mentionPanel li button {
+  width: 100%;
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
+}
+.mentionPanel li button span {
+  color: var(--yoyi-color-text-tertiary);
+}
+.mentionPanel button:disabled {
+  color: var(--yoyi-color-text-tertiary);
+  cursor: not-allowed;
+}
+.mentionPanel p {
+  margin: 0;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-caption-size);
+}
 .tools {
   display: flex;
   flex-wrap: wrap;

@@ -449,3 +449,35 @@ Integration-owned, not in this branch: the live (notifications) message host's
 fill region and header seam for this panel, and the profile 私信 entry that
 opens the live host, live on the QA branch with their own regression tests and
 must reach `main` with the integration commits after A, N and C.
+
+## 11. Owner phone acceptance decisions (2026-09-25)
+
+During phone acceptance of the combined QA candidate, the Owner changed three
+presentations. Each is the Owner's own decision at the visual gate of the
+community scope amendment (§6 of `2026-09-11-community-v1-scope.md`). They
+supersede the rows cited below. The composer spans main's comment section, N's
+mention control and this track's direct messages, so the change is
+integration-owned. It lives on the QA branch and must reach `main` with the
+integration commits after A, N and C.
+
+1. **One composer shape.** Comments, replies and direct messages share one
+   shape: a single text box with the 发送 button on its right.
+   - Removed: the composer avatar (supersedes Phase 4's composer-avatar rows and
+     `work-publishing-v1` "Comment avatars" for the composer only) and the
+     visible 以“…”发布 line, which stays for screen readers only.
+   - Mentions stay reachable. An "@" inside the box (accessible name 提醒用户)
+     opens the same resolved-user picker above the box. Only a person chosen
+     there is mentioned, as before.
+2. **专题 opens one Article.** The 专题 tab lists published academic Articles as
+   the large cards. A card opens that Article's reader directly, titled 专题;
+   there is no Collection 阅读目录 step. When the tapped card is in 专题, the
+   Discussion pager stays on 专题.
+   - Collections keep their published reads and their detail page, reachable by
+     a deep link to a `collection-…` id. The Web no longer lists them.
+   - A deep link to an academic Article is titled 文章 until the Article loads,
+     and the pager behind it follows the id prefix (近闻) as before.
+3. **Direct-message rows show only the count.** A row no longer shows
+   a 私信请求 or 等待对方回复 tag; the unread count stays on the right, and a
+   muted row keeps its muted mark. The request state moves into the row's
+   accessible name. Inside the conversation, the gate notice and the composer's
+   refusal are unchanged.

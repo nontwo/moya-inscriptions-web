@@ -112,6 +112,17 @@ const useHostTitle = (
   return seam;
 };
 
+/**
+ * A request's state for the row's accessible name only. Owner acceptance
+ * (2026-09-25): a row shows no visible state tag, just the unread count.
+ */
+const requestState = (conversation: DirectConversation): string =>
+  conversation.state !== "requested"
+    ? ""
+    : conversation.sendRefusal === "request_pending"
+      ? "，等待对方回复"
+      : "，私信请求";
+
 const refusalText = (conversation: DirectConversation): string | null =>
   conversation.sendRefusal === "request_pending"
     ? "你已发送一条私信，等对方回复后才能继续发送。"
@@ -121,20 +132,21 @@ const refusalText = (conversation: DirectConversation): string | null =>
         ? "对方账号暂不可用。"
         : null;
 
-/** A fixed bottom composer; drafts survive refusals and the text is plain. */
+/**
+ * A fixed bottom composer; drafts survive refusals and the text is plain. Like
+ * the comment composer it is one box with the send button on its right (Owner
+ * acceptance 2026-09-25).
+ */
 const Composer = ({
   disabledReason,
   onSend,
   autoFocus = false,
-  onOpenSelf,
 }: {
   disabledReason: string | null;
   onSend: (
     text: string,
   ) => Promise<{ ok: true } | { ok: false; message: string }>;
   autoFocus?: boolean;
-  /** Opens the viewer's own profile from the composer avatar, as in the accepted chat. */
-  onOpenSelf?: (opener: HTMLElement) => void;
 }) => {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -179,43 +191,27 @@ const Composer = ({
           {disabledReason}
         </p>
       ) : (
-        <>
-          {onOpenSelf ? (
-            <button
-              type="button"
-              className={commentStyles.avatar}
-              aria-label="查看我的主页"
-              onClick={(event) => onOpenSelf(event.currentTarget)}
-            >
-              <span className={commentStyles.avatarContent} aria-hidden="true">
-                我
-              </span>
-            </button>
-          ) : (
-            <span className={commentStyles.avatar} aria-hidden="true">
-              <span className={commentStyles.avatarContent}>我</span>
-            </span>
-          )}
-          <div className={commentStyles.composerBody}>
-            <div className={commentStyles.composerInputRow}>
-              <textarea
-                ref={input}
-                value={draft}
-                maxLength={TEXT_MAXIMUM * 2}
-                rows={1}
-                placeholder="写下私信…"
-                aria-label="私信内容"
-                autoFocus={autoFocus}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <div className={commentStyles.composerFooter}>
-                <button type="submit" disabled={busy || !draft.trim()}>
-                  发送
-                </button>
-              </div>
-            </div>
+        <div className={commentStyles.composerInputRow}>
+          <div className={commentStyles.composerField}>
+            <textarea
+              ref={input}
+              value={draft}
+              maxLength={TEXT_MAXIMUM * 2}
+              rows={1}
+              placeholder="写下私信…"
+              aria-label="私信内容"
+              autoFocus={autoFocus}
+              onChange={(event) => setDraft(event.target.value)}
+            />
           </div>
-        </>
+          <button
+            type="submit"
+            className={commentStyles.composerSend}
+            disabled={busy || !draft.trim()}
+          >
+            发送
+          </button>
+        </div>
       )}
       {error && error !== disabledReason && (
         <p
@@ -351,9 +347,6 @@ const ConversationView = ({
       <Composer
         disabledReason={refusalText(state.conversation)}
         onSend={send}
-        {...(me
-          ? { onOpenSelf: (opener: HTMLElement) => onOpenProfile(me, opener) }
-          : {})}
       />
     </div>
   );
@@ -630,7 +623,7 @@ export const DirectMessagePanel = ({
                   </span>
                 }
                 muted={conversation.muted}
-                label={`打开与${name}的私信${unread > 0 ? `，${unread} 条未读` : ""}${conversation.muted ? "，已静音" : ""}`}
+                label={`打开与${name}的私信${requestState(conversation)}${unread > 0 ? `，${unread} 条未读` : ""}${conversation.muted ? "，已静音" : ""}`}
                 expanded={expanded === conversation.id}
                 onExpand={(value) =>
                   setExpanded(value ? conversation.id : null)
@@ -658,13 +651,6 @@ export const DirectMessagePanel = ({
                         : conversation.lastMessage.text
                       : "尚无消息"}
                   </span>
-                  {conversation.state === "requested" && (
-                    <span className={panelStyles.requestTag}>
-                      {conversation.sendRefusal === "request_pending"
-                        ? "等待对方回复"
-                        : "私信请求"}
-                    </span>
-                  )}
                   {conversation.muted && <MutedMark />}
                   {unread > 0 && (
                     <span className={styles.unread} data-dm-unread={unread}>

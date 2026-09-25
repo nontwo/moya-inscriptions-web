@@ -122,7 +122,7 @@
   text-align: center;
 }
 
-/* A refusal or error takes the composer's full width, not its avatar column. */
+/* A refusal or error takes the composer's full width. */
 .composerNotice {
   grid-column: 1 / -1;
   margin: 0;
@@ -133,12 +133,6 @@
   padding: var(--yoyi-space-6) var(--yoyi-space-5);
   color: var(--yoyi-color-text-secondary);
   font-size: var(--yoyi-type-body-small-size);
-}
-
-.requestTag {
-  flex: 0 0 auto;
-  color: var(--yoyi-color-seal-red);
-  font-size: var(--yoyi-type-caption-size);
 }
 
 .olderButton,
