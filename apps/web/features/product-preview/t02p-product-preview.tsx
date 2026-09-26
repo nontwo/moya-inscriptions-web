@@ -244,6 +244,12 @@ const PreviewTopicOverlay = ({
         id={topicId}
         backButtonRef={backButtonRef}
         onClose={onClose}
+        {...(renderDiscussion
+          ? {
+              renderComments: (workId: string) =>
+                renderDiscussion({ type: "work", id: workId }),
+            }
+          : {})}
       />
     );
   if (isArticleId(topicId) || isCollectionId(topicId))
