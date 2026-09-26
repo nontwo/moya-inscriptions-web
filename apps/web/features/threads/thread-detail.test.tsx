@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  */
 const work = {
   id: `work-${"1".repeat(32)}`,
+  authorId: `user-${"3".repeat(32)}`,
   authorName: "书法学徒",
+  canEdit: false,
   firstPublishedAt: "2026-09-24T00:00:00.000Z",
   title: "打卡第2天：两张（合成示例）",
   text: "今天临了两张。",
@@ -20,24 +22,26 @@ const work = {
     { id: "m2", src: "/api/community/publishing/media/m2/display/base" },
   ],
 };
+const populated = {
+  state: "populated",
+  thread: {
+    title: "示例话题：九宫格临帖打卡（示例）",
+    description: "每天上传一到三张临帖照片。",
+    tags: ["临帖"],
+    heat: 14,
+    postCount: 1,
+    status: "open",
+    latestActivityAt: null,
+  },
+};
+const fixture: { thread: object; items: object[] } = {
+  thread: populated,
+  items: [work],
+};
 vi.mock("./use-threads", () => ({
-  useThread: () => ({
-    state: {
-      state: "populated",
-      thread: {
-        title: "示例话题：九宫格临帖打卡（示例）",
-        description: "每天上传一到三张临帖照片。",
-        tags: ["临帖"],
-        heat: 14,
-        postCount: 1,
-        status: "open",
-        latestActivityAt: null,
-      },
-    },
-    retry: vi.fn(),
-  }),
+  useThread: () => ({ state: fixture.thread, retry: vi.fn() }),
   useThreadPosts: () => ({
-    state: { state: "populated", items: [work], hasMore: false },
+    state: { state: "populated", items: fixture.items, hasMore: false },
     busy: false,
     loadMore: vi.fn(),
   }),
@@ -55,6 +59,7 @@ vi.mock("../publishing/publishing-provider", () => ({
   useSubmission: () => ({ state: { status: "idle" } }),
 }));
 import { ThreadDetail } from "./thread-detail";
+import { readOwnWorkAudience } from "../authors/own-work-audience";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -67,31 +72,30 @@ const renderComments = vi.fn((workId: string) => (
 ));
 const heading = () => node.querySelector("h1")?.textContent;
 const back = () => node.querySelector<HTMLButtonElement>("header button")!;
-const openPost = async () =>
+const openPost = async (id = work.id) =>
   act(async () =>
     node
-      .querySelector<HTMLButtonElement>(
-        `[data-thread-post="${work.id}"] button`,
-      )!
+      .querySelector<HTMLButtonElement>(`[data-thread-post="${id}"] button`)!
       .click(),
   );
+const element = () => (
+  <ThreadDetail
+    id={`thread-${"2".repeat(32)}`}
+    backButtonRef={createRef<HTMLButtonElement>()}
+    onClose={onClose}
+    renderComments={renderComments}
+  />
+);
 beforeEach(async () => {
   window.history.replaceState(null, "", "/");
+  fixture.thread = populated;
+  fixture.items = [work];
   node = document.createElement("div");
   document.body.append(node);
   root = createRoot(node);
   onClose.mockReset();
   renderComments.mockClear();
-  await act(async () =>
-    root!.render(
-      <ThreadDetail
-        id={`thread-${"2".repeat(32)}`}
-        backButtonRef={createRef<HTMLButtonElement>()}
-        onClose={onClose}
-        renderComments={renderComments}
-      />,
-    ),
-  );
+  await act(async () => root!.render(element()));
 });
 afterEach(async () => {
   await act(async () => root?.unmount());
@@ -132,12 +136,43 @@ describe("ThreadDetail posts", () => {
 
   it("returns to the Thread on browser Back (a swipe) without closing it", async () => {
     await openPost();
+    expect(heading()).toBe("帖子");
     await act(async () => {
       window.history.back();
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(heading()).toBe("话题");
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("records the author's own audience, so a self-only post shows its closed note", async () => {
+    // DiscussionSection reads this record to replace the composer with
+    // 此作品当前仅你可见 for a Work nobody else can see, as Work Detail does.
+    const own = {
+      ...work,
+      id: `work-${"4".repeat(32)}`,
+      canEdit: true,
+      visibility: "self",
+      publiclyVisible: false,
+    };
+    fixture.items = [own];
+    await act(async () => root!.render(element()));
+    expect(readOwnWorkAudience(own.authorId, own.id)).toBeNull();
+    await openPost(own.id);
+    expect(readOwnWorkAudience(own.authorId, own.id)).toEqual({
+      publiclyVisible: false,
+      visibility: "self",
+    });
+  });
+
+  it("keeps the open post page when its Thread reloads", async () => {
+    await openPost();
+    fixture.thread = { state: "loading" };
+    await act(async () => root!.render(element()));
+    expect(heading()).toBe("帖子");
+    expect(
+      node.querySelector(`[data-thread-post-detail="${work.id}"]`),
+    ).not.toBeNull();
   });
 
   it("closes from the Thread itself through header Back", async () => {

@@ -450,7 +450,7 @@ fill region and header seam for this panel, and the profile 私信 entry that
 opens the live host, live on the QA branch with their own regression tests and
 must reach `main` with the integration commits after A, N and C.
 
-Thread posts (Owner phone acceptance, 2026-09-26). Tapping a post in a live
+**Thread posts (Owner phone acceptance, 2026-09-26).** Tapping a post in a live
 Thread did nothing. `ThreadDetail` asked the shell to open the post's Work
 detail, and the shell refuses to open content while a topic overlay is open. As
 in the accepted discussion preview, a post now opens inside its Thread as
@@ -458,5 +458,8 @@ a 帖子 page. The page shows the Work's text and images and, below them, the
 Work's live discussion, which the host supplies through
 `renderDiscussion({ type: "work" })`. Header Back or browser Back (a swipe)
 returns to the Thread at its scroll position through the preview's local child
-history, and the post card reads展开阅读. Regression:
+history, and the post card reads 展开阅读. The Thread records the author's own
+view of a post before opening it, as Work Detail does, so a post only its author
+can see shows the closed note instead of a composer. An open post keeps its page
+while the Thread reloads. Regression:
 `apps/web/features/threads/thread-detail.test.tsx`.

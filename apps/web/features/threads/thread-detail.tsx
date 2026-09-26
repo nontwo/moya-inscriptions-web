@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from "react";
 import { Icon } from "@moya/ui";
 import type { UserWork } from "@moya/contracts";
 import { useAuthors } from "../authors/author-context";
+import { recordOwnWorkAudience } from "../authors/own-work-audience";
 import { usePublishingEntry } from "../publishing/publishing-entry";
 import { useSubmission } from "../publishing/publishing-provider";
 import { Heat } from "../discussion-preview/discussion-icons";
@@ -84,10 +85,12 @@ const ThreadPost = ({
         {work.firstPublishedAt &&
           ` · ${formatEditorialTime(work.firstPublishedAt)}`}
       </p>
-      <div className={styles.postText}>
-        {work.title && <strong>{work.title}</strong>}
-        {work.text}
-      </div>
+      {work.title && (
+        <p className={styles.postText}>
+          <strong>{work.title}</strong>
+        </p>
+      )}
+      {work.text && <div className={styles.postText}>{work.text}</div>}
       {work.media.length > 0 && (
         <div className={styles.postGallery}>
           {work.media.map((media) => (
@@ -129,7 +132,12 @@ export function ThreadDetail({
   renderComments?: (workId: string) => ReactNode;
 }) {
   const author = useAuthors();
-  const [post, setPost] = useState<UserWork | null>(null);
+  // The open post keeps its Thread title, so a Thread reload never replaces
+  // the post page (or its comment draft) with the Thread's loading state.
+  const [post, setPost] = useState<{
+    work: UserWork;
+    threadTitle: string;
+  } | null>(null);
   const detailScroll = useRef<HTMLDivElement>(null);
   const parentScroll = useRef(0);
   const navigation = usePreviewNavigationHistory({
@@ -176,6 +184,8 @@ export function ThreadDetail({
     retryThread();
   }, [submissionState, retryThread]);
   const title = post ? "帖子" : "话题";
+  const threadTitle =
+    thread.state.state === "populated" ? thread.state.thread.title : "";
   return (
     <section
       className={styles.overlay}
@@ -198,13 +208,13 @@ export function ThreadDetail({
         <h1>{title}</h1>
         <span />
       </header>
-      {post && thread.state.state === "populated" ? (
+      {post ? (
         <ThreadPost
-          key={post.id}
-          work={post}
-          threadTitle={thread.state.thread.title}
+          key={post.work.id}
+          work={post.work}
+          threadTitle={post.threadTitle}
           comments={
-            renderComments?.(post.id) ?? (
+            renderComments?.(post.work.id) ?? (
               <p role="status" className={styles.notice}>
                 评论功能尚未接入此帖子。
               </p>
@@ -284,9 +294,13 @@ export function ThreadDetail({
                       key={work.id}
                       work={work}
                       onOpen={() => {
+                        // The author's own view says whether others can see
+                        // the post, so its discussion shows the closed note
+                        // (not a composer that cannot send), as Work Detail.
+                        recordOwnWorkAudience(work);
                         parentScroll.current =
                           detailScroll.current?.scrollTop ?? 0;
-                        setPost(work);
+                        setPost({ work, threadTitle });
                       }}
                     />
                   ))}
