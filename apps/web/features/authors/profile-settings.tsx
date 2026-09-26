@@ -6,6 +6,7 @@ import { authorClient } from "./author-data";
 import { useAuthors } from "./author-context";
 import { requestIdentity } from "../shell/request-identity";
 import { useProductShell } from "../product-shell/product-shell";
+import { AccountSecurity } from "../auth/account-security";
 import { SettingsDisplayControls } from "../settings/settings-overlay";
 export const ProfileSettings = ({
   profile,
@@ -231,6 +232,7 @@ export const ProfileSettings = ({
               </button>
             )}
             {error && <p role="alert">{error}</p>}
+            <AccountSecurity />
           </div>
         ) : (
           <p>

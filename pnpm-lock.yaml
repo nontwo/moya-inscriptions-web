@@ -263,6 +263,10 @@ importers:
       '@moya/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
 
   services/backend-production:
     dependencies:

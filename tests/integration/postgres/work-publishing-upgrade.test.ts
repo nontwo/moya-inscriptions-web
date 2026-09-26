@@ -66,6 +66,8 @@ const workPublishingMigrations = [
   "20260920070000",
   "20260920080000",
   "20260921010000",
+  "20260922010000",
+  "20260922011000",
 ];
 const backfillMigration = "20260914092000";
 const bridgeMigration = "20260914093000";
@@ -1512,6 +1514,8 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
         "20260920070000",
         "20260920080000",
         "20260921010000",
+        "20260922010000",
+        "20260922011000",
       ]);
 
       // Declared submissions: stored hashes unchanged and still exactly what
