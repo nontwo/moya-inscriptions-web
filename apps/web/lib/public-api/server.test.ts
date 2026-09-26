@@ -283,6 +283,68 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
   });
 });
 
+/*
+ * parallel-community-integration-qa: N binds GET notifications to the UI's
+ * confirmed account (x-author-account); A clears a Session the Backend
+ * refuses. Together a still-valid Session behind a stale account header keeps
+ * its cookie, and a refused one is answered once as signed out.
+ */
+describe("Combined relay: notifications account binding next to a refused Session", () => {
+  const cookie = `yoyi-session=${"D".repeat(43)}`;
+  const account = `user-${"2".repeat(32)}`;
+  const refused = () =>
+    Response.json(
+      {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "A valid session is required",
+        },
+      },
+      { status: 401 },
+    );
+  const inbox = () =>
+    new Request("http://127.0.0.1:3410/api/community/notifications", {
+      headers: { host: "127.0.0.1:3410", cookie, "x-author-account": account },
+    });
+  const headerOf = (call: Parameters<typeof fetch>, name: string) =>
+    new Headers(call[1]?.headers).get(name);
+
+  it("keeps a still-valid Session whose account header no longer matches", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(Response.json({ id: `user-${"3".repeat(32)}` }));
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(inbox());
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(headerOf(upstream.mock.calls[0]!, "x-author-account")).toBe(account);
+    expect(String(upstream.mock.calls[1]![0])).toBe(
+      "http://127.0.0.1:3411/v1/me",
+    );
+  });
+
+  it("answers a refused Session once as signed out, still bound to the confirmed account", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(refused());
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(inbox());
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^yoyi-session=; .*Max-Age=0/u,
+    );
+    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(headerOf(upstream.mock.calls[2]!, "authorization")).toBeNull();
+    expect(headerOf(upstream.mock.calls[2]!, "x-author-account")).toBe(account);
+  });
+});
+
 /* content-community-completion-v1: Development editorial images for a phone on the LAN. */
 
 const file = `${"c".repeat(64)}-${"d".repeat(64)}.png`;

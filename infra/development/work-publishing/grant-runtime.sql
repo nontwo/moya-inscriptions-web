@@ -59,6 +59,11 @@ FROM :"app_role";
 -- Discovery and the featured operator read published Catalog projections only.
 GRANT SELECT ON TABLE public.catalog_discovery, public.catalog_media TO :"app_role";
 GRANT SELECT (catalog_id, province, province_state) ON TABLE public.catalog_entries TO :"app_role";
+-- parallel-community-integration-qa: the notification source query checks Article
+-- visibility against C's published-only projection. Only the identifier column is
+-- needed for the existence test, so no Article body, byline or draft state is
+-- readable by the App role.
+GRANT SELECT (article_id) ON TABLE public.article_entries TO :"app_role";
 
 -- Startup readiness verifies the community ledger read-only.
 GRANT SELECT ON TABLE community.schema_migrations TO :"app_role";

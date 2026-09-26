@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { MentionReference, PublicUserProfile } from "@moya/contracts";
 import { normalizeMentionText } from "./mention-data";
 import { authorClient } from "../authors/author-data";
@@ -12,14 +12,18 @@ export function MentionControl({
   mentions,
   onChange,
   maxLength = 100_000,
+  inline = false,
 }: {
   text: string;
   mentions: readonly MentionReference[];
   onChange: (text: string, refs: readonly MentionReference[]) => void;
   maxLength?: number;
+  /** Inside a comment box: an "@" trigger in the box, the picker above it. */
+  inline?: boolean;
 }) {
   const enabled = useNotifications().enabled,
-    id = useId();
+    id = useId(),
+    trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [people, setPeople] = useState<PublicUserProfile[]>([]),
@@ -52,17 +56,29 @@ export function MentionControl({
   }, [open, query, retry]);
   if (!enabled || !authorClient.account()) return null;
   return (
-    <div className={styles.mention}>
+    <div className={inline ? styles.mentionInline : styles.mention}>
       <button
+        ref={trigger}
         type="button"
+        className={inline ? styles.mentionTrigger : undefined}
+        aria-label={inline ? "提醒用户" : undefined}
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen(!open)}
       >
-        @ 提醒用户
+        {inline ? "@" : "@ 提醒用户"}
       </button>
       {open && (
-        <div id={id}>
+        <div
+          id={id}
+          className={inline ? styles.mentionPanel : undefined}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.stopPropagation();
+            setOpen(false);
+            trigger.current?.focus();
+          }}
+        >
           <label>
             查找用户
             <input
@@ -70,6 +86,10 @@ export function MentionControl({
               value={query}
               maxLength={40}
               onChange={(event) => setQuery(event.currentTarget.value)}
+              // Enter searches here; it must not submit the surrounding form.
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.preventDefault();
+              }}
               placeholder="输入至少两个字符"
             />
           </label>

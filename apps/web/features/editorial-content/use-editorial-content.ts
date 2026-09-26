@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ArticleCollectionDetail,
-  ArticleCollectionSummary,
   ArticleDetail,
   ArticlePresentation,
   ArticleSummary,
@@ -102,30 +101,29 @@ const useList = <T>(
   };
 };
 
+// Presentations of Articles already listed, so an Article opened from a feed
+// can title its overlay (近闻 or 专题) before its own detail loads.
+const listedPresentations = new Map<string, ArticlePresentation>();
+
+export const listedArticlePresentation = (
+  id: string,
+): ArticlePresentation | null => listedPresentations.get(id) ?? null;
+
 export const useArticles = (presentation: ArticlePresentation) =>
   useList<ArticleSummary>(
     useCallback(
-      (page, signal) =>
-        authorClient.editorial.articles(
+      async (page, signal) => {
+        const result = await authorClient.editorial.articles(
           { page, pageSize: PAGE_SIZE, presentation },
           signal,
-        ),
+        );
+        for (const item of result.items)
+          listedPresentations.set(item.id, item.presentation);
+        return result;
+      },
       [presentation],
     ),
     presentation,
-  );
-
-export const useCollections = () =>
-  useList<ArticleCollectionSummary>(
-    useCallback(
-      (page, signal) =>
-        authorClient.editorial.collections(
-          { page, pageSize: PAGE_SIZE },
-          signal,
-        ),
-      [],
-    ),
-    "collections",
   );
 
 const useDetail = <T>(

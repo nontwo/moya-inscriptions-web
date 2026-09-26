@@ -38,12 +38,6 @@ vi.mock("./use-editorial-content", () => ({
     retry: vi.fn(),
     loadMore: vi.fn(),
   }),
-  useCollections: () => ({
-    state: { state: "empty" },
-    busy: false,
-    retry: vi.fn(),
-    loadMore: vi.fn(),
-  }),
 }));
 import { EditorialNewsFeed } from "./editorial-feed";
 

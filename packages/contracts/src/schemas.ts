@@ -1090,7 +1090,12 @@ export const notificationItemSchema = z.strictObject({
   id: z.string().regex(/^notification-[0-9a-f]{32}$/u),
   reason: notificationReasonSchema,
   available: z.boolean(),
-  target: contentIdentitySchema.nullable(),
+  // parallel-community-integration-qa: a notification target is a discussion
+  // target, so it spans Catalog, Work and published Article. This is the
+  // discussion union, NOT `contentIdentitySchema`: content relations
+  // (favorite / like) stay Catalog/Work only, so an Article gains no likes or
+  // favorites from being notifiable.
+  target: discussionTargetSchema.nullable(),
   commentId: catalogCommentIdSchema.nullable(),
   actors: z.array(publicUserProfileSchema).max(3),
   actorCount: z.number().int().nonnegative(),

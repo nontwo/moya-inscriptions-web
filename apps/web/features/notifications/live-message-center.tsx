@@ -2,13 +2,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "@moya/ui";
-import type { ContentIdentity, NotificationItem } from "@moya/contracts";
+import type { DiscussionTarget, NotificationItem } from "@moya/contracts";
 import { authorClient } from "../authors/author-data";
 import { AuthorDialog } from "../authors/author-dialog";
 import { MyComments } from "../authors/author-profile";
 import { useAuthors } from "../authors/author-context";
 import { CategoryIcon } from "../authors/message-category-icon";
 import { useProductShell } from "../product-shell/product-shell";
+import type { PrimaryDestination } from "../shell/primary-shell";
 import { useNotifications } from "./notification-context";
 import { NotificationRefresher } from "./notification-refresher";
 import styles from "../authors/message-preview.module.css";
@@ -21,9 +22,27 @@ export interface DirectMessagePanelAdapter {
     onOpenProfile: (id: string) => void;
     onDepthChange: (depth: number) => void;
     backRequested: number;
+    /**
+     * parallel-community-integration-qa: the open conversation's participant
+     * for this host's dialog header, as in the accepted chat (avatar beside
+     * the nickname, no extra profile row). A stable setter; null clears it.
+     */
+    onTitleChange: (title: DirectMessageHeader | null) => void;
   }) => ReactNode;
   useUnreadConversationCount: () => number;
+  /**
+   * parallel-community-integration-qa: a pending entry request (for example a
+   * profile's 私信 action) that should open this host on its direct-message
+   * view. Returns an opaque token that changes per request, or null. The
+   * adapter consumes the request itself once its panel is mounted.
+   */
+  useOpenRequest?: () => number | null;
 }
+export interface DirectMessageHeader {
+  readonly label: string;
+  readonly content: ReactNode;
+}
+const noOpenRequest = () => null;
 const unavailableDM: DirectMessagePanelAdapter = {
   render: () => <p className={styles.empty}>私信尚未在此环境接入。</p>,
   useUnreadConversationCount: () => 0,
@@ -65,18 +84,76 @@ function AccountMessages({
     ),
     [notice, setNotice] = useState(""),
     [dmDepth, setDmDepth] = useState(0),
-    [dmBack, setDmBack] = useState(0);
+    [dmBack, setDmBack] = useState(0),
+    [dmTitle, setDmTitle] = useState<DirectMessageHeader | null>(null);
   const opener = useRef<HTMLButtonElement>(null),
     content = useRef<HTMLDivElement>(null),
     scroll = useRef(new Map<string, number>()),
-    pending = useRef<ContentIdentity | string | null>(null),
-    returning = useRef<{ kind: "content" | "profile"; opened: boolean } | null>(
-      null,
-    ),
+    pending = useRef<DiscussionTarget | string | null>(null),
+    returning = useRef<{
+      kind: "content" | "profile" | "topic";
+      opened: boolean;
+      /** The destination this host lives in, when the target left it. */
+      source?: PrimaryDestination;
+    } | null>(null),
     frame = useRef<number | null>(null);
   const confirmed = !author.checking && !author.sessionError && !!author.viewer;
   const incoming =
     view === "reactions" || (view === "comments" && commentTab !== "sent");
+  // parallel-community-integration-qa: C's profile 私信 action stores an entry
+  // request. The live host must open itself for it, as the scoped host did;
+  // otherwise the request waits until the user opens 消息 by hand. Only the
+  // visible host inside the active destination reacts (same guard as below).
+  const useOpenRequest = directMessages.useOpenRequest ?? noOpenRequest;
+  const openRequest = useOpenRequest();
+  const handledOpenRequest = useRef<number | null>(null);
+  useEffect(() => {
+    if (openRequest === null || handledOpenRequest.current === openRequest)
+      return;
+    if (!confirmed) return;
+    let frame = 0,
+      attempts = 0,
+      hostless = false;
+    const tryOpen = () => {
+      frame = 0;
+      if (
+        !opener.current ||
+        opener.current.closest('[inert], [hidden], [aria-hidden="true"]')
+      ) {
+        // The request arrives in the same commit that closes the profile that
+        // issued it, while the page behind that profile is still inert. The
+        // active host becomes reachable a frame or two later; hosts of other
+        // destinations stay hidden and give up after a bounded wait.
+        // The user destination has no message host at all: there the home
+        // host brings the home destination forward, then opens as usual. The
+        // shell refuses to switch while the closing profile is still
+        // registered, so the (idempotent) switch is retried each frame.
+        const destination = opener.current
+          ?.closest("[data-primary-destination]")
+          ?.getAttribute("data-primary-destination");
+        const activeHasHost = document.querySelector(
+          '[data-primary-destination][data-active="true"] [data-live-message-trigger]',
+        );
+        if (destination === "home" && !activeHasHost) {
+          hostless = true;
+          shell.navigatePrimary("home");
+        }
+        attempts += 1;
+        if (attempts < (hostless ? 120 : 30))
+          frame = requestAnimationFrame(tryOpen);
+        return;
+      }
+      handledOpenRequest.current = openRequest;
+      setView("home");
+      setNotice("");
+      setCloseRequested(false);
+      setOpen(true);
+    };
+    tryOpen();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [openRequest, confirmed]);
   const entryOpened = useRef(false);
   useEffect(() => {
     if (entryOpened.current || author.checking) return;
@@ -109,8 +186,14 @@ function AccountMessages({
     confirmed && Number.isFinite(dmUnread)
       ? Math.max(0, Math.floor(dmUnread))
       : 0;
+  // parallel-community-integration-qa: an open conversation or start view
+  // replaces the home content, as in the accepted chat. The categories and the
+  // heading step aside while the panel stays mounted, and the panel fills the
+  // body so its stream scrolls inside and its composer stays at the bottom.
+  // The list keeps its own scroll position for Back.
+  const directOpen = view === "home" && dmDepth > 0;
   const total = activity + conversations,
-    location = `${view}:${commentTab}`;
+    location = `${view}:${commentTab}${directOpen ? ":direct" : ""}`;
   useEffect(
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
@@ -125,18 +208,29 @@ function AccountMessages({
     const target = returning.current;
     if (!target) return;
     const active =
-      target.kind === "content" ? shell.activeContent : shell.activeProfile;
+      target.kind === "content"
+        ? shell.activeContent
+        : target.kind === "topic"
+          ? shell.activeTopicId
+          : shell.activeProfile;
     if (active) {
       target.opened = true;
       return;
     }
     if (target.opened) {
       returning.current = null;
+      // parallel-community-integration-qa: an Article opens as a topic of the
+      // discussion destination, and closing it stays there. This host lives
+      // in the destination the reader came from, now hidden: return there
+      // before reopening, as the scoped host does, because a modal reopened
+      // inside a hidden destination blocks the whole page invisibly.
+      if (target.source && shell.activeDestination !== target.source)
+        shell.navigatePrimary(target.source);
       setCloseRequested(false);
       setOpen(true);
     }
-  }, [shell.activeContent, shell.activeProfile]);
-  const navigate = (target: ContentIdentity | string) => {
+  }, [shell.activeContent, shell.activeProfile, shell.activeTopicId]);
+  const navigate = (target: DiscussionTarget | string) => {
     if (!confirmedRef.current) return;
     pending.current = target;
     setCloseRequested(true);
@@ -157,9 +251,14 @@ function AccountMessages({
   const openItem = async (item: NotificationItem) => {
     if (!item.available || !item.target || !confirmed) return;
     try {
-      if (item.commentId)
-        await authorClient.locate(item.target, item.commentId, []);
-      else await authorClient.card(item.target);
+      const target = item.target;
+      if (item.commentId) await authorClient.locate(target, item.commentId, []);
+      else if (target.type === "article")
+        // An Article notification is always comment activity, so it always
+        // carries a commentId. Without one there is nothing to resolve, and the
+        // safe unavailable notice below is the truthful answer.
+        throw new Error("Article notification without a comment");
+      else await authorClient.card(target);
       if (!confirmedRef.current) return;
       if (item.commentId)
         author.cache.set("discussion-location", {
@@ -179,6 +278,7 @@ function AccountMessages({
         ref={opener}
         type="button"
         className={triggerStyles.trigger}
+        data-live-message-trigger=""
         aria-label={
           total
             ? `打开消息，${activity} 条未读动态，${conversations} 个未读私信会话`
@@ -206,7 +306,8 @@ function AccountMessages({
       </button>
       {open && (
         <AuthorDialog
-          title={labels[view]}
+          title={directOpen && dmTitle ? dmTitle.label : labels[view]}
+          titleContent={directOpen ? dmTitle?.content : undefined}
           className={styles.page}
           navigationDepth={view === "home" ? dmDepth : 1}
           onBack={() => {
@@ -223,19 +324,37 @@ function AccountMessages({
               frame.current = requestAnimationFrame(() => {
                 frame.current = null;
                 if (!opener.current || !confirmedRef.current) return;
+                const element = opener.current;
                 returning.current = {
-                  kind: typeof target === "string" ? "profile" : "content",
+                  kind:
+                    typeof target === "string"
+                      ? "profile"
+                      : target.type === "article"
+                        ? "topic"
+                        : "content",
                   opened: false,
+                  source: shell.activeDestination,
                 };
                 if (typeof target === "string")
-                  shell.openProfile(target, opener.current);
-                else shell.openContent(target, opener.current);
+                  shell.openProfile(target, element);
+                else if (target.type === "article") {
+                  // C renders a published Article as a topic overlay on the
+                  // discussion destination, not as a Catalog/Work card. Switch
+                  // first: openTopic refuses from any other destination.
+                  const articleId = target.id;
+                  shell.navigatePrimary("discussion");
+                  frame.current = requestAnimationFrame(() => {
+                    frame.current = null;
+                    if (!confirmedRef.current) return;
+                    shell.openTopic(articleId, element, 0);
+                  });
+                } else shell.openContent(target, element);
               });
           }}
         >
           <div
             ref={content}
-            className={`${styles.content}${incoming && confirmed ? ` ${local.pullScroll}` : ""}`}
+            className={`${styles.content}${incoming && confirmed ? ` ${local.pullScroll}` : ""}${directOpen ? ` ${local.directOpen}` : ""}`}
             data-message-live=""
             data-message-view={view}
             onScroll={(event) =>
@@ -254,11 +373,16 @@ function AccountMessages({
                 }
               />
             )}
-            {author.checking ? (
+            {/* parallel-community-integration-qa: revalidating the confirmed
+                account (window focus, reconnect) is not an account switch, so
+                the content — an open conversation and its draft — stays
+                mounted; a different account remounts this host by its key and
+                a revoked Session clears the viewer. */}
+            {!author.viewer && author.checking ? (
               <p className={local.status} role="status">
                 正在确认账户…
               </p>
-            ) : author.sessionError ? (
+            ) : !author.viewer && author.sessionError ? (
               <p className={local.status} role="alert">
                 账户暂时不可用。
                 <button onClick={() => void author.refresh()}>重试</button>
@@ -269,6 +393,12 @@ function AccountMessages({
               </p>
             ) : (
               <>
+                {author.sessionError && (
+                  <p className={local.status} role="alert">
+                    账户暂时不可用。
+                    <button onClick={() => void author.refresh()}>重试</button>
+                  </p>
+                )}
                 {notice && (
                   <p className={local.status} role="status">
                     {notice}
@@ -276,51 +406,58 @@ function AccountMessages({
                 )}
                 {view === "home" && (
                   <>
-                    <nav className={styles.categories} aria-label="消息分类">
-                      {(["followers", "reactions", "comments"] as const).map(
-                        (kind) => {
-                          const count =
-                            kind === "reactions"
-                              ? (inbox.page?.unread.likes ?? 0)
-                              : kind === "comments"
-                                ? (inbox.page?.unread.comments ?? 0) +
-                                  (inbox.page?.unread.mentions ?? 0)
-                                : 0;
-                          return (
-                            <button
-                              type="button"
-                              key={kind}
-                              aria-label={`${labels[kind]}${count ? `，${count} 条未读动态` : ""}`}
-                              onClick={() => select(kind)}
-                            >
-                              <span
-                                className={styles.categoryIcon}
-                                data-kind={kind}
+                    {!directOpen && (
+                      <nav className={styles.categories} aria-label="消息分类">
+                        {(["followers", "reactions", "comments"] as const).map(
+                          (kind) => {
+                            const count =
+                              kind === "reactions"
+                                ? (inbox.page?.unread.likes ?? 0)
+                                : kind === "comments"
+                                  ? (inbox.page?.unread.comments ?? 0) +
+                                    (inbox.page?.unread.mentions ?? 0)
+                                  : 0;
+                            return (
+                              <button
+                                type="button"
+                                key={kind}
+                                aria-label={`${labels[kind]}${count ? `，${count} 条未读动态` : ""}`}
+                                onClick={() => select(kind)}
                               >
-                                <CategoryIcon kind={kind} />
-                                {count > 0 && (
-                                  <span
-                                    className={styles.categoryBadge}
-                                    aria-hidden="true"
-                                  >
-                                    {count > 99 ? "99+" : count}
-                                  </span>
-                                )}
-                              </span>
-                            </button>
-                          );
-                        },
-                      )}
-                    </nav>
-                    <div className={styles.listHeading}>
-                      <h3>私信</h3>
+                                <span
+                                  className={styles.categoryIcon}
+                                  data-kind={kind}
+                                >
+                                  <CategoryIcon kind={kind} />
+                                  {count > 0 && (
+                                    <span
+                                      className={styles.categoryBadge}
+                                      aria-hidden="true"
+                                    >
+                                      {count > 99 ? "99+" : count}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            );
+                          },
+                        )}
+                      </nav>
+                    )}
+                    {!directOpen && (
+                      <div className={styles.listHeading}>
+                        <h3>私信</h3>
+                      </div>
+                    )}
+                    <div className={local.directRegion}>
+                      {directMessages.render({
+                        onOpenProfile: navigate,
+                        onDepthChange: setDmDepth,
+                        backRequested: dmBack,
+                        onTitleChange: setDmTitle,
+                      })}
                     </div>
-                    {directMessages.render({
-                      onOpenProfile: navigate,
-                      onDepthChange: setDmDepth,
-                      backRequested: dmBack,
-                    })}
-                    {inbox.error && (
+                    {!directOpen && inbox.error && (
                       <p className={local.status} role="alert">
                         {inbox.error}{" "}
                         <button onClick={inbox.refresh}>重试</button>

@@ -203,7 +203,11 @@ export const createRouter =
       community?.authService !== undefined &&
       pathname.startsWith("/v1/community/auth/")
     ) {
-      void handleCommunityAuth(request, response, community.authService);
+      containRequest(
+        response,
+        handleCommunityAuth(request, response, community.authService),
+        apiFailure,
+      );
       return;
     }
 
@@ -215,12 +219,16 @@ export const createRouter =
         pathname === "/v1/community/notifications" ||
         pathname.startsWith("/v1/community/notifications/"))
     ) {
-      void handleNotificationRequest(
-        request,
+      containRequest(
         response,
-        community.notificationService,
-        community.sessionService,
-        community.notificationStreams,
+        handleNotificationRequest(
+          request,
+          response,
+          community.notificationService,
+          community.sessionService,
+          community.notificationStreams,
+        ),
+        apiFailure,
       );
       return;
     }

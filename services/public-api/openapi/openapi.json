@@ -7595,6 +7595,21 @@
                           },
                           "required": ["type", "id"],
                           "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "pattern": "^article-[0-9a-f]{32}$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "article",
+                              "type": "string"
+                            }
+                          },
+                          "required": ["type", "id"],
+                          "type": "object"
                         }
                       ]
                     },

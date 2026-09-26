@@ -25,7 +25,7 @@ type Facts = QueryResultRow & {
   kind: string;
   actor_id: string;
   created_at: Date;
-  target_type: "catalog" | "work";
+  target_type: "catalog" | "work" | "article";
   target_id: string;
   comment_id: string | null;
   root_author: string | null;

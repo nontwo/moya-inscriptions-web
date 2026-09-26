@@ -14,8 +14,8 @@ import {
 } from "../discussion-preview/discussion-preview";
 import { CatalogMasonry } from "./catalog-masonry";
 import {
-  EditorialCollectionsFeed,
   EditorialNewsFeed,
+  EditorialTopicsFeed,
 } from "../editorial-content/editorial-feed";
 import {
   isArticleId,
@@ -37,6 +37,14 @@ const editorialFeed = (id: string | null): DiscussionFeed | null =>
       : isThreadId(id)
         ? "threads"
         : null;
+/** The Discussion feed whose panel holds an opened card, if any. */
+export const openerFeed = (
+  opener: HTMLElement | undefined,
+): DiscussionFeed | null => {
+  const panel = opener?.closest<HTMLElement>('[id^="discussion-panel-"]');
+  const feed = panel?.id.slice("discussion-panel-".length);
+  return feeds.find((key) => key === feed) ?? null;
+};
 const icons = {
   news: "news",
   threads: "discussion",
@@ -84,18 +92,21 @@ export function DiscussionScreen({
     [active, shell],
   );
   useEffect(() => {
+    const opener = Array.from(
+      root.current?.querySelectorAll<HTMLButtonElement>("[data-topic-id]") ??
+        [],
+    ).find((button) => button.dataset.topicId === shell.activeTopicId);
+    // An Article id alone does not say 近闻 or 专题: the feed that holds the
+    // opened card wins, and the id prefix only decides for a deep link.
     const targetFeed =
       (preview && previewFeed(shell.activeTopicId)) ||
+      openerFeed(opener) ||
       editorialFeed(shell.activeTopicId) ||
       "topics";
     const frame =
       shell.activeTopicId !== null && active !== targetFeed
         ? requestAnimationFrame(() => pager.current?.scrollToKey(targetFeed))
         : null;
-    const opener = Array.from(
-      root.current?.querySelectorAll<HTMLButtonElement>("[data-topic-id]") ??
-        [],
-    ).find((button) => button.dataset.topicId === shell.activeTopicId);
     if (opener && shell.activeTopicId)
       shell.registerTopicOpener(shell.activeTopicId, opener);
     return () => {
@@ -213,7 +224,7 @@ export function DiscussionScreen({
                 ),
                 topics: (
                   <>
-                    <EditorialCollectionsFeed />
+                    <EditorialTopicsFeed />
                     {data.state === "populated" ? topics : null}
                   </>
                 ),

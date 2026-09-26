@@ -1,11 +1,18 @@
 "use client";
 import { editorialMediaSrc } from "./editorial-media";
-import { useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode, RefObject } from "react";
 import { Icon } from "@moya/ui";
 import type {
   ArticleCollectionDetail,
   ArticleDetail,
+  ArticlePresentation,
   ArticleSummary,
 } from "@moya/contracts";
 import { useProductShell } from "../product-shell/product-shell";
@@ -17,6 +24,7 @@ import homeStyles from "../home/home-screen.module.css";
 import { estimateReadingMinutes, formatEditorialTime } from "./format-time";
 import {
   isArticleId,
+  listedArticlePresentation,
   useArticle,
   useCollection,
 } from "./use-editorial-content";
@@ -181,12 +189,20 @@ export function LiveArticleReader({
   id,
   highlightCommentId,
   renderComments,
+  onPresentation,
 }: {
   id: string;
   highlightCommentId?: string;
   renderComments?: (articleId: string) => ReactNode;
+  /** Reports the loaded Article's presentation (the overlay's title). */
+  onPresentation?: (presentation: ArticlePresentation) => void;
 }) {
   const { state, retry } = useArticle(id);
+  const loadedPresentation =
+    state.state === "populated" ? state.item.presentation : null;
+  useEffect(() => {
+    if (loadedPresentation) onPresentation?.(loadedPresentation);
+  }, [loadedPresentation, onPresentation]);
   if (state.state !== "populated")
     return <DetailState state={state.state} label="文章" onRetry={retry} />;
   const article = state.item;
@@ -358,12 +374,37 @@ export function EditorialDetail({
   const detailScroll = useRef<HTMLDivElement>(null);
   const parentScroll = useRef(0);
   const isArticle = isArticleId(id);
+  const [loaded, setLoaded] = useState<{
+    id: string;
+    presentation: ArticlePresentation;
+  } | null>(null);
+  // An academic Article opened from 专题 is titled 专题, a news one 近闻; until
+  // either the feed or the detail says which, the neutral 文章.
+  const presentation =
+    loaded?.id === id ? loaded.presentation : listedArticlePresentation(id);
+  const reportPresentation = useCallback(
+    (value: ArticlePresentation) =>
+      setLoaded((old) =>
+        old?.id === id && old.presentation === value
+          ? old
+          : { id, presentation: value },
+      ),
+    [id],
+  );
   useLayoutEffect(() => {
     if (!child && detailScroll.current)
       detailScroll.current.scrollTop = parentScroll.current;
     backButtonRef.current?.focus({ preventScroll: true });
   }, [child, backButtonRef]);
-  const title = isArticle ? "近闻" : child ? "文章" : "专题";
+  const title = isArticle
+    ? presentation === "academic"
+      ? "专题"
+      : presentation === "news"
+        ? "近闻"
+        : "文章"
+    : child
+      ? "文章"
+      : "专题";
   return (
     <section
       className={styles.overlay}
@@ -387,6 +428,7 @@ export function EditorialDetail({
       {isArticle ? (
         <LiveArticleReader
           id={id}
+          onPresentation={reportPresentation}
           {...(renderComments ? { renderComments } : {})}
         />
       ) : child ? (

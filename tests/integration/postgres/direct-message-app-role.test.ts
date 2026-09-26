@@ -142,8 +142,13 @@ describe.each(["clean", "reapply"] as const)(
         setup,
         `${root}/database/community-migrations`,
       );
+      // parallel-community-integration-qa: grant-runtime.sql also names C's
+      // published-only public.article_entries (the notification Article bridge);
+      // Development creates it with the Payload migration
+      // 20260922_015000_editorial_content_views before the runtime grants, so it is
+      // stood in here like the Catalog views.
       await setup.query(
-        "CREATE TABLE public.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text); CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb); CREATE TABLE public.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)",
+        "CREATE TABLE public.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text); CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb); CREATE TABLE public.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean); CREATE TABLE public.article_entries(article_id text PRIMARY KEY,title text)",
       );
       grants = await readFile(
         `${root}/infra/development/work-publishing/grant-runtime.sql`,

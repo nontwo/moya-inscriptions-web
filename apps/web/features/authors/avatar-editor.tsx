@@ -181,12 +181,10 @@ export const AvatarEditor = ({
       setError(e instanceof Error ? e.message : "头像尚未开始保存，请重试");
     }
   };
+  // Owner acceptance (2026-09-26): deciding not to change the avatar is just
+  // Back (header or swipe), with no discard prompt; a crop is quick to redo.
   return (
-    <AuthorDialog
-      title="更换头像"
-      dirty={source !== null && !busy}
-      onClose={onClose}
-    >
+    <AuthorDialog title="更换头像" onClose={onClose}>
       <div className={styles.editor} aria-busy={busy}>
         {source && (
           <div

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,14 +50,24 @@ vi.mock("../authors/author-dialog", () => ({
   AuthorDialog: ({
     children,
     onClose,
+    onBack,
+    title,
+    titleContent,
   }: {
     children: ReactNode;
     onClose: () => void;
+    onBack?: () => void;
+    title: string;
+    titleContent?: ReactNode;
   }) => (
-    <div role="dialog">
+    <div role="dialog" aria-label={title}>
       <button data-close="" onClick={onClose}>
         Close
       </button>
+      <button data-back="" onClick={onBack}>
+        Back
+      </button>
+      <h2>{titleContent ?? title}</h2>
       {children}
     </div>
   ),
@@ -66,6 +76,8 @@ vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => ({ activeContent: null, activeProfile: null }),
 }));
 import { LiveMessageTrigger } from "./live-message-center";
+import type { DirectMessagePanelAdapter } from "./live-message-center";
+import local from "./notifications.module.css";
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -82,6 +94,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   window.history.replaceState({}, "", "/");
   item.reason = "comment";
+  author.checking = false;
+  author.sessionError = false;
   item.unread = true;
   inbox.loading = false;
   inbox.error = "";
@@ -169,6 +183,59 @@ describe("Owner notification reading interactions", () => {
       "discover",
     );
   });
+  // parallel-community-integration-qa: C's profile 私信 action stores an entry
+  // request that the live host must open for, on the view holding the DM panel.
+  const entryAdapter = (token: number | null) => ({
+    render: () => <p data-dm-panel="">DM panel</p>,
+    useUnreadConversationCount: () => 0,
+    useOpenRequest: () => token,
+  });
+  it("opens only the active host on the direct-message view for an adapter entry request", async () => {
+    await act(async () => root.render(null));
+    const adapter = entryAdapter(7);
+    await act(async () =>
+      root.render(
+        <>
+          <section hidden>
+            <LiveMessageTrigger directMessages={adapter} />
+          </section>
+          <LiveMessageTrigger directMessages={adapter} />
+        </>,
+      ),
+    );
+    expect(node.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(node.querySelector('section [role="dialog"]')).toBeNull();
+    expect(
+      node.querySelector('[role="dialog"] [data-dm-panel]'),
+    ).not.toBeNull();
+  });
+  it("opens once the overlay that issued the entry request stops making the host inert", async () => {
+    await act(async () => root.render(null));
+    const adapter = entryAdapter(9);
+    await act(async () =>
+      root.render(
+        <div data-overlay-backdrop="" inert>
+          <LiveMessageTrigger directMessages={adapter} />
+        </div>,
+      ),
+    );
+    expect(node.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => {
+      node.querySelector("[data-overlay-backdrop]")!.removeAttribute("inert");
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
+    expect(node.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(
+      node.querySelector('[role="dialog"] [data-dm-panel]'),
+    ).not.toBeNull();
+  });
+  it("does not open without an entry request", async () => {
+    await act(async () => root.render(null));
+    await act(async () =>
+      root.render(<LiveMessageTrigger directMessages={entryAdapter(null)} />),
+    );
+    expect(node.querySelector('[role="dialog"]')).toBeNull();
+  });
   it("ignores an unknown category and retains ordinary message navigation", async () => {
     await act(async () => root.render(null));
     window.history.replaceState({}, "", "/?notifications=unknown");
@@ -198,5 +265,143 @@ describe("Owner notification reading interactions", () => {
   it("opening the message center does not consume new incoming activity", () => {
     expect(inbox.refresh).toHaveBeenCalledOnce();
     expect(inbox.read).not.toHaveBeenCalled();
+  });
+  // parallel-community-integration-qa: an open conversation replaces the home
+  // content as in the accepted chat. The panel stays mounted, fills the body
+  // and hands the participant to the dialog header.
+  it("gives an open conversation the whole body and the header, and restores home on Back", async () => {
+    let mounts = 0;
+    const Panel = ({
+      onDepthChange,
+      onTitleChange,
+      backRequested,
+    }: Parameters<DirectMessagePanelAdapter["render"]>[0]) => {
+      const [open, setOpen] = useState(false);
+      const [mount] = useState(() => ++mounts);
+      useEffect(() => onDepthChange(open ? 1 : 0), [open, onDepthChange]);
+      useEffect(() => {
+        if (backRequested > 0) setOpen(false);
+      }, [backRequested]);
+      useEffect(() => {
+        if (!open) return;
+        onTitleChange({
+          label: "书法学徒",
+          content: <button aria-label="查看书法学徒的主页">书法学徒</button>,
+        });
+        return () => onTitleChange(null);
+      }, [open, onTitleChange]);
+      return open ? (
+        <div data-dm-view="conversation" data-mount={mount} />
+      ) : (
+        <button data-dm-row="" onClick={() => setOpen(true)}>
+          row
+        </button>
+      );
+    };
+    const adapter: DirectMessagePanelAdapter = {
+      render: (props) => <Panel {...props} />,
+      useUnreadConversationCount: () => 0,
+    };
+    inbox.error = "动态暂时不可用";
+    await act(async () => root.render(null));
+    await act(async () =>
+      root.render(<LiveMessageTrigger directMessages={adapter} />),
+    );
+    await click(button("打开消息"));
+    const content = () => node.querySelector("[data-message-live]")!;
+    const heading = () => node.querySelector('[role="dialog"] h2')!;
+    expect(node.querySelector('nav[aria-label="消息分类"]')).not.toBeNull();
+    expect(content().className).not.toContain(local.directOpen);
+    expect(heading().textContent).toBe("消息");
+    expect(content().textContent).toContain("动态暂时不可用");
+
+    await click(node.querySelector("[data-dm-row]") as HTMLElement);
+    expect(node.querySelector('nav[aria-label="消息分类"]')).toBeNull();
+    expect(
+      [...node.querySelectorAll("h3")].map((h) => h.textContent),
+    ).not.toContain("私信");
+    expect(content().className).toContain(local.directOpen);
+    expect(
+      content().querySelector(`.${local.directRegion} [data-dm-view]`),
+    ).not.toBeNull();
+    expect(
+      heading().querySelector('button[aria-label="查看书法学徒的主页"]'),
+    ).not.toBeNull();
+    expect(
+      node.querySelector('[role="dialog"]')!.getAttribute("aria-label"),
+    ).toBe("书法学徒");
+    expect(content().textContent).not.toContain("动态暂时不可用");
+
+    await click(node.querySelector("[data-back]") as HTMLElement);
+    expect(node.querySelector('nav[aria-label="消息分类"]')).not.toBeNull();
+    expect(content().className).not.toContain(local.directOpen);
+    expect(heading().textContent).toBe("消息");
+    expect(node.querySelector("[data-dm-row]")).not.toBeNull();
+    // The panel kept its state across the change: it was never remounted.
+    expect(mounts).toBe(1);
+    inbox.error = "";
+  });
+  // parallel-community-integration-qa: window focus and reconnect revalidate
+  // the confirmed account; an open conversation must survive that.
+  it.each(["checking", "sessionError"] as const)(
+    "keeps an open conversation mounted while the confirmed account revalidates (%s)",
+    async (flag) => {
+      let mounts = 0;
+      const Panel = ({
+        onDepthChange,
+      }: Parameters<DirectMessagePanelAdapter["render"]>[0]) => {
+        const [open, setOpen] = useState(false);
+        useState(() => ++mounts);
+        useEffect(() => onDepthChange(open ? 1 : 0), [open, onDepthChange]);
+        return open ? (
+          <div data-dm-view="conversation" />
+        ) : (
+          <button data-dm-row="" onClick={() => setOpen(true)}>
+            row
+          </button>
+        );
+      };
+      const adapter: DirectMessagePanelAdapter = {
+        render: (props) => <Panel {...props} />,
+        useUnreadConversationCount: () => 0,
+      };
+      await act(async () => root.render(null));
+      await act(async () =>
+        root.render(<LiveMessageTrigger directMessages={adapter} />),
+      );
+      await click(button("打开消息"));
+      await click(node.querySelector("[data-dm-row]") as HTMLElement);
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+
+      author[flag] = true;
+      await act(async () =>
+        root.render(<LiveMessageTrigger directMessages={adapter} />),
+      );
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+      expect(node.textContent).not.toContain("正在确认账户");
+      author[flag] = false;
+      await act(async () =>
+        root.render(<LiveMessageTrigger directMessages={adapter} />),
+      );
+      expect(
+        node.querySelector('[data-dm-view="conversation"]'),
+      ).not.toBeNull();
+      expect(mounts).toBe(1);
+    },
+  );
+  it("still shows the account states while no account is confirmed", async () => {
+    const viewer = author.viewer;
+    author.viewer = null as unknown as typeof viewer;
+    author.checking = true;
+    await act(async () => root.render(null));
+    await act(async () => root.render(<LiveMessageTrigger />));
+    await click(button("打开消息"));
+    expect(node.textContent).toContain("正在确认账户");
+    author.checking = false;
+    author.viewer = viewer;
   });
 });
