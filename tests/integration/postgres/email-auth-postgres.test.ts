@@ -271,10 +271,19 @@ describe("email-auth PostgreSQL", () => {
     await expect(
       upgrade.query("SELECT 1 FROM community.user_login_identities"),
     ).rejects.toMatchObject({ code: "42P01" });
-    expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual([
-      authMigrationId,
-      "20260922011000",
-    ]);
+    // With A and N both on main, upgrading from the pre-auth baseline applies
+    // every manifest entry after it (N's notification foundation included),
+    // still including A's, which is what this case asserts. Same change as the
+    // combined QA branch's e14ead4.
+    const afterBaseline = requiredCommunityMigrations
+      .map((file) => file.migrationId)
+      .filter((id) => id > baselineMigrationId);
+    expect(afterBaseline).toContain(authMigrationId);
+    // email-auth-v1 r4 adds the repair migration inside Track A's range.
+    expect(afterBaseline).toContain("20260922011000");
+    expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual(
+      afterBaseline,
+    );
     expect(await runCommunityMigrations(upgrade, migrationsDirectory)).toEqual(
       [],
     );
