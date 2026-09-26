@@ -21,10 +21,25 @@ import {
   contentCollectionPageSchema,
   inscriptionFilterOptionsSchema,
   contentStateSchema,
+  articlePageSchema,
+  articleDetailSchema,
+  articleCollectionPageSchema,
+  articleCollectionDetailSchema,
+  threadPageSchema,
+  threadSummarySchema,
+  threadReadResultSchema,
+  directConversationPageSchema,
+  directConversationLookupSchema,
+  directConversationSchema,
+  directMessagePageSchema,
+  directMessageSchema,
+  directMessageUnreadSchema,
 } from "@moya/contracts/schemas";
 import type {
+  ArticleListQuery,
   ContentIdentity,
   DiscoveryQuery,
+  DiscussionTarget,
   MentionReference,
 } from "@moya/contracts";
 interface Parser<T> {
@@ -36,6 +51,12 @@ export class AuthorRequestError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /**
+     * The machine reason a refused request named (for example
+     * `dm_request_pending`), for features that map it to their own text.
+     * It is never shown as is.
+     */
+    readonly reason: string | null = null,
   ) {
     super(message);
   }
@@ -92,21 +113,28 @@ const request = async <T>(
           : response.status === 409
             ? "状态已变化，请检查后重试"
             : "暂时无法完成，请重试";
+    let reason: string | null = null;
     try {
       const value = await response.json();
       if (response.status === 409 && typeof value?.error?.message === "string")
         message = value.error.message;
+      if (
+        response.status === 422 &&
+        typeof value?.error?.message === "string" &&
+        /^[a-z][a-z0-9_]{0,63}$/u.test(value.error.message)
+      )
+        reason = value.error.message;
     } catch {
       /* Preserve the transport failure. */
     }
-    throw new AuthorRequestError(response.status, message);
+    throw new AuthorRequestError(response.status, message, reason);
   }
   const result = schema.parse(await response.json());
   if (epoch !== accountEpoch)
     throw new AuthorRequestError(401, "账户状态已变化，请重试读取");
   return result;
 };
-const targetPath = (t: ContentIdentity) =>
+const targetPath = (t: DiscussionTarget) =>
   `${t.type}/${encodeURIComponent(t.id)}`;
 const query = (q: Record<string, string | number | undefined>) =>
   new URLSearchParams(
@@ -219,8 +247,117 @@ export const authorClient = {
     request(`content/${targetPath(target)}/card`, contentCardSchema),
   state: (target: ContentIdentity) =>
     request(`content/${targetPath(target)}/state`, contentStateSchema),
+  // content-community-completion-v1: direct messages (session required).
+  messages: {
+    list: (cursor?: string, signal?: AbortSignal) =>
+      request(
+        `messages?${query({ cursor, pageSize: 20 })}`,
+        directConversationPageSchema,
+        { ...(signal ? { signal } : {}) },
+      ),
+    unread: (signal?: AbortSignal) =>
+      request("messages/unread", directMessageUnreadSchema, {
+        ...(signal ? { signal } : {}),
+      }),
+    with: (userId: string, signal?: AbortSignal) =>
+      request(
+        `messages/with/${encodeURIComponent(userId)}`,
+        directConversationLookupSchema,
+        { ...(signal ? { signal } : {}) },
+      ),
+    history: (
+      id: string,
+      q: { before?: number; after?: number; pageSize?: number } = {},
+      signal?: AbortSignal,
+    ) =>
+      request(
+        `messages/${encodeURIComponent(id)}?${query({ pageSize: 30, ...q })}`,
+        directMessagePageSchema,
+        { ...(signal ? { signal } : {}) },
+      ),
+    send: (
+      body:
+        | { requestId: string; recipientId: string; text: string }
+        | { requestId: string; conversationId: string; text: string },
+    ) => request("messages", directMessageSchema, { method: "POST", body }),
+    participant: (
+      id: string,
+      action: "hide" | "unhide" | "mute" | "unmute",
+      requestId: string,
+    ) =>
+      request(
+        `messages/${encodeURIComponent(id)}/${action}`,
+        directConversationSchema,
+        { method: "POST", body: { requestId } },
+      ),
+    read: (id: string, sequence: number, requestId: string) =>
+      request(
+        `messages/${encodeURIComponent(id)}/read`,
+        directConversationSchema,
+        { method: "POST", body: { requestId, sequence } },
+      ),
+  },
+  // content-community-completion-v1: Threads over Works.
+  threads: {
+    list: (
+      q: { page?: number; pageSize?: number; anchor?: string } = {},
+      signal?: AbortSignal,
+    ) =>
+      request(`threads?${query(q)}`, threadPageSchema, {
+        ...(signal ? { signal } : {}),
+      }),
+    read: (id: string, signal?: AbortSignal) =>
+      request(`threads/${encodeURIComponent(id)}`, threadSummarySchema, {
+        ...(signal ? { signal } : {}),
+      }),
+    posts: (id: string, page: number, signal?: AbortSignal) =>
+      request(
+        `threads/${encodeURIComponent(id)}/posts?${query({ page, pageSize: 20 })}`,
+        workPageSchema,
+        { ...(signal ? { signal } : {}) },
+      ),
+    markRead: (id: string) =>
+      request(
+        `threads/${encodeURIComponent(id)}/read`,
+        threadReadResultSchema,
+        {
+          method: "POST",
+          body: {},
+        },
+      ),
+  },
+  // content-community-completion-v1: anonymous published editorial reads.
+  editorial: {
+    articles: (q: Partial<ArticleListQuery> = {}, signal?: AbortSignal) =>
+      request(`editorial/articles?${query(q)}`, articlePageSchema, {
+        ...(signal ? { signal } : {}),
+      }),
+    article: (id: string, signal?: AbortSignal) =>
+      request(
+        `editorial/articles/${encodeURIComponent(id)}`,
+        articleDetailSchema,
+        { ...(signal ? { signal } : {}) },
+      ),
+    collections: (
+      q: { page?: number; pageSize?: number } = {},
+      signal?: AbortSignal,
+    ) =>
+      request(
+        `editorial/collections?${query(q)}`,
+        articleCollectionPageSchema,
+        {
+          ...(signal ? { signal } : {}),
+        },
+      ),
+    collection: (id: string, signal?: AbortSignal) =>
+      request(
+        `editorial/collections/${encodeURIComponent(id)}`,
+        articleCollectionDetailSchema,
+        { ...(signal ? { signal } : {}) },
+      ),
+  },
   discussion: (
-    target: ContentIdentity,
+    target: DiscussionTarget,
     page: number,
     pinned?: readonly string[],
     signal?: AbortSignal,
@@ -230,13 +367,13 @@ export const authorClient = {
       discussionPageSchema,
       { ...(signal ? { signal } : {}) },
     ),
-  replies: (target: ContentIdentity, root: string, page: number) =>
+  replies: (target: DiscussionTarget, root: string, page: number) =>
     request(
       `discussion/${targetPath(target)}/replies/${root}?page=${page}&pageSize=10`,
       discussionReplyPageSchema,
     ),
   send: (
-    target: ContentIdentity,
+    target: DiscussionTarget,
     text: string,
     root?: string,
     replyTo?: string,
@@ -250,7 +387,7 @@ export const authorClient = {
         body: { text, mentions, ...(replyTo ? { replyTo } : {}) },
       },
     ),
-  locate: (target: ContentIdentity, id: string, pinned: readonly string[]) =>
+  locate: (target: DiscussionTarget, id: string, pinned: readonly string[]) =>
     request(
       `discussion/${targetPath(target)}/locate/${id}?${query({ page: 1, pageSize: 10, pinned: pinned.join(",") })}`,
       discussionLocationSchema,

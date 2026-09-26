@@ -19,6 +19,7 @@ import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
 import { EditorSessionProvider } from "../publishing/ui/editor/editor-session-provider";
 import { NotificationProvider } from "../notifications/notification-context";
 import { MessageTrigger } from "../authors/message-center";
+import { DirectMessageEntryProvider } from "../messages";
 import { useProductShell } from "../product-shell/product-shell";
 import { CatalogSearchHeaderAction } from "../search/catalog-search";
 
@@ -83,11 +84,13 @@ export const ProductApplication = ({
   ) : (
     <AuthorProvider signInHref={comments.signInHref}>
       <NotificationProvider enabled={liveNotifications}>
-        <AuthorProduct
-          preview={preview}
-          unreadCount={messageUnreadCount}
-          liveNotifications={liveNotifications}
-        />
+        <DirectMessageEntryProvider>
+          <AuthorProduct
+            preview={preview}
+            unreadCount={messageUnreadCount}
+            liveNotifications={liveNotifications}
+          />
+        </DirectMessageEntryProvider>
       </NotificationProvider>
     </AuthorProvider>
   );

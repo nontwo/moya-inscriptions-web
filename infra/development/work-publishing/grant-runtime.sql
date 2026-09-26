@@ -59,6 +59,11 @@ FROM :"app_role";
 -- Discovery and the featured operator read published Catalog projections only.
 GRANT SELECT ON TABLE public.catalog_discovery, public.catalog_media TO :"app_role";
 GRANT SELECT (catalog_id, province, province_state) ON TABLE public.catalog_entries TO :"app_role";
+-- parallel-community-integration-qa: the notification source query checks Article
+-- visibility against C's published-only projection. Only the identifier column is
+-- needed for the existence test, so no Article body, byline or draft state is
+-- readable by the App role.
+GRANT SELECT (article_id) ON TABLE public.article_entries TO :"app_role";
 
 -- Startup readiness verifies the community ledger read-only.
 GRANT SELECT ON TABLE community.schema_migrations TO :"app_role";
@@ -291,3 +296,31 @@ GRANT UPDATE (generation,completed_generation,attempts,run_after,lease_owner,lea
   ON community.notification_sources TO :"app_role";
 GRANT UPDATE (revision) ON community.notification_recipient_versions TO :"app_role";
 GRANT UPDATE (read_through) ON community.notification_groups TO :"app_role";
+-- content-community-completion-v1 (track C): Threads over Works. The App role
+-- reads Threads, associates a Work in the submission transaction, keeps the
+-- per-user observed marker, and applies the Owner's operator commands (which
+-- run through the same Backend role). Nothing here deletes.
+GRANT SELECT, INSERT ON TABLE community.threads TO :"app_role";
+GRANT UPDATE (title, description, tags, status, hidden_at, position, version, updated_at)
+ON TABLE community.threads TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.thread_works TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.thread_read_state TO :"app_role";
+GRANT UPDATE (observed_activity_at, updated_at) ON TABLE community.thread_read_state TO :"app_role";
+
+-- content-community-completion-v1 (track C): direct messages. The App role
+-- creates conversations, appends immutable messages, keeps participant state
+-- and receipts, and writes content-free moderation audit rows. Removal is a
+-- column update by the moderation path; nothing is deleted.
+GRANT SELECT, INSERT ON TABLE community.dm_conversations TO :"app_role";
+GRANT UPDATE (state, next_sequence, last_message_at, updated_at) ON TABLE community.dm_conversations TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_participants TO :"app_role";
+GRANT UPDATE (hidden_at, hidden_before_sequence, muted, read_sequence, updated_at) ON TABLE community.dm_participants TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_messages TO :"app_role";
+GRANT UPDATE (removed_at, removed_by) ON TABLE community.dm_messages TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_command_receipts TO :"app_role";
+-- Owner moderation removal redacts the sender's send receipt so removed text
+-- keeps no second copy (direct-message-adapter operatorRemoveMessage). Only the
+-- stored result is rewritten; actor, request, fingerprint and time stay
+-- write-once, and nothing is deleted.
+GRANT UPDATE (result) ON TABLE community.dm_command_receipts TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.dm_moderation_events TO :"app_role";

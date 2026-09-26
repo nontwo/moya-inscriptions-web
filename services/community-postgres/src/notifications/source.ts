@@ -55,7 +55,8 @@ export const sourceFactsSql = `SELECT s.action_key,s.kind,s.actor_id,s.created_a
   CASE WHEN s.kind IN ('work_like','work_mention') THEN w.text WHEN r.id IS NOT NULL THEN r.text ELSE c.text END AS text,
   (a.status='active' AND
     CASE WHEN t.target_type='work' THEN community.work_is_public(w) AND wa.status='active'
-      WHEN t.target_type='catalog' THEN cat.catalog_id IS NOT NULL ELSE false END
+      WHEN t.target_type='catalog' THEN cat.catalog_id IS NOT NULL
+      WHEN t.target_type='article' THEN art.article_id IS NOT NULL ELSE false END
     AND (w.author_id IS NULL OR community.accounts_can_interact(s.actor_id,w.author_id))
     AND CASE WHEN s.kind IN ('comment','comment_like') THEN
       c.moderation='visible' AND c.body_deleted_at IS NULL AND c.thread_removed_at IS NULL AND ca.status='active'
@@ -79,7 +80,8 @@ export const sourceFactsSql = `SELECT s.action_key,s.kind,s.actor_id,s.created_a
   LEFT JOIN community.works w ON t.target_type='work' AND w.id=t.target_id
   LEFT JOIN community.public_users wa ON wa.id=w.author_id
   LEFT JOIN community.work_revisions wr ON wr.id=w.public_revision_id
-  LEFT JOIN public.catalog_discovery cat ON t.target_type='catalog' AND cat.catalog_id=t.target_id`;
+  LEFT JOIN public.catalog_discovery cat ON t.target_type='catalog' AND cat.catalog_id=t.target_id
+  LEFT JOIN public.article_entries art ON t.target_type='article' AND art.article_id=t.target_id`;
 /** Used by both reads and projection. $1 is always the recipient. */
 export const recipientEligibleSql = `f.eligible AND u.status='active' AND f.actor_id<>$1
   AND community.accounts_can_interact($1,f.actor_id)

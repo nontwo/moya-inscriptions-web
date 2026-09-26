@@ -67,6 +67,7 @@
     "./agent-connections-client": "./src/agent-connections/connections-client.tsx",
     "./agent-connections-consent": "./src/agent-connections/consent.ts",
     "./agent-connections-decide": "./src/agent-connections/decide.ts",
-    "./agent-connections-resource": "./src/agent-connections/resource.ts"
+    "./agent-connections-resource": "./src/agent-connections/resource.ts",
+    "./editorial-content": "./src/editorial-content/index.ts"
   }
 }

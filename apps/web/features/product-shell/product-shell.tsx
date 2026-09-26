@@ -1221,12 +1221,17 @@ export const ProductShell = ({
   const openEditor = useCallback(
     (target: EditorTarget, opener: HTMLElement) => {
       const editorTarget = parseEditorTarget(target);
+      // content-community-completion-v1: the Thread quick composer opens the
+      // editor above the Thread overlay it was started from; closing the
+      // editor returns to that Thread through the history entry below.
+      const fromThread =
+        editorTarget?.type === "new" && editorTarget.threadId !== undefined;
       if (
         !editorEnabled ||
         editorTarget === null ||
         settingsOpenRef.current ||
         viewerMediaIdRef.current !== null ||
-        topicIdRef.current !== null ||
+        (topicIdRef.current !== null && !fromThread) ||
         editorRef.current !== null
       )
         return false;

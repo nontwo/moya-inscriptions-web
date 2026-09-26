@@ -5,6 +5,7 @@ import {
   fetchServerCatalogPage,
   parsePublicApiBaseUrl,
   relayServerAuthorCommunity,
+  relayServerLocalEditorialMedia,
 } from "./server.js";
 
 afterEach(() => {
@@ -279,5 +280,202 @@ describe("Community relay with a Session the Backend no longer accepts", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(upstream).toHaveBeenCalledOnce();
+  });
+});
+
+/*
+ * parallel-community-integration-qa: N binds GET notifications to the UI's
+ * confirmed account (x-author-account); A clears a Session the Backend
+ * refuses. Together a still-valid Session behind a stale account header keeps
+ * its cookie, and a refused one is answered once as signed out.
+ */
+describe("Combined relay: notifications account binding next to a refused Session", () => {
+  const cookie = `yoyi-session=${"D".repeat(43)}`;
+  const account = `user-${"2".repeat(32)}`;
+  const refused = () =>
+    Response.json(
+      {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "A valid session is required",
+        },
+      },
+      { status: 401 },
+    );
+  const inbox = () =>
+    new Request("http://127.0.0.1:3410/api/community/notifications", {
+      headers: { host: "127.0.0.1:3410", cookie, "x-author-account": account },
+    });
+  const headerOf = (call: Parameters<typeof fetch>, name: string) =>
+    new Headers(call[1]?.headers).get(name);
+
+  it("keeps a still-valid Session whose account header no longer matches", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(Response.json({ id: `user-${"3".repeat(32)}` }));
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(inbox());
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(headerOf(upstream.mock.calls[0]!, "x-author-account")).toBe(account);
+    expect(String(upstream.mock.calls[1]![0])).toBe(
+      "http://127.0.0.1:3411/v1/me",
+    );
+  });
+
+  it("answers a refused Session once as signed out, still bound to the confirmed account", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(refused());
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(inbox());
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^yoyi-session=; .*Max-Age=0/u,
+    );
+    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(headerOf(upstream.mock.calls[2]!, "authorization")).toBeNull();
+    expect(headerOf(upstream.mock.calls[2]!, "x-author-account")).toBe(account);
+  });
+});
+
+/* content-community-completion-v1: Development editorial images for a phone on the LAN. */
+
+const file = `${"c".repeat(64)}-${"d".repeat(64)}.png`;
+const other = `${"e".repeat(64)}-${"f".repeat(64)}.png`;
+const article = `article-${"1".repeat(32)}`;
+const collection = `collection-${"2".repeat(32)}`;
+const local = (name: string) => `http://127.0.0.1:3522/api/media/file/${name}`;
+const detail = (src: string) =>
+  Response.json({
+    id: article,
+    cover: { src: local(other), alt: "封面" },
+    sections: [{ image: { src, alt: "插图" } }],
+  });
+const png = () =>
+  new Response(new Uint8Array([137, 80, 78, 71]), {
+    headers: { "content-type": "image/png" },
+  });
+
+describe("relayServerLocalEditorialMedia (Development)", () => {
+  it("serves an image the published Article shows, read anonymously from its loopback URL", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3521");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(detail(local(file)))
+      .mockResolvedValueOnce(png());
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerLocalEditorialMedia(article, file);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(String(upstream.mock.calls[0]![0])).toBe(
+      `http://127.0.0.1:3521/v1/community/editorial/articles/${article}`,
+    );
+    expect(String(upstream.mock.calls[1]![0])).toBe(local(file));
+    for (const call of upstream.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("cookie")).toBeNull();
+      expect(headers.get("authorization")).toBeNull();
+    }
+  });
+
+  it("looks a Collection image up in the published Collection", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3521");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ id: collection, cover: { src: local(file), alt: "" } }),
+      )
+      .mockResolvedValueOnce(png());
+    vi.stubGlobal("fetch", upstream);
+    expect(
+      (await relayServerLocalEditorialMedia(collection, file)).status,
+    ).toBe(200);
+    expect(String(upstream.mock.calls[0]![0])).toBe(
+      `http://127.0.0.1:3521/v1/community/editorial/collections/${collection}`,
+    );
+  });
+
+  it("never serves a file the published item does not show", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3521");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(detail(local(other)));
+    vi.stubGlobal("fetch", upstream);
+    expect((await relayServerLocalEditorialMedia(article, file)).status).toBe(
+      404,
+    );
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it("answers 404 when the item is not published", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3521");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(null, { status: 404 })),
+    );
+    expect((await relayServerLocalEditorialMedia(article, file)).status).toBe(
+      404,
+    );
+  });
+
+  it("only reads a loopback file the detail names, never a foreign source", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3521");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        detail(`https://cdn.example.invalid/api/media/file/${file}`),
+      );
+    vi.stubGlobal("fetch", upstream);
+    expect((await relayServerLocalEditorialMedia(article, file)).status).toBe(
+      404,
+    );
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["user-" + "1".repeat(32), file],
+    [article, "x.png"],
+    [article, `${"c".repeat(64)}-${"d".repeat(64)}.gif`],
+    ["../article", file],
+  ])(
+    "refuses owner %s / file %s without reading anything",
+    async (owner, name) => {
+      const upstream = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", upstream);
+      expect((await relayServerLocalEditorialMedia(owner, name)).status).toBe(
+        404,
+      );
+      expect(upstream).not.toHaveBeenCalled();
+    },
+  );
+
+  it("answers 404 for a file Payload refuses and 502 for another type", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3521");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(detail(local(file)))
+        .mockResolvedValueOnce(new Response(null, { status: 403 }))
+        .mockResolvedValueOnce(detail(local(file)))
+        .mockResolvedValueOnce(
+          new Response("<html>", { headers: { "content-type": "text/html" } }),
+        ),
+    );
+    expect((await relayServerLocalEditorialMedia(article, file)).status).toBe(
+      404,
+    );
+    expect((await relayServerLocalEditorialMedia(article, file)).status).toBe(
+      502,
+    );
   });
 });

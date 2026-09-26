@@ -412,6 +412,110 @@ export const relayServerAuthorCommunity = async (
   }
 };
 
+const editorialOwnerPattern = /^(article|collection)-[0-9a-f]{32}$/u;
+const editorialLocalFile = /^[a-f0-9]{64}-[a-f0-9]{64}\.(png|jpg|webp)$/u;
+const editorialMediaTypes: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  webp: "image/webp",
+};
+
+/** Every image source a published editorial detail carries. */
+const editorialImageSources = (
+  value: unknown,
+  found: string[] = [],
+): string[] => {
+  if (Array.isArray(value))
+    for (const item of value) editorialImageSources(item, found);
+  else if (value !== null && typeof value === "object")
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "src" && typeof item === "string") found.push(item);
+      else editorialImageSources(item, found);
+    }
+  return found;
+};
+
+/**
+ * Development-only caller, as for Catalog media: an editorial image is served
+ * through the Web origin only when the published Article or Collection named
+ * by `owner` shows it. Its loopback file URL comes from that published detail,
+ * never from the request, and both reads are anonymous.
+ */
+export const relayServerLocalEditorialMedia = async (
+  owner: string,
+  file: string,
+): Promise<Response> => {
+  const headers = {
+    "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff",
+  };
+  const fail = (status: number) => new Response(null, { status, headers });
+  const kind = editorialOwnerPattern.exec(owner)?.[1];
+  const match = editorialLocalFile.exec(file);
+  if (!kind || !match) return fail(404);
+  const expected = editorialMediaTypes[match[1]!]!;
+  try {
+    const detail = await fetch(
+      new URL(
+        `v1/community/editorial/${kind}s/${owner}`,
+        parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL),
+      ),
+      {
+        method: "GET",
+        headers: { accept: "application/json" },
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!detail.ok) {
+      await detail.body?.cancel().catch(() => undefined);
+      return fail(detail.status === 404 ? 404 : 503);
+    }
+    const url = editorialImageSources(await detail.json())
+      .map((src) => localCatalogFileUrl(src))
+      .find((candidate) => candidate?.pathname === `/api/media/file/${file}`);
+    if (!url) return fail(404);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { accept: expected },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      return fail(
+        response.status === 404 || response.status === 403 ? 404 : 503,
+      );
+    }
+    if (response.headers.get("content-type")?.split(";")[0] !== expected) {
+      await response.body?.cancel().catch(() => undefined);
+      return fail(502);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) return fail(502);
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (bytes > 12 * 1024 * 1024) {
+        await reader.cancel();
+        return fail(502);
+      }
+      chunks.push(next.value);
+    }
+    return new Response(new Uint8Array(Buffer.concat(chunks)), {
+      status: 200,
+      headers: { ...headers, "content-type": expected },
+    });
+  } catch {
+    return fail(503);
+  }
+};
+
 /** Development-only caller; look up published membership before an anonymous native file read. */
 export const relayServerLocalCatalogMedia = async (
   catalogId: string,

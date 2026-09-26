@@ -8,6 +8,8 @@ const {
   profileRead,
   comments,
   openContent,
+  navigatePrimary,
+  openTopic,
   author,
   onViewChange,
   shell,
@@ -16,6 +18,8 @@ const {
   beforeCommit: vi.fn(),
   comments: vi.fn(),
   openContent: vi.fn(),
+  navigatePrimary: vi.fn(),
+  openTopic: vi.fn(),
   profileRead: vi.fn(),
   onViewChange: vi.fn(),
   shell: {
@@ -43,6 +47,8 @@ vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => ({
     ...shell,
     openContent,
+    navigatePrimary,
+    openTopic,
   }),
 }));
 vi.mock("../shell/horizontal-pager", async () => {
@@ -445,5 +451,55 @@ describe("Comments message content", () => {
       target,
       id: commentId,
     });
+  });
+
+  const articleComment = () => {
+    const target = {
+      type: "article" as const,
+      id: `article-${"6".repeat(32)}`,
+    };
+    const commentId = `comment-${"7".repeat(32)}`;
+    comments.mockResolvedValue({
+      items: [
+        {
+          id: commentId,
+          rootId: commentId,
+          text: "文章评论",
+          createdAt: "2026-09-20T10:00:00.000Z",
+          deleted: false,
+          target,
+        },
+      ],
+      page: 1,
+      total: 1,
+    });
+    return target;
+  };
+
+  it("hands an Article comment to the host so it can close before the Article opens", async () => {
+    const target = articleComment();
+    const onOpenContent = vi.fn();
+    const node = await render(
+      <MyComments entryId="messages" onOpenContent={onOpenContent} />,
+    );
+    const opener = button(node, "前往评论位置")!;
+    await act(async () => opener.click());
+    expect(onOpenContent).toHaveBeenCalledWith(target, opener);
+    expect(openTopic).not.toHaveBeenCalled();
+    expect(navigatePrimary).not.toHaveBeenCalled();
+  });
+
+  it("opens an Article comment on the discussion destination without a host", async () => {
+    const target = articleComment();
+    const node = await render(<MyComments entryId="profile" />);
+    const opener = button(node, "前往评论位置")!;
+    await act(async () => opener.click());
+    expect(navigatePrimary).toHaveBeenCalledWith("discussion");
+    await act(async () => {
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => resolve(null)),
+      );
+    });
+    expect(openTopic).toHaveBeenCalledWith(target.id, opener, 0);
   });
 });

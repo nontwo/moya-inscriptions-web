@@ -114,3 +114,7 @@ export type {
 
 // messaging-notification-foundation-v1
 export { PostgresNotificationAdapter } from "./notifications/adapter.js";
+// content-community-completion-v1: Threads over Works.
+export { PostgresThreadAdapter } from "./thread-adapter.js";
+// content-community-completion-v1: direct messages.
+export { PostgresDirectMessageAdapter } from "./direct-message-adapter.js";

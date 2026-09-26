@@ -81,6 +81,10 @@ export const workPublishingFailureCodeSchema = z.enum([
   "unsupported_type",
   "pairing_mismatch",
   "work_unavailable",
+  // content-community-completion-v1: Thread association refusals.
+  "thread_unavailable",
+  "thread_conflict",
+  "thread_items_limit",
 ]);
 
 export const mediaItemKindSchema = z.enum(["static", "live"]);
@@ -1233,6 +1237,15 @@ export const workSubmissionCommandSchema = z.strictObject({
   holder: publishingHolderSchema,
   content: workSubmissionContentSchema,
   baseRevisionId: workRevisionIdSchema.nullable(),
+  /**
+   * content-community-completion-v1: publish this new Work into a Thread. The
+   * association commits in the same transaction as the submission; at most
+   * three static items; never reassigns an existing Work.
+   */
+  threadId: z
+    .string()
+    .regex(/^thread-[0-9a-f]{32}$/u)
+    .optional(),
 });
 
 /** Author-neutral confirmation; the same receipt answers a lost-response query. */
