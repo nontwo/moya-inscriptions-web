@@ -199,4 +199,10 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "cef51df23c932f2efe7b0259e120a726172af78cccef5759f848c640f14ccbf0",
     }),
+    Object.freeze({
+      migrationId: "20260922020000",
+      filename: "20260922020000_notification_foundation.sql",
+      checksum:
+        "fe4f4ce057e3b3d0fc3092ae85b1358ab5a4492be0288cff318135d1caa51656",
+    }),
   ]);

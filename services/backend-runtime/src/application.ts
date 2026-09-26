@@ -1,3 +1,9 @@
+import { NotificationService } from "@moya/api";
+import type { NotificationPort, NotificationWorkerPort } from "@moya/api";
+import {
+  NotificationSignals,
+  NotificationStreams,
+} from "./community/notification-stream.js";
 import {
   createDevelopmentCatalogFixtureQueryPort,
   createDevelopmentCatalogFixtureSearchPort,
@@ -44,6 +50,9 @@ import type { CommunityRouterDependencies } from "./http/router.js";
 import type { RequestListener } from "node:http";
 
 export interface BackendApplicationOptions {
+  readonly notificationPort?: NotificationPort;
+  readonly notificationWorkerPort?: NotificationWorkerPort;
+  readonly notificationSignals?: NotificationSignals;
   readonly nodeEnv: NodeEnvironment;
   readonly catalogQueryPort?: CatalogQueryPort;
   readonly catalogSearchQueryPort?: CatalogSearchQueryPort;
@@ -181,10 +190,22 @@ const resolveCommunity = (
   if (communityIdentityPort === undefined) return undefined;
   if (nodeEnv === "production" && options.authService !== undefined)
     throw new Error("Public authentication is not composed in production");
+  const sessionService = new CommunitySessionService(communityIdentityPort);
   return {
-    sessionService: new CommunitySessionService(communityIdentityPort),
+    sessionService,
     ...(nodeEnv === "development" && options.authService !== undefined
       ? { authService: options.authService }
+      : {}),
+    ...(nodeEnv === "development" && options.notificationPort
+      ? {
+          notificationService: new NotificationService(
+            options.notificationPort,
+          ),
+          notificationStreams: new NotificationStreams(
+            sessionService,
+            options.notificationSignals ?? new NotificationSignals(),
+          ),
+        }
       : {}),
     ...(nodeEnv === "development" && options.authorCommunityPort !== undefined
       ? {
