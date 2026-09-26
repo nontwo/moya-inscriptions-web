@@ -2,7 +2,10 @@
 
 import { useContext, useId, useLayoutEffect, useRef, useState } from "react";
 
-import { CommentComposerPortalProvider } from "../comments/comment-composer-portal";
+import {
+  CommentComposerPortalProvider,
+  CommentLocationRevealContext,
+} from "../comments/comment-composer-portal";
 import {
   CommentCountLabel,
   CommentCountProvider,
@@ -154,9 +157,16 @@ const ScopedCatalogDetailContentPager = ({
         panelLabelledBy={(page) => `${id}-${page}-tab`}
         panels={{
           comments: (
-            <CommentComposerPortalProvider target={composerPortalTarget}>
-              {comments}
-            </CommentComposerPortalProvider>
+            <CommentLocationRevealContext.Provider
+              value={{
+                active: activePage === "comments",
+                reveal: () => selectPage("comments"),
+              }}
+            >
+              <CommentComposerPortalProvider target={composerPortalTarget}>
+                {comments}
+              </CommentComposerPortalProvider>
+            </CommentLocationRevealContext.Provider>
           ),
           information,
         }}

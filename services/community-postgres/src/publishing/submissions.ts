@@ -1,4 +1,8 @@
 import {
+  enqueueNotification,
+  validateMentionUsers,
+} from "../notifications/source.js";
+import {
   CommunityConflictError,
   CommunityInputError,
   CommunityNotFoundError,
@@ -241,6 +245,23 @@ export const applyPublicRevision = async (
     [workId, revisionId, nowParam(now)],
   );
   if (updated.rowCount !== 1) throw new CommunityNotFoundError();
+  const author = (
+    await db.query<{ author_id: string }>(
+      "SELECT author_id FROM community.works WHERE id=$1",
+      [workId],
+    )
+  ).rows[0]!;
+  await enqueueNotification(db, "work_mention", workId, author.author_id);
+  // Restore only recorded task-era effects that could not project while private.
+  await db.query(
+    `UPDATE community.notification_sources SET generation=generation+1,attempts=0,
+      run_after=CURRENT_TIMESTAMP,error_code=NULL
+      WHERE (kind='work_like' AND subject_id=$1) OR (kind IN ('comment','comment_like') AND subject_id IN (
+        SELECT id FROM community.catalog_comments WHERE target_type='work' AND catalog_id=$1
+        UNION ALL SELECT r.id FROM community.catalog_comment_replies r
+          JOIN community.catalog_comments c ON c.id=r.root_comment_id WHERE c.target_type='work' AND c.catalog_id=$1))`,
+    [workId],
+  );
 };
 
 /**
@@ -722,6 +743,12 @@ const submitInTransaction = async (
       : settings.policy === "DIRECT_PUBLICATION"
         ? "approved"
         : "pending";
+  await validateMentionUsers(
+    db,
+    actorId,
+    normalized.body,
+    normalized.content.mentions ?? [],
+  );
   const revisionId = opaqueId("work-revision");
   const sequence = (
     await db.query<{ next: number }>(
@@ -732,10 +759,10 @@ const submitInTransaction = async (
   await db.query(
     `INSERT INTO community.work_revisions(id,work_id,author_id,sequence,origin,title,body,authorship_kind,
       reference_title,original_author,source_note,requested_visibility,cover_item_id,cover_crop,content_sha256,
-      disposition,submitted_at,decided_at,request_id)
+      disposition,submitted_at,decided_at,request_id,mentions)
     VALUES($1,$2,$3,$4,'submission',$5::text,$6::text,$7::text,$8::text,$9::text,$10::text,$11,$12::text,$13::jsonb,
-      community.work_content_sha256($5::text,$6::text,$7::text,$8::text,$9::text,$10::text,$14::jsonb,$12::text,$13::jsonb),
-      $15,$16::timestamptz,$17::timestamptz,$18::uuid)`,
+      CASE WHEN $19::jsonb='[]'::jsonb THEN community.work_content_sha256($5::text,$6::text,$7::text,$8::text,$9::text,$10::text,$14::jsonb,$12::text,$13::jsonb) ELSE encode(sha256(convert_to(community.work_content_sha256($5::text,$6::text,$7::text,$8::text,$9::text,$10::text,$14::jsonb,$12::text,$13::jsonb) || ($19::jsonb)::text,'UTF8')),'hex') END,
+      $15,$16::timestamptz,$17::timestamptz,$18::uuid,$19::jsonb)`,
     [
       revisionId,
       workId,
@@ -757,6 +784,7 @@ const submitInTransaction = async (
       at,
       disposition === "approved" ? at : null,
       command.requestId,
+      JSON.stringify(normalized.content.mentions ?? []),
     ],
   );
   await db.query(

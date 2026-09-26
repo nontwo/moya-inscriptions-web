@@ -246,6 +246,51 @@ GRANT UPDATE (last_verified_at) ON TABLE community.agent_connections TO :"app_ro
 GRANT UPDATE (destroy_status, destroyed_at)
 ON TABLE community.agent_connection_grants TO :"app_role";
 
+-- email-auth-v1: public registration and verified login identities.
+-- No table-level UPDATE. Identity user_id, kind, verification_mode and
+-- environment are not updatable, so a local proof cannot be relabeled.
+-- public_users INSERT is limited to the columns a new ordinary account needs.
+GRANT INSERT (id, handle, display_name) ON TABLE community.public_users TO :"app_role";
+GRANT SELECT, DELETE ON TABLE community.user_login_identities TO :"app_role";
+GRANT INSERT (
+  id, user_id, kind, lookup_digest, ciphertext, lookup_key_version,
+  verification_mode, environment, version, verified_at
+) ON TABLE community.user_login_identities TO :"app_role";
+GRANT UPDATE (
+  lookup_digest, ciphertext, lookup_key_version, version, verified_at, updated_at
+) ON TABLE community.user_login_identities TO :"app_role";
+GRANT SELECT ON TABLE community.auth_challenges TO :"app_role";
+GRANT INSERT (
+  id, channel, purpose, target_digest, ciphertext, code_verifier,
+  verification_strategy, provider_mode, environment, user_id, session_hash,
+  continuation_hash, expected_version, reauth_hash, provider_correlation,
+  expires_at, attempts, resend_available_at, superseded_at, completed_at,
+  invalidated_at, delivery_state, idempotency_hash, created_at
+) ON TABLE community.auth_challenges TO :"app_role";
+GRANT UPDATE (
+  attempts, resend_available_at, superseded_at, completed_at, invalidated_at,
+  delivery_state, provider_correlation
+) ON TABLE community.auth_challenges TO :"app_role";
+GRANT SELECT ON TABLE community.auth_handoffs TO :"app_role";
+GRANT INSERT (
+  id, token_hash, purpose, channel, target_digest, ciphertext, provider_mode,
+  environment, user_id, session_hash, expected_version, expires_at, consumed_at
+) ON TABLE community.auth_handoffs TO :"app_role";
+GRANT UPDATE (consumed_at) ON TABLE community.auth_handoffs TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.auth_receipts TO :"app_role";
+GRANT UPDATE (session_id, session_token_hash, closed_at) ON TABLE community.auth_receipts TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.auth_send_counters TO :"app_role";
+GRANT UPDATE (count) ON TABLE community.auth_send_counters TO :"app_role";
+GRANT SELECT, INSERT ON TABLE community.auth_target_failures TO :"app_role";
+GRANT INSERT (id, user_id, action, occurred_at) ON TABLE community.auth_audit_events TO :"app_role";
+GRANT INSERT (issuer, auth_environment, auth_channel) ON TABLE community.sessions TO :"app_role";
+-- messaging-notification-foundation-v1: transaction effects and private inbox.
+GRANT SELECT, INSERT ON community.notification_sources, community.notification_recipient_versions,
+  community.notification_groups, community.notification_deliveries TO :"app_role";
+GRANT UPDATE (generation,completed_generation,attempts,run_after,lease_owner,lease_until,error_code)
+  ON community.notification_sources TO :"app_role";
+GRANT UPDATE (revision) ON community.notification_recipient_versions TO :"app_role";
+GRANT UPDATE (read_through) ON community.notification_groups TO :"app_role";
 -- content-community-completion-v1 (track C): Threads over Works. The App role
 -- reads Threads, associates a Work in the submission transaction, keeps the
 -- per-user observed marker, and applies the Owner's operator commands (which

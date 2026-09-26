@@ -1,3 +1,4 @@
+import type { MentionReference } from "@moya/contracts";
 import type {
   DiscussionTarget,
   DiscussionPage,
@@ -30,6 +31,7 @@ export interface DiscussionPort {
     text: string,
     rootId?: string,
     replyTo?: string,
+    mentions?: readonly MentionReference[],
   ): Promise<{
     id: string;
     rootId: string;

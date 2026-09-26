@@ -17,6 +17,7 @@ import { PublishingEntryProvider } from "../publishing/publishing-entry";
 import { PublishingProvider } from "../publishing/publishing-provider";
 import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
 import { EditorSessionProvider } from "../publishing/ui/editor/editor-session-provider";
+import { NotificationProvider } from "../notifications/notification-context";
 import { MessageTrigger } from "../authors/message-center";
 import { DirectMessageEntryProvider } from "../messages";
 import { useProductShell } from "../product-shell/product-shell";
@@ -49,6 +50,7 @@ export interface ProductApplicationProps extends Pick<
   readonly authorCommunity?: boolean;
   /** Presentation input until the notification service is connected; never synthesized. */
   readonly messageUnreadCount?: number;
+  readonly liveNotifications?: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export const ProductApplication = ({
   comments,
   authorCommunity = false,
   messageUnreadCount = 0,
+  liveNotifications = false,
   ...preview
 }: ProductApplicationProps) =>
   comments === null || !authorCommunity ? (
@@ -80,21 +83,29 @@ export const ProductApplication = ({
     />
   ) : (
     <AuthorProvider signInHref={comments.signInHref}>
-      <DirectMessageEntryProvider>
-        <AuthorProduct preview={preview} unreadCount={messageUnreadCount} />
-      </DirectMessageEntryProvider>
+      <NotificationProvider enabled={liveNotifications}>
+        <DirectMessageEntryProvider>
+          <AuthorProduct
+            preview={preview}
+            unreadCount={messageUnreadCount}
+            liveNotifications={liveNotifications}
+          />
+        </DirectMessageEntryProvider>
+      </NotificationProvider>
     </AuthorProvider>
   );
 
 const AuthorProduct = ({
   preview,
   unreadCount,
+  liveNotifications,
 }: {
   preview: Omit<
     ProductApplicationProps,
-    "comments" | "authorCommunity" | "messageUnreadCount"
+    "comments" | "authorCommunity" | "messageUnreadCount" | "liveNotifications"
   >;
   unreadCount: number;
+  liveNotifications: boolean;
 }) => {
   const author = useAuthors();
   return (
@@ -133,6 +144,7 @@ const AuthorProduct = ({
               headerStart={<CatalogSearchHeaderAction />}
               headerEnd={
                 <MessageTrigger
+                  liveNotifications={liveNotifications}
                   developmentPreview={preview.developmentDiscussion ?? false}
                   unreadCount={unreadCount}
                 />

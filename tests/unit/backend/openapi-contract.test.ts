@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import {
+  authJsonSchemas,
   authorCommunityJsonSchemas,
   workPublishingJsonSchemas,
   apiErrorJsonSchema,
@@ -113,6 +114,10 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/community/discussion/items/{commentId}/like",
         "/v1/community/discussion/items/{commentId}/body",
         "/v1/community/me/comments",
+        "/v1/community/notifications",
+        "/v1/community/notifications/read",
+        "/v1/community/notifications/stream",
+        "/v1/community/mentions",
         "/v1/community/authors/{authorId}",
         "/v1/community/authors/{authorId}/followers",
         "/v1/community/authors/{authorId}/following",
@@ -129,6 +134,8 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/community/media/{mediaId}",
         "/v1/community/relationships/block",
         "/v1/community/relationships/follow",
+        "/v1/community/auth/account",
+        "/v1/community/auth/capabilities",
         "/v1/community/works/{workId}",
         "/v1/community/editorial/articles",
         "/v1/community/editorial/articles/{articleId}",
@@ -176,6 +183,10 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/catalog/{catalogId}/comments/{commentId}/replies",
     ]);
     const authorMethods: Record<string, string[]> = {
+      "/v1/community/notifications": ["get"],
+      "/v1/community/notifications/read": ["post"],
+      "/v1/community/notifications/stream": ["get"],
+      "/v1/community/mentions": ["get"],
       "/v1/community/discover": ["get"],
       "/v1/community/filter-options": ["get"],
       "/v1/community/content/{type}/{id}/card": ["get"],
@@ -205,6 +216,8 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/community/media/{mediaId}": ["get"],
       "/v1/community/relationships/block": ["post"],
       "/v1/community/relationships/follow": ["post"],
+      "/v1/community/auth/account": ["get"],
+      "/v1/community/auth/capabilities": ["get"],
       "/v1/community/works/{workId}": ["get", "delete"],
       "/v1/community/editorial/articles": ["get"],
       "/v1/community/editorial/articles/{articleId}": ["get"],
@@ -445,6 +458,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
   it("uses only contract-derived public components", () => {
     expect(schemas).toEqual({
       ...authorCommunityJsonSchemas,
+      ...authJsonSchemas,
       ...workPublishingJsonSchemas,
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,

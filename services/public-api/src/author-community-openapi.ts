@@ -1205,3 +1205,85 @@ authorCommunityPaths[
     },
   },
 };
+
+// messaging-notification-foundation-v1: authenticated Development activity only.
+for (const [path, method, id, result, body] of [
+  [
+    "/v1/community/notifications",
+    "get",
+    "readNotifications",
+    "NotificationPage",
+    null,
+  ],
+  [
+    "/v1/community/notifications/read",
+    "post",
+    "markObservedNotificationsRead",
+    null,
+    "NotificationRead",
+  ],
+  [
+    "/v1/community/mentions",
+    "get",
+    "lookupMentionPeople",
+    "MentionLookupPage",
+    null,
+  ],
+] as const)
+  authorCommunityPaths[path] = {
+    [method]: operation(id, path, result, body, true),
+  };
+authorCommunityPaths["/v1/community/notifications"]!.get = {
+  ...(authorCommunityPaths["/v1/community/notifications"]!.get as object),
+  parameters: [
+    {
+      name: "filter",
+      in: "query",
+      schema: {
+        type: "string",
+        enum: ["all", "likes", "comments", "mentions"],
+        default: "all",
+      },
+    },
+    {
+      name: "limit",
+      in: "query",
+      schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+    },
+    {
+      name: "cursor",
+      in: "query",
+      schema: { type: "string", maxLength: 4096 },
+      description:
+        "Owner/filter-scoped signed snapshot cursor; resync when expired.",
+    },
+  ],
+};
+authorCommunityPaths["/v1/community/mentions"]!.get = {
+  ...(authorCommunityPaths["/v1/community/mentions"]!.get as object),
+  parameters: [
+    {
+      name: "q",
+      in: "query",
+      required: true,
+      schema: { type: "string", minLength: 2, maxLength: 40 },
+    },
+  ],
+};
+authorCommunityPaths["/v1/community/notifications/stream"] = {
+  get: {
+    operationId: "streamNotificationRefresh",
+    security: [{ session: [] }],
+    description:
+      "Development only; one backend process. Authenticated refresh signals, no bodies or resume IDs. Reconnect performs a bounded HTTP resync. Session is revalidated before each signal and every 15 seconds.",
+    responses: {
+      "200": {
+        description: "Unbuffered private stream; disconnect cancels upstream.",
+        content: { "text/event-stream": { schema: { type: "string" } } },
+      },
+      "401": failure("Valid session required"),
+      "422": failure("Queries and Last-Event-ID are not accepted"),
+      "503": failure("Connection bound reached"),
+    },
+  },
+};

@@ -1,4 +1,15 @@
 import { z } from "zod";
+import {
+  mentionReferencesSchema,
+  validMentionReferences,
+} from "./mention-references.ts";
+export {
+  mentionReferenceSchema,
+  mentionReferencesSchema,
+  validMentionReferences,
+  normalizeMentionText,
+  MENTION_LIMIT,
+} from "./mention-references.ts";
 
 import {
   workAuthorshipSchema,
@@ -494,7 +505,7 @@ export const commentAuthorSchema = z.strictObject({
 });
 
 /**
- * Comment text is plain: no rich text, mentions, links, media or attachments.
+ * Comment text is plain. Resolved mention references are separate from text; no rich text, links, media or attachments.
  * The bound is fixed by the Mission 2B Contract review and enforced by the
  * Backend; Web never relaxes it.
  */
@@ -606,15 +617,25 @@ export const catalogCommentListingTransportQuerySchema =
     pinned: pinnedCommentIdsStringSchema.optional(),
   });
 
-export const createCatalogCommentRequestSchema = z.strictObject({
-  text: commentTextSchema,
-});
+export const createCatalogCommentRequestSchema = z
+  .strictObject({
+    text: commentTextSchema,
+    mentions: mentionReferencesSchema.optional(),
+  })
+  .refine((value) => validMentionReferences(value.text, value.mentions ?? []), {
+    message: "Invalid mention references",
+  });
 
-export const createCatalogCommentReplyRequestSchema = z.strictObject({
-  text: commentTextSchema,
-  /** Answers a sibling reply; the new reply stays a sibling under the same root. */
-  replyTo: catalogCommentIdSchema.optional(),
-});
+export const createCatalogCommentReplyRequestSchema = z
+  .strictObject({
+    text: commentTextSchema,
+    /** Answers a sibling reply; the new reply stays a sibling under the same root. */
+    replyTo: catalogCommentIdSchema.optional(),
+    mentions: mentionReferencesSchema.optional(),
+  })
+  .refine((value) => validMentionReferences(value.text, value.mentions ?? []), {
+    message: "Invalid mention references",
+  });
 
 export const healthResponseSchema = z.strictObject({
   status: z.literal("ok"),
@@ -1031,6 +1052,71 @@ export const discardedResultSchema = z.strictObject({
   discarded: z.literal(true),
 });
 
+export {
+  authAccountSecuritySchema,
+  authCapabilitiesSchema,
+  authChallengeAcceptedSchema,
+  authChallengeRequestSchema,
+  authChannelSchema,
+  authChannelStateSchema,
+  authFactorCompleteRequestSchema,
+  authFactorSchema,
+  authRegistrationRequestSchema,
+  authUnlinkRequestSchema,
+  authVerifyRequestSchema,
+} from "./auth-schemas.ts";
+export type {
+  AuthAccountSecurity,
+  AuthCapabilities,
+  AuthChallengeAccepted,
+  AuthChallengeRequest,
+  AuthChannel,
+  AuthChannelState,
+  AuthFactor,
+  AuthFactorCompleteRequest,
+  AuthRegistrationRequest,
+  AuthUnlinkRequest,
+  AuthVerifyRequest,
+} from "./auth-schemas.ts";
+// messaging-notification-foundation-v1: private activity DTOs; no Session or media keys.
+export const notificationReasonSchema = z.enum([
+  "like",
+  "comment",
+  "reply",
+  "mention",
+]);
+export const notificationObservationSchema = z.string().min(1).max(4096);
+export const notificationItemSchema = z.strictObject({
+  id: z.string().regex(/^notification-[0-9a-f]{32}$/u),
+  reason: notificationReasonSchema,
+  available: z.boolean(),
+  target: contentIdentitySchema.nullable(),
+  commentId: catalogCommentIdSchema.nullable(),
+  actors: z.array(publicUserProfileSchema).max(3),
+  actorCount: z.number().int().nonnegative(),
+  text: z.string().max(240),
+  createdAt: z.iso.datetime(),
+  unread: z.boolean(),
+  observation: notificationObservationSchema,
+});
+export const notificationUnreadSchema = z.strictObject({
+  total: z.number().int().nonnegative(),
+  likes: z.number().int().nonnegative(),
+  comments: z.number().int().nonnegative(),
+  mentions: z.number().int().nonnegative(),
+});
+export const notificationPageSchema = z.strictObject({
+  items: z.array(notificationItemSchema).max(50),
+  nextCursor: notificationObservationSchema.nullable(),
+  observation: notificationObservationSchema,
+  unread: notificationUnreadSchema,
+});
+export const notificationReadSchema = z.strictObject({
+  observation: notificationObservationSchema,
+});
+export const mentionLookupPageSchema = z.strictObject({
+  items: z.array(publicUserProfileSchema).max(10),
+});
 // ---------------------------------------------------------------------------
 // content-community-completion-v1: editorial Articles and Article Collections.
 // Public read DTOs over the Payload published-only views. Ids are the

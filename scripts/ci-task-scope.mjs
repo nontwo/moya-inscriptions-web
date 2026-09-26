@@ -2,6 +2,12 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// Email-auth acceptance templates. Exact files only: other HTML or text under
+// docs/ stays unmapped. They are documentation of the message, not runtime.
+const emailAuthTemplates = new Set([
+  "docs/development/email-auth/verification.html",
+  "docs/development/email-auth/verification.txt",
+]);
 const docs = new Set([
   "AGENTS.md",
   "CLAUDE.md",
@@ -141,6 +147,7 @@ export function classifyTask(paths, event = "pull_request") {
       plan.web = true;
     } else if (
       docs.has(file) ||
+      emailAuthTemplates.has(file) ||
       tooling.has(file) ||
       // A workflow path cannot name the job an edit affects; script tests
       // assert the test and cms jobs' disposable-target marker steps.
@@ -182,7 +189,7 @@ export function classifyTask(paths, event = "pull_request") {
       // stage spawns ci-e2e-smoke.mjs; only the test job's Vitest policy test
       // loads ci-e2e-scope.mjs. validation-profiles.mjs supplies the stage and
       // smoke ceilings those commands import.
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|validation-profiles|ci-e2e-(?:scope|smoke)|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|validation-profiles|ci-e2e-(?:scope|smoke)|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support|email-auth-acceptance)\.mjs$/u.test(
         file,
       )
     ) {

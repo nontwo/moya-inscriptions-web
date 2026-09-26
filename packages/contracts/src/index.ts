@@ -131,6 +131,22 @@ export type {
   WorkVisibilityCommand,
   WorkVisibilityResult,
 } from "./work-publishing-schemas.js";
+
+export type {
+  AuthAccountSecurity,
+  AuthCapabilities,
+  AuthChallengeAccepted,
+  AuthFactor,
+} from "./auth-schemas.ts";
+export type { MentionReference } from "./mention-references.js";
+
+export type {
+  NotificationItem,
+  NotificationPage,
+  NotificationUnread,
+  NotificationReason,
+  MentionLookupPage,
+} from "./types.js";
 // content-community-completion-v1: editorial content read DTOs.
 export type {
   ArticleCitation,

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import {
+  notificationPageSchema,
+  notificationReadSchema,
+  mentionReferenceSchema,
+  mentionLookupPageSchema,
   apiErrorCodeSchema,
   apiErrorSchema,
   catalogCitationScopeSchema,
@@ -26,6 +30,8 @@ import {
   catalogSearchTransportQuerySchema,
   catalogSearchItemSchema,
   catalogSearchPageSchema,
+  authAccountSecuritySchema,
+  authCapabilitiesSchema,
   healthResponseSchema,
   mediaIdSchema,
   noQueryTransportSchema,
@@ -167,6 +173,10 @@ import {
 } from "./schemas.js";
 
 export const authorCommunityJsonSchemas = {
+  NotificationPage: toJsonSchema(notificationPageSchema),
+  NotificationRead: toJsonSchema(notificationReadSchema),
+  MentionReference: toJsonSchema(mentionReferenceSchema),
+  MentionLookupPage: toJsonSchema(mentionLookupPageSchema),
   ContentIdentity: toJsonSchema(contentIdentitySchema),
   DiscussionReply: toJsonSchema(discussionReplySchema),
   DiscussionComment: toJsonSchema(discussionCommentSchema),
@@ -263,6 +273,11 @@ import {
 } from "./schemas.js";
 
 /** Work publishing public DTOs, for the Development-only OpenAPI components. */
+export const authJsonSchemas = {
+  AuthCapabilities: toJsonSchema(authCapabilitiesSchema),
+  AuthAccountSecurity: toJsonSchema(authAccountSecuritySchema),
+};
+
 export const workPublishingJsonSchemas = {
   MediaEdit: toJsonSchema(mediaEditSchema),
   WorkAuthorship: toJsonSchema(workAuthorshipSchema),

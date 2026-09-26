@@ -1,3 +1,9 @@
+import { NotificationService } from "@moya/api";
+import type { NotificationPort, NotificationWorkerPort } from "@moya/api";
+import {
+  NotificationSignals,
+  NotificationStreams,
+} from "./community/notification-stream.js";
 import {
   createDevelopmentCatalogFixtureQueryPort,
   createDevelopmentCatalogFixtureSearchPort,
@@ -11,6 +17,7 @@ import {
   CatalogCommentService,
   CatalogReadService,
   CommunityModerationService,
+  CommunityAuthService,
   CommunitySessionService,
   DirectMessageService,
   EditorialContentReadService,
@@ -49,6 +56,9 @@ import type { CommunityRouterDependencies } from "./http/router.js";
 import type { RequestListener } from "node:http";
 
 export interface BackendApplicationOptions {
+  readonly notificationPort?: NotificationPort;
+  readonly notificationWorkerPort?: NotificationWorkerPort;
+  readonly notificationSignals?: NotificationSignals;
   readonly nodeEnv: NodeEnvironment;
   readonly catalogQueryPort?: CatalogQueryPort;
   readonly catalogSearchQueryPort?: CatalogSearchQueryPort;
@@ -56,6 +66,11 @@ export interface BackendApplicationOptions {
   readonly healthReadinessCheck?: HealthReadinessCheck;
   /** Backend-owned identity and sessions; without it every credential is unauthenticated. */
   readonly communityIdentityPort?: CommunityIdentityPort;
+  /**
+   * Email and phone authentication. Refused in production: this task does not
+   * expose public registration there.
+   */
+  readonly authService?: CommunityAuthService;
   readonly authorCommunityPort?: AuthorCommunityPort;
   readonly discussionPort?: DiscussionPort;
   readonly contentOperatorPort?: CommunityContentOperatorPort;
@@ -185,6 +200,9 @@ const resolveCommunity = (
 ): CommunityRouterDependencies | undefined => {
   const { nodeEnv, communityIdentityPort, communityCommentPort } = options;
   if (communityIdentityPort === undefined) return undefined;
+  if (nodeEnv === "production" && options.authService !== undefined)
+    throw new Error("Public authentication is not composed in production");
+  const sessionService = new CommunitySessionService(communityIdentityPort);
   const threadService =
     nodeEnv === "development" && options.threadPort !== undefined
       ? new ThreadService(options.threadPort)
@@ -194,7 +212,21 @@ const resolveCommunity = (
       ? new DirectMessageService(options.directMessagePort)
       : undefined;
   return {
-    sessionService: new CommunitySessionService(communityIdentityPort),
+    sessionService,
+    ...(nodeEnv === "development" && options.authService !== undefined
+      ? { authService: options.authService }
+      : {}),
+    ...(nodeEnv === "development" && options.notificationPort
+      ? {
+          notificationService: new NotificationService(
+            options.notificationPort,
+          ),
+          notificationStreams: new NotificationStreams(
+            sessionService,
+            options.notificationSignals ?? new NotificationSignals(),
+          ),
+        }
+      : {}),
     ...(nodeEnv === "development" && options.authorCommunityPort !== undefined
       ? {
           authorService: new AuthorCommunityService(

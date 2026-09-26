@@ -13,6 +13,7 @@ import {
   type PreviewCommentLocation,
 } from "../discussion-preview/preview-context";
 import styles from "./message-center.module.css";
+import { LiveMessageTrigger } from "../notifications/live-message-center";
 import { MessagePreview } from "./message-preview";
 import {
   DirectMessagePanel,
@@ -31,11 +32,14 @@ const labels = {
 export function MessageTrigger({
   unreadCount = 0,
   developmentPreview = false,
+  liveNotifications = false,
 }: {
   readonly unreadCount?: number;
   readonly developmentPreview?: boolean;
+  readonly liveNotifications?: boolean;
 }) {
   const author = useAuthors();
+  if (liveNotifications) return <LiveMessageTrigger />;
   return (
     <ScopedMessageTrigger
       key={author.viewer?.id ?? "guest"}

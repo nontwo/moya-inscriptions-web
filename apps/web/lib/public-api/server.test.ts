@@ -154,6 +154,135 @@ describe("Public API server wiring", () => {
   });
 });
 
+/*
+ * email-auth-v1: a Session the Backend no longer accepts (logged out or
+ * factor-replaced on another device, expired, unknown) must not keep the
+ * browser from public community reads through the same-origin relay.
+ */
+describe("Community relay with a Session the Backend no longer accepts", () => {
+  const cookie = `yoyi-session=${"B".repeat(43)}`;
+  const refused = () =>
+    Response.json(
+      {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "A valid session is required",
+        },
+      },
+      { status: 401 },
+    );
+  const read = (path: string) =>
+    new Request(`http://127.0.0.1:3410/api/community/${path}`, {
+      headers: { host: "127.0.0.1:3410", cookie },
+    });
+  const authorizationOf = (call: Parameters<typeof fetch>) =>
+    new Headers(call[1]?.headers).get("authorization");
+
+  it("clears the cookie and answers a read as for a signed-out browser once `me` refuses the Session", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(Response.json({ items: [] }));
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(
+      read("editorial/articles?page=1&pageSize=12&presentation=news"),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^yoyi-session=; .*Max-Age=0/u,
+    );
+    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(String(upstream.mock.calls[1]![0])).toBe(
+      "http://127.0.0.1:3411/v1/me",
+    );
+    expect(authorizationOf(upstream.mock.calls[0]!)).toBe(
+      `Bearer ${"B".repeat(43)}`,
+    );
+    expect(authorizationOf(upstream.mock.calls[2]!)).toBeNull();
+    expect(String(upstream.mock.calls[2]![0])).toBe(
+      "http://127.0.0.1:3411/v1/community/editorial/articles?page=1&pageSize=12&presentation=news",
+    );
+  });
+
+  it("clears the cookie of a refused write but never repeats the write", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(refused());
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(
+      new Request("http://127.0.0.1:3410/api/community/favorites/merge", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:3410",
+          origin: "http://127.0.0.1:3410",
+          "content-type": "application/json",
+          "sec-fetch-site": "same-origin",
+          cookie,
+        },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^yoyi-session=; .*Max-Age=0/u,
+    );
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(String(upstream.mock.calls[1]![0])).toBe(
+      "http://127.0.0.1:3411/v1/me",
+    );
+  });
+
+  it("keeps a Session the Backend still accepts: a refusal for another reason passes through untouched", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(Response.json({ id: `user-${"1".repeat(32)}` }));
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(read("notifications"));
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(String(upstream.mock.calls[1]![0])).toBe(
+      "http://127.0.0.1:3411/v1/me",
+    );
+  });
+
+  it.each([404, 503])(
+    "keeps the cookie when the Session check answers %s instead of refusing it",
+    async (status) => {
+      vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+      const upstream = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(refused())
+        .mockResolvedValueOnce(new Response(null, { status }));
+      vi.stubGlobal("fetch", upstream);
+      const response = await relayServerAuthorCommunity(read("threads"));
+      expect(response.status).toBe(401);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(upstream).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("never asks `me` when no Session was presented", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi.fn<typeof fetch>().mockResolvedValueOnce(refused());
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(
+      new Request("http://127.0.0.1:3410/api/community/notifications", {
+        headers: { host: "127.0.0.1:3410" },
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+});
+
 /* content-community-completion-v1: Development editorial images for a phone on the LAN. */
 
 const file = `${"c".repeat(64)}-${"d".repeat(64)}.png`;
