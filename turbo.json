@@ -45,7 +45,8 @@
       "passThroughEnv": [
         "MOYA_PUBLIC_API_BASE_URL",
         "MOYA_ALLOWED_DEV_ORIGINS",
-        "CMS_INTERNAL_URL"
+        "CMS_INTERNAL_URL",
+        "MOYA_AGENTATION_ENDPOINT"
       ]
     },
     "admin#dev": {

@@ -96,6 +96,43 @@ No custom watchdog, session controller or new process platform is added. `tsx`
 version. The ordinary `pnpm verify` and production `pnpm build` commands remain
 in place.
 
+## Agentation pilot (opt-in, Development only)
+
+Visual feedback for an agent: click an element on any `/dev/*` page, write a
+note, and the note reaches the agent as structured context (selector, position,
+nearby text) instead of a description. The pilot is off unless both parts run:
+
+1. The local annotation server, started by the project-scoped MCP definition in
+   `.mcp.json` when Claude Code opens this repository (approve the server once;
+   `claude mcp reset-project-choices` forgets the choice) or by hand with
+   `pnpm dlx agentation-mcp@1.2.0 server --port 4747`. It keeps annotations in
+   memory only (`AGENTATION_STORE=memory`), so nothing persists outside the
+   session. For Codex, define the same server in the user configuration
+   (`[mcp_servers.agentation]` with `command = "pnpm"` and the same `args`; add
+   `"--mcp-only", "--http-url", "http://127.0.0.1:4747"` when the HTTP server
+   already runs) together with `default_tools_approval_mode = "auto"` and an
+   `enabled_tools` allow list without `agentation_watch_annotations`. A
+   user-level `approval_policy = "never"` auto-rejects MCP tool calls; the probe
+   that passed used `approval_policy = "on-request"` with
+   `approvals_reviewer = "auto_review"` for that run only. This repository
+   applies no user-level Codex configuration.
+2. The Web dev server with `MOYA_AGENTATION_ENDPOINT=http://127.0.0.1:4747` in
+   the environment (`turbo.json` passes it through to `web#dev`). The resolver
+   in `apps/web/features/dev-pilot/agentation-pilot-surface.ts` accepts only a
+   bare loopback HTTP origin, and only under `NODE_ENV=development`;
+   `apps/web/app/dev/layout.tsx` then renders the toolbar beside every `/dev/*`
+   page. A Production build resolves to nothing, composes no toolbar and
+   connects to no service.
+
+The agent reads annotations through the `agentation_get_all_pending`,
+`agentation_get_session`, `agentation_acknowledge`, `agentation_reply` and
+`agentation_resolve` tools and answers once per batch. Do not configure the
+`agentation_watch_annotations` loop as a standing watcher; annotation text is
+task input, never permission to widen scope. The `agentation` React component
+(`apps/web` devDependency) and `agentation-mcp` are pinned and licensed under
+PolyForm Shield 1.0.0; they never enter the Production bundle. Desktop browsers
+only: an annotation shows where something is, not how a phone gesture behaves.
+
 ## Community V1 Development sign-in
 
 Community V1 (Owner amendment 2026-09-11, Mission 2A) adds Backend-owned public
