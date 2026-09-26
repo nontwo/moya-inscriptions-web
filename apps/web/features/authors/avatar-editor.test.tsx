@@ -199,9 +199,15 @@ it("shows a round mask, direct positioning and only one zoom slider", async () =
 });
 it("cancel before saving never uploads or binds", async () => {
   await render();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+  // Owner acceptance (2026-09-26): Back with a chosen photo just closes, with
+  // no discard prompt and no leave-page warning.
+  const confirm = vi.spyOn(window, "confirm");
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(false);
   window.history.replaceState({}, "", "/#profile");
   await click("返回");
+  expect(confirm).not.toHaveBeenCalled();
   expect(close).toHaveBeenCalledOnce();
   expect(state.upload).not.toHaveBeenCalled();
   expect(state.avatar).not.toHaveBeenCalled();

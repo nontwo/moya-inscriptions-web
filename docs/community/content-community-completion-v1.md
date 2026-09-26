@@ -452,13 +452,13 @@ must reach `main` with the integration commits after A, N and C.
 
 ## 11. Owner phone acceptance decisions (2026-09-25)
 
-During phone acceptance of the combined QA candidate, the Owner changed three
-presentations. Each is the Owner's own decision at the visual gate of the
-community scope amendment (§6 of `2026-09-11-community-v1-scope.md`). They
-supersede the rows cited below. The composer spans main's comment section, N's
-mention control and this track's direct messages, so the change is
-integration-owned. It lives on the QA branch and must reach `main` with the
-integration commits after A, N and C.
+During phone acceptance of the combined QA candidate, the Owner changed these
+presentations (items 1–3 on 2026-09-25, item 4 on 2026-09-26). Each is the
+Owner's own decision at the visual gate of the community scope amendment (§6 of
+`2026-09-11-community-v1-scope.md`). They supersede the rows cited below. The
+composer spans main's comment section, N's mention control and this track's
+direct messages, so the change is integration-owned. It lives on the QA branch
+and must reach `main` with the integration commits after A, N and C.
 
 1. **One composer shape.** Comments, replies and direct messages share one
    shape: a single text box with the 发送 button on its right.
@@ -488,3 +488,9 @@ integration commits after A, N and C.
    accessible name. Inside the conversation, the gate notice and the composer's
    refusal are unchanged. This drops the row's request tag kept inline by §10's
    C3 repair.
+4. **Leaving the avatar editor.** Back, from the header button or a swipe,
+   closes 更换头像 without a discard prompt or a leave-page warning, even after
+   a photo was chosen. Nothing is uploaded or saved. This supersedes Phase 4's
+   unsaved-crop prompt for the avatar editor only; the other editors keep
+   theirs. The avatar editor is main's Phase 4 code, so this change is also
+   integration-owned.
