@@ -371,6 +371,28 @@ describe("task routing follows the complete changed-path set", () => {
     });
   }
 
+  it("routes the email-auth acceptance launcher to Web and its two template sources as documentation", () => {
+    for (const event of ["pull_request", "push", "local"]) {
+      assert.deepEqual(
+        flags(classifyTask(["scripts/email-auth-acceptance.mjs"], event)),
+        expectedFlags({ web: true, scope: "smoke" }),
+      );
+      for (const file of [
+        "docs/development/email-auth/verification.html",
+        "docs/development/email-auth/verification.txt",
+      ])
+        assert.deepEqual(flags(classifyTask([file], event)), expectedFlags({}));
+    }
+    for (const file of [
+      "scripts/email-auth-acceptance-extra.mjs",
+      "scripts/nested/email-auth-acceptance.mjs",
+      "docs/development/email-auth/verification.htm",
+      "docs/development/other/verification.html",
+      "docs/development/email-auth/notes.txt",
+    ])
+      assert.throws(() => classifyTask([file]), /Unmapped changed paths/);
+  });
+
   it("routes only the three registered Phase 4 fixture scripts to Web", () => {
     for (const name of [
       "materialize-phase4-fixtures",

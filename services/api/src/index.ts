@@ -44,6 +44,43 @@ export { mapPublicUserProfile } from "./modules/community/application/mappers/co
 export { CatalogCommentService } from "./modules/community/application/services/catalog-comment-service.js";
 export { CommunityModerationService } from "./modules/community/application/services/community-moderation-service.js";
 export { CommunitySessionService } from "./modules/community/application/services/community-session-service.js";
+export { CommunityAuthService } from "./modules/community/application/auth/community-auth-service.js";
+export { createMemoryCommunityAuthPort } from "./modules/community/application/auth/memory-auth-port.js";
+export {
+  assertProductionAuthConfiguration,
+  createDevelopmentAuthService,
+} from "./modules/community/application/auth/auth-configuration.js";
+export {
+  assertLoopbackCaptureUrl,
+  interpretAliyunCheck,
+  interpretAliyunSend,
+  interpretTencentSendEmail,
+  mapAliyunCheckSmsVerifyCode,
+  mapAliyunSendSmsVerifyCode,
+  mapTencentSendEmail,
+} from "./modules/community/application/auth/delivery.js";
+export type {
+  AuthDeliveryPorts,
+  AuthReason,
+  AuthResult,
+  AuthSessionGrant,
+  AuthVerifyValue,
+  CommunityAuthServiceOptions,
+} from "./modules/community/application/auth/community-auth-service.js";
+export type {
+  AuthChannelName,
+  AuthEnvironmentName,
+  AuthPurposeName,
+  AuthUnitOfWork,
+  CommunityAuthPort,
+  StoredChallenge,
+  StoredHandoff,
+  StoredIdentity,
+  StoredReceipt,
+  StoredSession,
+  StoredUser,
+  VerificationMode,
+} from "./modules/community/application/auth/auth-port.js";
 export type {
   CatalogCommentServiceOptions,
   CommentListingInput,

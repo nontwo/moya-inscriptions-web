@@ -38,6 +38,205 @@
         "required": ["error"],
         "type": "object"
       },
+      "AuthAccountSecurity": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "developmentOnly": {
+                "type": "boolean"
+              },
+              "email": {
+                "additionalProperties": false,
+                "properties": {
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["available", "reason"],
+                "type": "object"
+              },
+              "phone": {
+                "additionalProperties": false,
+                "properties": {
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["available", "reason"],
+                "type": "object"
+              },
+              "profile": {
+                "enum": ["full-local", "email-first", "disabled"],
+                "type": "string"
+              }
+            },
+            "required": ["profile", "email", "phone", "developmentOnly"],
+            "type": "object"
+          },
+          "email": {
+            "additionalProperties": false,
+            "properties": {
+              "channel": {
+                "enum": ["email", "phone"],
+                "type": "string"
+              },
+              "masked": {
+                "anyOf": [
+                  {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "enum": ["unbound", "verified", "unavailable", "pending"],
+                "type": "string"
+              },
+              "usable": {
+                "type": "boolean"
+              },
+              "version": {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": ["channel", "state", "masked", "version", "usable"],
+            "type": "object"
+          },
+          "phone": {
+            "additionalProperties": false,
+            "properties": {
+              "channel": {
+                "enum": ["email", "phone"],
+                "type": "string"
+              },
+              "masked": {
+                "anyOf": [
+                  {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "enum": ["unbound", "verified", "unavailable", "pending"],
+                "type": "string"
+              },
+              "usable": {
+                "type": "boolean"
+              },
+              "version": {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": ["channel", "state", "masked", "version", "usable"],
+            "type": "object"
+          },
+          "userId": {
+            "pattern": "^user-[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": ["userId", "email", "phone", "capabilities"],
+        "type": "object"
+      },
+      "AuthCapabilities": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "developmentOnly": {
+            "type": "boolean"
+          },
+          "email": {
+            "additionalProperties": false,
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["available", "reason"],
+            "type": "object"
+          },
+          "phone": {
+            "additionalProperties": false,
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["available", "reason"],
+            "type": "object"
+          },
+          "profile": {
+            "enum": ["full-local", "email-first", "disabled"],
+            "type": "string"
+          }
+        },
+        "required": ["profile", "email", "phone", "developmentOnly"],
+        "type": "object"
+      },
       "AuthorMedia": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -14627,6 +14826,119 @@
           }
         ],
         "summary": "Reply to one root comment"
+      }
+    },
+    "/v1/community/auth/account": {
+      "get": {
+        "description": "Authenticated account security view. Masked contacts only; no raw email, phone, OTP or session token.",
+        "operationId": "getAuthAccountSecurity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthAccountSecurity"
+                }
+              }
+            },
+            "description": "The current account's login factors."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query. ApiErrorCode INVALID_QUERY."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "A valid session is required. ApiErrorCode UNAUTHENTICATED."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error. ApiErrorCode INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service unavailable. ApiErrorCode SERVICE_UNAVAILABLE."
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Masked login factors for the current account"
+      }
+    },
+    "/v1/community/auth/capabilities": {
+      "get": {
+        "description": "Server-owned email and phone availability. A client cannot enable simulation or live delivery. Production does not mount this route in this task.",
+        "operationId": "getAuthCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthCapabilities"
+                }
+              }
+            },
+            "description": "The active acceptance profile."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query. ApiErrorCode INVALID_QUERY."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error. ApiErrorCode INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service unavailable. ApiErrorCode SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "Authentication channel capabilities"
       }
     },
     "/v1/community/authors/{authorId}": {

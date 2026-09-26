@@ -1035,6 +1035,32 @@ export const discardedResultSchema = z.strictObject({
   discarded: z.literal(true),
 });
 
+export {
+  authAccountSecuritySchema,
+  authCapabilitiesSchema,
+  authChallengeAcceptedSchema,
+  authChallengeRequestSchema,
+  authChannelSchema,
+  authChannelStateSchema,
+  authFactorCompleteRequestSchema,
+  authFactorSchema,
+  authRegistrationRequestSchema,
+  authUnlinkRequestSchema,
+  authVerifyRequestSchema,
+} from "./auth-schemas.ts";
+export type {
+  AuthAccountSecurity,
+  AuthCapabilities,
+  AuthChallengeAccepted,
+  AuthChallengeRequest,
+  AuthChannel,
+  AuthChannelState,
+  AuthFactor,
+  AuthFactorCompleteRequest,
+  AuthRegistrationRequest,
+  AuthUnlinkRequest,
+  AuthVerifyRequest,
+} from "./auth-schemas.ts";
 // messaging-notification-foundation-v1: private activity DTOs; no Session or media keys.
 export const notificationReasonSchema = z.enum([
   "like",

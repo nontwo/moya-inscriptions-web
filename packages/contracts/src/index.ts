@@ -132,6 +132,12 @@ export type {
   WorkVisibilityResult,
 } from "./work-publishing-schemas.js";
 
+export type {
+  AuthAccountSecurity,
+  AuthCapabilities,
+  AuthChallengeAccepted,
+  AuthFactor,
+} from "./auth-schemas.ts";
 export type { MentionReference } from "./mention-references.js";
 
 export type {

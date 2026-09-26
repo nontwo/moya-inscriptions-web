@@ -1,4 +1,5 @@
 export { PostgresCommunityIdentityAdapter } from "./adapter.js";
+export { PostgresCommunityAuthAdapter } from "./auth-adapter.js";
 export { asCommunityOperationError } from "./availability.js";
 export { PostgresCommunityCommentAdapter } from "./comment-adapter.js";
 export {

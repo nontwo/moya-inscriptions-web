@@ -14,6 +14,7 @@ import {
   handleReadComments,
   handleReadReplies,
 } from "../community/comment-handler.js";
+import { handleCommunityAuth } from "../community/auth-handler.js";
 import {
   handleCurrentUser,
   handleDevelopmentSignIn,
@@ -31,6 +32,7 @@ import type {
   CatalogCommentService,
   CatalogReadService,
   CommunityModerationService,
+  CommunityAuthService,
   CommunitySessionService,
   AgentAdministrationService,
   PublishingOperatorService,
@@ -58,6 +60,8 @@ export interface CommunityRouterDependencies {
   readonly notificationService?: NotificationService;
   readonly notificationStreams?: NotificationStreams;
   readonly sessionService: CommunitySessionService;
+  /** Email and phone authentication. Mounted only for a Development acceptance profile. */
+  readonly authService?: CommunityAuthService;
   readonly authorService?: AuthorCommunityService;
   /** Work publishing author routes; composed only with the author service in Development. */
   readonly publishingService?: WorkPublishingService;
@@ -159,6 +163,14 @@ export const createRouter =
         );
         return;
       }
+    }
+
+    if (
+      community?.authService !== undefined &&
+      pathname.startsWith("/v1/community/auth/")
+    ) {
+      void handleCommunityAuth(request, response, community.authService);
+      return;
     }
 
     if (

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import {
+  authJsonSchemas,
   authorCommunityJsonSchemas,
   workPublishingJsonSchemas,
   apiErrorJsonSchema,
@@ -133,6 +134,8 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/community/media/{mediaId}",
         "/v1/community/relationships/block",
         "/v1/community/relationships/follow",
+        "/v1/community/auth/account",
+        "/v1/community/auth/capabilities",
         "/v1/community/works/{workId}",
         ...Object.keys(publishingMethods),
       ].sort(),
@@ -196,6 +199,8 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/community/media/{mediaId}": ["get"],
       "/v1/community/relationships/block": ["post"],
       "/v1/community/relationships/follow": ["post"],
+      "/v1/community/auth/account": ["get"],
+      "/v1/community/auth/capabilities": ["get"],
       "/v1/community/works/{workId}": ["get", "delete"],
       ...publishingMethods,
     };
@@ -419,6 +424,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
   it("uses only contract-derived public components", () => {
     expect(schemas).toEqual({
       ...authorCommunityJsonSchemas,
+      ...authJsonSchemas,
       ...workPublishingJsonSchemas,
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
